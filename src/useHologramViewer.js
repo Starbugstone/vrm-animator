@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
+import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
 
 const STAGE_BASE_HEIGHT = 0.18
 const STAGE_BASE_Y = -0.1
@@ -126,10 +127,16 @@ export default function useHologramViewer(canvasRef) {
     let baseTargetY = DEFAULT_TARGET_Y
     let originalHipsY = 0
     let currentVrm = null
-    let currentUrl = null
+    let currentAvatarUrl = null
+    let currentAnimationUrl = null
+    let currentMixer = null
+    let currentAnimationAction = null
+    let currentAnimationClip = null
     let currentCommand = 'idle'
     let commandTime = 0
     let loadVersion = 0
+    let animationLoadVersion = 0
+    let playbackMode = 'command'
 
     const setViewerStatus = (nextStatus) => {
       setStatus(nextStatus)
@@ -173,6 +180,44 @@ export default function useHologramViewer(canvasRef) {
       framing.targetXOffset = controls.target.x - baseTargetX
       clampFramingState()
       emitFraming()
+    }
+
+    const resetAvatarPose = () => {
+      if (!currentVrm) return
+      currentVrm.humanoid?.resetNormalizedPose?.()
+      currentVrm.expressionManager?.resetValues?.()
+      currentVrm.lookAt?.reset?.()
+      currentVrm.scene.rotation.y = 0
+      currentVrm.scene.updateMatrixWorld(true)
+    }
+
+    const stopCurrentAnimation = ({ resetPose = true } = {}) => {
+      playbackMode = 'command'
+      animationLoadVersion += 1
+
+      if (currentAnimationAction) {
+        currentAnimationAction.stop()
+        currentAnimationAction.enabled = false
+        currentAnimationAction = null
+      }
+
+      if (currentMixer) {
+        currentMixer.stopAllAction()
+        if (currentAnimationClip && currentVrm?.scene) {
+          currentMixer.uncacheAction(currentAnimationClip, currentVrm.scene)
+        }
+      }
+
+      currentAnimationClip = null
+
+      if (currentAnimationUrl) {
+        URL.revokeObjectURL(currentAnimationUrl)
+        currentAnimationUrl = null
+      }
+
+      if (resetPose) {
+        resetAvatarPose()
+      }
     }
 
     controls.addEventListener('change', syncFramingStateFromCamera)
@@ -345,6 +390,12 @@ export default function useHologramViewer(canvasRef) {
 
     const removeCurrentAvatar = () => {
       if (!currentVrm) return
+      stopCurrentAnimation({ resetPose: false })
+      if (currentMixer) {
+        currentMixer.stopAllAction()
+        currentMixer.uncacheRoot(currentVrm.scene)
+        currentMixer = null
+      }
       scene.remove(currentVrm.scene)
       disposeObject3D(currentVrm.scene)
       currentVrm = null
@@ -359,10 +410,10 @@ export default function useHologramViewer(canvasRef) {
       setIsLoaded(false)
       setViewerStatus('Loading')
 
-      if (currentUrl) {
-        URL.revokeObjectURL(currentUrl)
+      if (currentAvatarUrl) {
+        URL.revokeObjectURL(currentAvatarUrl)
       }
-      currentUrl = URL.createObjectURL(file)
+      currentAvatarUrl = URL.createObjectURL(file)
 
       removeCurrentAvatar()
 
@@ -370,7 +421,7 @@ export default function useHologramViewer(canvasRef) {
       loader.register((parser) => new VRMLoaderPlugin(parser))
 
       loader.load(
-        currentUrl,
+        currentAvatarUrl,
         (gltf) => {
           if (thisLoadVersion !== loadVersion) return
           const vrm = gltf.userData.vrm
@@ -391,6 +442,7 @@ export default function useHologramViewer(canvasRef) {
           const hipsNode = currentVrm.humanoid?.getNormalizedBoneNode('hips')
           originalHipsY = hipsNode ? hipsNode.position.y : 0
 
+          currentMixer = new THREE.AnimationMixer(currentVrm.scene)
           scene.add(currentVrm.scene)
           setIsLoaded(true)
           setViewerStatus('Avatar loaded')
@@ -404,8 +456,64 @@ export default function useHologramViewer(canvasRef) {
       )
     }
 
+    const playAnimationFile = (file, label = file?.name || 'VRMA action') => {
+      if (!file) return false
+      if (!currentVrm || !currentMixer) {
+        setViewerStatus('Load an avatar first')
+        return false
+      }
+
+      stopCurrentAnimation({ resetPose: true })
+
+      currentAnimationUrl = URL.createObjectURL(file)
+      const thisAnimationLoadVersion = animationLoadVersion
+      setViewerStatus(`Loading action: ${label}`)
+
+      const loader = new GLTFLoader()
+      loader.register((parser) => new VRMAnimationLoaderPlugin(parser))
+
+      loader.load(
+        currentAnimationUrl,
+        (gltf) => {
+          if (thisAnimationLoadVersion !== animationLoadVersion) return
+          const vrmAnimation = gltf.userData.vrmAnimations?.[0]
+          if (!vrmAnimation) {
+            setViewerStatus('Unsupported action')
+            return
+          }
+
+          try {
+            currentAnimationClip = createVRMAnimationClip(vrmAnimation, currentVrm)
+            currentAnimationAction = currentMixer.clipAction(currentAnimationClip)
+            currentAnimationAction.reset()
+            currentAnimationAction.enabled = true
+            currentAnimationAction.setLoop(THREE.LoopRepeat, Infinity)
+            currentAnimationAction.clampWhenFinished = false
+            currentAnimationAction.play()
+            playbackMode = 'vrma'
+            currentCommand = 'idle'
+            commandTime = 0
+            setViewerStatus(`Playing action: ${label}`)
+          } catch (error) {
+            console.error(error)
+            stopCurrentAnimation({ resetPose: true })
+            setViewerStatus('Action playback failed')
+          }
+        },
+        undefined,
+        (error) => {
+          if (thisAnimationLoadVersion !== animationLoadVersion) return
+          console.error(error)
+          stopCurrentAnimation({ resetPose: false })
+          setViewerStatus('Action load failed')
+        },
+      )
+
+      return true
+    }
+
     const applyCommand = (dt) => {
-      if (!currentVrm) return
+      if (!currentVrm || playbackMode !== 'command') return
       commandTime += dt
 
       const hips = bone('hips')
@@ -554,7 +662,11 @@ export default function useHologramViewer(canvasRef) {
       })
 
       beam.material.opacity = 0.08 + Math.sin(t * 2) * 0.02
-      applyCommand(dt)
+      if (playbackMode === 'vrma' && currentMixer) {
+        currentMixer.update(dt)
+      } else {
+        applyCommand(dt)
+      }
       currentVrm?.update(dt)
       controls.update()
       renderer.render(scene, camera)
@@ -564,7 +676,10 @@ export default function useHologramViewer(canvasRef) {
 
     internalsRef.current = {
       loadFile: loadAvatarFromFile,
+      playAnimationFile,
       setCommand: (nextCommand) => {
+        stopCurrentAnimation({ resetPose: true })
+        playbackMode = 'command'
         currentCommand = nextCommand
         commandTime = 0
         setViewerStatus(`Command: ${nextCommand}`)
@@ -589,9 +704,10 @@ export default function useHologramViewer(canvasRef) {
       canvas.removeEventListener('auxclick', onAuxClick)
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
+      stopCurrentAnimation({ resetPose: false })
       removeCurrentAvatar()
-      if (currentUrl) {
-        URL.revokeObjectURL(currentUrl)
+      if (currentAvatarUrl) {
+        URL.revokeObjectURL(currentAvatarUrl)
       }
       disposeObject3D(stage)
       renderer.dispose()
@@ -601,6 +717,10 @@ export default function useHologramViewer(canvasRef) {
 
   const loadFile = useCallback((file) => {
     internalsRef.current?.loadFile(file)
+  }, [])
+
+  const playAnimationFile = useCallback((file, label) => {
+    return internalsRef.current?.playAnimationFile(file, label) ?? false
   }, [])
 
   const setCommand = useCallback((command) => {
@@ -613,6 +733,7 @@ export default function useHologramViewer(canvasRef) {
 
   return {
     loadFile,
+    playAnimationFile,
     setCommand,
     setFramingValue,
     framingState,

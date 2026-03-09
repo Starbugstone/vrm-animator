@@ -113,7 +113,7 @@ export default function CameraPopover({
       {minimized ? null : (
         <>
           <div className="rounded-2xl border border-white/8 bg-black/20 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-cyan-100/80">
-            Active command: {activeCommand}
+            Active motion: {activeCommand}
           </div>
 
           {SLIDERS.map(({ key, label, min, max, step, unit }) => {

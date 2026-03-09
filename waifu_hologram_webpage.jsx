@@ -59,16 +59,6 @@ function createUploadedAsset(type, file) {
   }
 }
 
-function inferCommandFromAction(asset) {
-  const raw = `${asset?.name || ''} ${asset?.alias || ''}`.toLowerCase()
-
-  if (raw.includes('clap')) return 'clap'
-  if (raw.includes('jump')) return 'jump'
-  if (raw.includes('dance')) return 'dance'
-  if (raw.includes('spin') || raw.includes('turn') || raw.includes('twirl')) return 'spin'
-  return 'idle'
-}
-
 async function assetToFile(asset) {
   if (!asset) return null
   if (asset.file) return asset.file
@@ -222,9 +212,18 @@ export default function WaifuHologramPage() {
   const canvasRef = useRef(null)
   const resetTimeoutRef = useRef(null)
 
-  const { loadFile, setCommand: setViewerCommand, setFramingValue, framingState, status, isLoaded } = useHologramViewer(canvasRef)
+  const {
+    loadFile,
+    playAnimationFile,
+    setCommand: setViewerCommand,
+    setFramingValue,
+    framingState,
+    status,
+    isLoaded,
+  } = useHologramViewer(canvasRef)
 
   const [command, setCommand] = useState('idle')
+  const [activeMotionLabel, setActiveMotionLabel] = useState('idle')
   const [toolLog, setToolLog] = useState(['System ready'])
   const [loadedName, setLoadedName] = useState('None loaded yet')
   const [avatarItems, setAvatarItems] = useState(BUNDLED_AVATARS)
@@ -264,12 +263,14 @@ export default function WaifuHologramPage() {
 
     clearResetTimer()
     setCommand(normalized)
+    setActiveMotionLabel(normalized)
     addLogLine(contextLabel ? `${contextLabel}: ${normalized}` : `Tool command: ${normalized}`)
     setViewerCommand(normalized)
 
     if (normalized === 'jump' || normalized === 'spin') {
       resetTimeoutRef.current = window.setTimeout(() => {
         setCommand('idle')
+        setActiveMotionLabel('idle')
         setViewerCommand('idle')
         resetTimeoutRef.current = null
       }, normalized === 'jump' ? 1000 : 1450)
@@ -331,10 +332,24 @@ export default function WaifuHologramPage() {
     addLogLine(`Added action file: ${file.name}`)
   }, [addLogLine])
 
-  const playSelectedAction = useCallback(() => {
+  const playSelectedAction = useCallback(async () => {
     if (!selectedAction) return
-    runCommand(inferCommandFromAction(selectedAction), `Action file ${getAssetLabel(selectedAction)}`)
-  }, [runCommand, selectedAction])
+
+    const label = getAssetLabel(selectedAction)
+    const file = await assetToFile(selectedAction)
+    if (!file) return
+
+    const started = playAnimationFile(file, label)
+    if (!started) {
+      addLogLine(`Action failed: ${label}`)
+      return
+    }
+
+    clearResetTimer()
+    setCommand('idle')
+    setActiveMotionLabel(label)
+    addLogLine(`Playing action: ${label}`)
+  }, [addLogLine, clearResetTimer, playAnimationFile, selectedAction])
 
   return (
     <div className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_#11214b_0%,_#071125_35%,_#030712_100%)] text-white">
@@ -377,7 +392,7 @@ export default function WaifuHologramPage() {
               renameDraft={actionRenameDraft}
               emptyLabel="No matching action files"
               uploadAccept=".vrma"
-              helper="Temporary testing list. Action files currently map to built-in demo commands by filename."
+              helper="Load a VRMA file and retarget it onto the active avatar."
               onSearchChange={setActionSearch}
               onSelect={setSelectedActionId}
               onRenameDraftChange={setActionRenameDraft}
@@ -411,14 +426,14 @@ export default function WaifuHologramPage() {
 
             <CameraPopover
               framingValues={framingState}
-              activeCommand={command}
+              activeCommand={activeMotionLabel}
               onFramingChange={setFramingValue}
               onCommand={runCommand}
             />
 
             <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-5 sm:p-8">
               <div className="rounded-full border border-cyan-300/20 bg-black/30 px-4 py-2 text-xs uppercase tracking-[0.25em] text-cyan-200/90 backdrop-blur">
-                Active command: {command}
+                Active motion: {activeMotionLabel}
               </div>
             </div>
 
