@@ -6,7 +6,6 @@ Local React/Vite dev shell for the `waifu_hologram_webpage.jsx` VRM hologram vie
 
 - Node.js 18 or newer
 - npm
-- Internet access for the embedded viewer imports (`three` and `@pixiv/three-vrm` are loaded from jsDelivr inside the iframe)
 
 ## Local development
 
@@ -40,9 +39,11 @@ npm run preview
 
 ## Project structure
 
-- `waifu_hologram_webpage.jsx`: main hologram UI and embedded Three.js/VRM viewer
+- `waifu_hologram_webpage.jsx`: main hologram UI and direct viewer integration
 - `src/main.jsx`: React entry point
 - `src/App.jsx`: mounts the existing hologram page component
+- `src/useHologramViewer.js`: Three.js and VRM viewer engine hook
+- `src/CameraPopover.jsx`: floating camera controls and quick command popover
 - `src/index.css`: Tailwind entry CSS
 
 ## Using the app

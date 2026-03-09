@@ -10,5 +10,23 @@ body,
 
 body {
   margin: 0;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #030712;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.viewer-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.camera-popover-header {
+  user-select: none;
+  touch-action: none;
 }
