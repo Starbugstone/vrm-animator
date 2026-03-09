@@ -7,3 +7,6 @@ vrm/*
 !vrm/.gitignore
 vrma/*
 !vrma/.gitignore
+
+# Docker
+.docker/data/

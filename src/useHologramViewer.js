@@ -33,6 +33,17 @@ const DEFAULT_FRAMING = {
   shift: 0,
 }
 
+const DEFAULT_IDLE_BLEND_SECONDS = 0.45
+const DEFAULT_ACTION_BLEND_SECONDS = 0.3
+const MIN_BLEND_SECONDS = 0.12
+const MAX_BLEND_RATIO = 0.35
+const ACTION_RETURN_LEAD_SECONDS = 0.28
+
+function buildMotionCacheKey(file, label = 'VRMA action') {
+  if (!file) return label
+  return `${label}::${file.name || 'unnamed'}::${file.size || 0}::${file.lastModified || 0}`
+}
+
 function boneWorldPosition(vrm, name) {
   const node = vrm?.humanoid?.getNormalizedBoneNode(name)
   if (!node) return null
@@ -128,15 +139,17 @@ export default function useHologramViewer(canvasRef) {
     let originalHipsY = 0
     let currentVrm = null
     let currentAvatarUrl = null
-    let currentAnimationUrl = null
     let currentMixer = null
-    let currentAnimationAction = null
-    let currentAnimationClip = null
     let currentCommand = 'idle'
     let commandTime = 0
     let loadVersion = 0
-    let animationLoadVersion = 0
+    let motionRequestVersion = 0
     let playbackMode = 'command'
+    let activeMotion = null
+    let previousMotion = null
+    let transitionEndsAt = 0
+    let defaultIdleMotion = null
+    const motionCache = new Map()
 
     const setViewerStatus = (nextStatus) => {
       setStatus(nextStatus)
@@ -191,33 +204,176 @@ export default function useHologramViewer(canvasRef) {
       currentVrm.scene.updateMatrixWorld(true)
     }
 
+    const clearMotionCache = () => {
+      motionCache.clear()
+    }
+
+    const stopMotionAction = (motion) => {
+      motion?.action?.stop()
+      if (motion?.action) {
+        motion.action.enabled = false
+      }
+    }
+
+    const finalizeTransition = () => {
+      if (!previousMotion) return
+      stopMotionAction(previousMotion)
+      previousMotion = null
+      transitionEndsAt = 0
+    }
+
     const stopCurrentAnimation = ({ resetPose = true } = {}) => {
       playbackMode = 'command'
-      animationLoadVersion += 1
+      motionRequestVersion += 1
+      finalizeTransition()
 
-      if (currentAnimationAction) {
-        currentAnimationAction.stop()
-        currentAnimationAction.enabled = false
-        currentAnimationAction = null
+      if (activeMotion) {
+        stopMotionAction(activeMotion)
+        activeMotion = null
       }
 
       if (currentMixer) {
         currentMixer.stopAllAction()
-        if (currentAnimationClip && currentVrm?.scene) {
-          currentMixer.uncacheAction(currentAnimationClip, currentVrm.scene)
-        }
-      }
-
-      currentAnimationClip = null
-
-      if (currentAnimationUrl) {
-        URL.revokeObjectURL(currentAnimationUrl)
-        currentAnimationUrl = null
       }
 
       if (resetPose) {
         resetAvatarPose()
       }
+    }
+
+    const resolveBlendDuration = (fromMotion, toMotion) => {
+      const preferred =
+        fromMotion?.kind === 'idle' && toMotion?.kind === 'idle'
+          ? DEFAULT_IDLE_BLEND_SECONDS
+          : DEFAULT_ACTION_BLEND_SECONDS
+      const fromDuration = Math.max(MIN_BLEND_SECONDS, fromMotion?.duration || preferred)
+      const toDuration = Math.max(MIN_BLEND_SECONDS, toMotion?.duration || preferred)
+      const cap = Math.max(MIN_BLEND_SECONDS, Math.min(fromDuration, toDuration) * MAX_BLEND_RATIO)
+      return Math.min(preferred, cap)
+    }
+
+    const loadMotionClip = (motion) => {
+      if (!motion?.file) {
+        return Promise.reject(new Error('Missing motion file'))
+      }
+      if (!currentVrm) {
+        return Promise.reject(new Error('Load an avatar first'))
+      }
+
+      const cacheKey = motion.cacheKey || buildMotionCacheKey(motion.file, motion.label)
+      const cached = motionCache.get(cacheKey)
+      if (cached) {
+        return Promise.resolve({ ...motion, ...cached, cacheKey })
+      }
+
+      const motionUrl = URL.createObjectURL(motion.file)
+
+      return new Promise((resolve, reject) => {
+        const loader = new GLTFLoader()
+        loader.register((parser) => new VRMAnimationLoaderPlugin(parser))
+
+        loader.load(
+          motionUrl,
+          (gltf) => {
+            URL.revokeObjectURL(motionUrl)
+            const vrmAnimation = gltf.userData.vrmAnimations?.[0]
+            if (!vrmAnimation) {
+              reject(new Error('Unsupported action'))
+              return
+            }
+
+            try {
+              const clip = createVRMAnimationClip(vrmAnimation, currentVrm)
+              const loadedMotion = {
+                clip,
+                duration: clip.duration || 0,
+              }
+              motionCache.set(cacheKey, loadedMotion)
+              resolve({ ...motion, ...loadedMotion, cacheKey })
+            } catch (error) {
+              reject(error)
+            }
+          },
+          undefined,
+          (error) => {
+            URL.revokeObjectURL(motionUrl)
+            reject(error)
+          },
+        )
+      })
+    }
+
+    const startLoadedMotion = (motion) => {
+      if (!currentMixer) return false
+      if (activeMotion?.cacheKey === motion.cacheKey && activeMotion?.kind === motion.kind && !previousMotion) {
+        return true
+      }
+
+      finalizeTransition()
+
+      playbackMode = 'motion'
+
+      const nextAction = currentMixer.clipAction(motion.clip)
+      nextAction.reset()
+      nextAction.enabled = true
+      nextAction.paused = false
+      nextAction.setEffectiveTimeScale(1)
+      nextAction.setEffectiveWeight(1)
+
+      if (motion.loop) {
+        nextAction.setLoop(THREE.LoopRepeat, Infinity)
+        nextAction.clampWhenFinished = false
+      } else {
+        nextAction.setLoop(THREE.LoopOnce, 1)
+        nextAction.clampWhenFinished = true
+      }
+
+      nextAction.play()
+
+      const blendSeconds = activeMotion ? resolveBlendDuration(activeMotion, motion) : MIN_BLEND_SECONDS
+      if (activeMotion?.action && activeMotion.action !== nextAction) {
+        previousMotion = activeMotion
+        transitionEndsAt = performance.now() + blendSeconds * 1000
+        nextAction.crossFadeFrom(previousMotion.action, blendSeconds, false)
+      }
+
+      activeMotion = {
+        ...motion,
+        action: nextAction,
+        returnQueued: false,
+      }
+
+      setViewerStatus(`${motion.kind === 'idle' ? 'Idle' : 'Playing action'}: ${motion.label}`)
+      return true
+    }
+
+    const requestMotion = (motion) => {
+      if (!motion?.file) return false
+      if (!currentVrm || !currentMixer) {
+        setViewerStatus('Load an avatar first')
+        return false
+      }
+
+      if (activeMotion?.cacheKey === motion.cacheKey && activeMotion?.kind === motion.kind && !previousMotion) {
+        return true
+      }
+
+      motionRequestVersion += 1
+      const requestVersion = motionRequestVersion
+      setViewerStatus(`${motion.kind === 'idle' ? 'Loading idle' : 'Loading action'}: ${motion.label}`)
+
+      loadMotionClip(motion)
+        .then((loadedMotion) => {
+          if (requestVersion !== motionRequestVersion) return
+          startLoadedMotion(loadedMotion)
+        })
+        .catch((error) => {
+          if (requestVersion !== motionRequestVersion) return
+          console.error(error)
+          setViewerStatus(motion.kind === 'idle' ? 'Idle load failed' : 'Action load failed')
+        })
+
+      return true
     }
 
     controls.addEventListener('change', syncFramingStateFromCamera)
@@ -396,6 +552,7 @@ export default function useHologramViewer(canvasRef) {
         currentMixer.uncacheRoot(currentVrm.scene)
         currentMixer = null
       }
+      clearMotionCache()
       scene.remove(currentVrm.scene)
       disposeObject3D(currentVrm.scene)
       currentVrm = null
@@ -446,6 +603,9 @@ export default function useHologramViewer(canvasRef) {
           scene.add(currentVrm.scene)
           setIsLoaded(true)
           setViewerStatus('Avatar loaded')
+          if (defaultIdleMotion?.file) {
+            requestMotion(defaultIdleMotion)
+          }
         },
         undefined,
         (error) => {
@@ -456,60 +616,50 @@ export default function useHologramViewer(canvasRef) {
       )
     }
 
-    const playAnimationFile = (file, label = file?.name || 'VRMA action') => {
+    const setIdleAnimation = (file, label = file?.name || 'idle_main', options = {}) => {
       if (!file) return false
-      if (!currentVrm || !currentMixer) {
-        setViewerStatus('Load an avatar first')
-        return false
+
+      const isPersistentIdle = options.persistDefault !== false
+
+      const nextIdleMotion = {
+        file,
+        label,
+        kind: 'idle',
+        cacheKey: options.cacheKey || buildMotionCacheKey(file, label),
+        loop: options.loop ?? isPersistentIdle,
+        returnToDefault: options.returnToDefault ?? !isPersistentIdle,
       }
 
-      stopCurrentAnimation({ resetPose: true })
+      if (isPersistentIdle) {
+        defaultIdleMotion = nextIdleMotion
+      }
 
-      currentAnimationUrl = URL.createObjectURL(file)
-      const thisAnimationLoadVersion = animationLoadVersion
-      setViewerStatus(`Loading action: ${label}`)
+      if (!currentVrm || !currentMixer) {
+        setViewerStatus(isPersistentIdle ? `Idle ready: ${label}` : `Idle queued: ${label}`)
+        return true
+      }
 
-      const loader = new GLTFLoader()
-      loader.register((parser) => new VRMAnimationLoaderPlugin(parser))
-
-      loader.load(
-        currentAnimationUrl,
-        (gltf) => {
-          if (thisAnimationLoadVersion !== animationLoadVersion) return
-          const vrmAnimation = gltf.userData.vrmAnimations?.[0]
-          if (!vrmAnimation) {
-            setViewerStatus('Unsupported action')
-            return
-          }
-
-          try {
-            currentAnimationClip = createVRMAnimationClip(vrmAnimation, currentVrm)
-            currentAnimationAction = currentMixer.clipAction(currentAnimationClip)
-            currentAnimationAction.reset()
-            currentAnimationAction.enabled = true
-            currentAnimationAction.setLoop(THREE.LoopRepeat, Infinity)
-            currentAnimationAction.clampWhenFinished = false
-            currentAnimationAction.play()
-            playbackMode = 'vrma'
-            currentCommand = 'idle'
-            commandTime = 0
-            setViewerStatus(`Playing action: ${label}`)
-          } catch (error) {
-            console.error(error)
-            stopCurrentAnimation({ resetPose: true })
-            setViewerStatus('Action playback failed')
-          }
-        },
-        undefined,
-        (error) => {
-          if (thisAnimationLoadVersion !== animationLoadVersion) return
-          console.error(error)
-          stopCurrentAnimation({ resetPose: false })
-          setViewerStatus('Action load failed')
-        },
-      )
+      if (playbackMode !== 'motion' || !activeMotion || activeMotion.kind === 'idle') {
+        return requestMotion(nextIdleMotion)
+      }
 
       return true
+    }
+
+    const playAnimationFile = (file, label = file?.name || 'VRMA action', options = {}) => {
+      if (!file) return false
+
+      currentCommand = 'idle'
+      commandTime = 0
+
+      return requestMotion({
+        file,
+        label,
+        kind: 'action',
+        cacheKey: options.cacheKey || buildMotionCacheKey(file, label),
+        loop: false,
+        returnToDefault: true,
+      })
     }
 
     const applyCommand = (dt) => {
@@ -662,8 +812,27 @@ export default function useHologramViewer(canvasRef) {
       })
 
       beam.material.opacity = 0.08 + Math.sin(t * 2) * 0.02
-      if (playbackMode === 'vrma' && currentMixer) {
+      if (playbackMode === 'motion' && currentMixer) {
         currentMixer.update(dt)
+        if (previousMotion && performance.now() >= transitionEndsAt) {
+          finalizeTransition()
+        }
+        if (
+          activeMotion?.returnToDefault &&
+          defaultIdleMotion &&
+          !activeMotion.returnQueued &&
+          activeMotion.cacheKey !== defaultIdleMotion.cacheKey
+        ) {
+          const leadSeconds = Math.min(
+            ACTION_RETURN_LEAD_SECONDS,
+            Math.max(MIN_BLEND_SECONDS, activeMotion.duration * 0.18),
+          )
+          const remaining = Math.max(0, activeMotion.duration - activeMotion.action.time)
+          if (remaining <= leadSeconds) {
+            activeMotion.returnQueued = true
+            requestMotion(defaultIdleMotion)
+          }
+        }
       } else {
         applyCommand(dt)
       }
@@ -676,6 +845,7 @@ export default function useHologramViewer(canvasRef) {
 
     internalsRef.current = {
       loadFile: loadAvatarFromFile,
+      setIdleAnimation,
       playAnimationFile,
       setCommand: (nextCommand) => {
         stopCurrentAnimation({ resetPose: true })
@@ -719,8 +889,12 @@ export default function useHologramViewer(canvasRef) {
     internalsRef.current?.loadFile(file)
   }, [])
 
-  const playAnimationFile = useCallback((file, label) => {
-    return internalsRef.current?.playAnimationFile(file, label) ?? false
+  const setIdleAnimation = useCallback((file, label, options) => {
+    return internalsRef.current?.setIdleAnimation(file, label, options) ?? false
+  }, [])
+
+  const playAnimationFile = useCallback((file, label, options) => {
+    return internalsRef.current?.playAnimationFile(file, label, options) ?? false
   }, [])
 
   const setCommand = useCallback((command) => {
@@ -733,6 +907,7 @@ export default function useHologramViewer(canvasRef) {
 
   return {
     loadFile,
+    setIdleAnimation,
     playAnimationFile,
     setCommand,
     setFramingValue,

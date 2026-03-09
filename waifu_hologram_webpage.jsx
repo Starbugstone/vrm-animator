@@ -10,6 +10,12 @@ const bundledVrmModules = import.meta.glob('./vrm/*.{vrm,glb}', {
   query: '?url',
 })
 
+const bundledIdleModules = import.meta.glob('./idle/*.vrma', {
+  eager: true,
+  import: 'default',
+  query: '?url',
+})
+
 const bundledVrmaModules = import.meta.glob('./vrma/*.vrma', {
   eager: true,
   import: 'default',
@@ -42,7 +48,11 @@ function buildBundledAssets(modules, type) {
 }
 
 const BUNDLED_AVATARS = buildBundledAssets(bundledVrmModules, 'avatar')
+const BUNDLED_IDLE_ACTIONS = buildBundledAssets(bundledIdleModules, 'idle')
 const BUNDLED_ACTIONS = buildBundledAssets(bundledVrmaModules, 'action')
+const DEFAULT_IDLE_ID = BUNDLED_IDLE_ACTIONS.find((item) => item.name === 'idle_main.vrma')?.id || BUNDLED_IDLE_ACTIONS[0]?.id || ''
+const IDLE_VARIATION_MIN_MS = 9000
+const IDLE_VARIATION_MAX_MS = 16000
 
 function getAssetLabel(asset) {
   return asset?.alias?.trim() || asset?.label || asset?.name || 'Unnamed'
@@ -211,9 +221,12 @@ function getViewerOverlay(status, isLoaded) {
 export default function WaifuHologramPage() {
   const canvasRef = useRef(null)
   const resetTimeoutRef = useRef(null)
+  const idleVariationTimeoutRef = useRef(null)
+  const idleVariationCycleRef = useRef(0)
 
   const {
     loadFile,
+    setIdleAnimation,
     playAnimationFile,
     setCommand: setViewerCommand,
     setFramingValue,
@@ -227,15 +240,20 @@ export default function WaifuHologramPage() {
   const [toolLog, setToolLog] = useState(['System ready'])
   const [loadedName, setLoadedName] = useState('None loaded yet')
   const [avatarItems, setAvatarItems] = useState(BUNDLED_AVATARS)
+  const [idleItems, setIdleItems] = useState(BUNDLED_IDLE_ACTIONS)
   const [actionItems, setActionItems] = useState(BUNDLED_ACTIONS)
   const [avatarSearch, setAvatarSearch] = useState('')
+  const [idleSearch, setIdleSearch] = useState('')
   const [actionSearch, setActionSearch] = useState('')
   const [selectedAvatarId, setSelectedAvatarId] = useState(BUNDLED_AVATARS[0]?.id || '')
+  const [selectedIdleId, setSelectedIdleId] = useState(DEFAULT_IDLE_ID)
   const [selectedActionId, setSelectedActionId] = useState(BUNDLED_ACTIONS[0]?.id || '')
   const [avatarRenameDraft, setAvatarRenameDraft] = useState('')
+  const [idleRenameDraft, setIdleRenameDraft] = useState('')
   const [actionRenameDraft, setActionRenameDraft] = useState('')
 
   const selectedAvatar = avatarItems.find((item) => item.id === selectedAvatarId) || null
+  const selectedIdle = idleItems.find((item) => item.id === selectedIdleId) || null
   const selectedAction = actionItems.find((item) => item.id === selectedActionId) || null
   const viewerOverlay = getViewerOverlay(status, isLoaded)
 
@@ -244,8 +262,26 @@ export default function WaifuHologramPage() {
   }, [selectedAvatar])
 
   useEffect(() => {
+    setIdleRenameDraft(selectedIdle ? getAssetLabel(selectedIdle) : '')
+  }, [selectedIdle])
+
+  useEffect(() => {
     setActionRenameDraft(selectedAction ? getAssetLabel(selectedAction) : '')
   }, [selectedAction])
+
+  useEffect(() => {
+    if (status.startsWith('Idle: ')) {
+      setActiveMotionLabel(status.slice(6))
+      return
+    }
+    if (status.startsWith('Playing action: ')) {
+      setActiveMotionLabel(status.slice('Playing action: '.length))
+      return
+    }
+    if (status.startsWith('Command: ')) {
+      setActiveMotionLabel(status.slice(9))
+    }
+  }, [status])
 
   const addLogLine = useCallback((line) => {
     setToolLog((previous) => [line, ...previous].slice(0, 10))
@@ -255,6 +291,12 @@ export default function WaifuHologramPage() {
     if (!resetTimeoutRef.current) return
     window.clearTimeout(resetTimeoutRef.current)
     resetTimeoutRef.current = null
+  }, [])
+
+  const clearIdleVariationTimer = useCallback(() => {
+    if (!idleVariationTimeoutRef.current) return
+    window.clearTimeout(idleVariationTimeoutRef.current)
+    idleVariationTimeoutRef.current = null
   }, [])
 
   const runCommand = useCallback((incoming, contextLabel) => {
@@ -293,10 +335,11 @@ export default function WaifuHologramPage() {
     window.addEventListener('hologram-command', onEvent)
     return () => {
       clearResetTimer()
+      clearIdleVariationTimer()
       window.removeEventListener('hologram-command', onEvent)
       delete window.hologramTool
     }
-  }, [clearResetTimer, runCommand])
+  }, [clearIdleVariationTimer, clearResetTimer, runCommand])
 
   const renameAsset = useCallback((setItems, selectedId, value, typeLabel) => {
     const trimmed = value.trim()
@@ -325,12 +368,83 @@ export default function WaifuHologramPage() {
     await loadAvatarAsset(asset)
   }, [loadAvatarAsset])
 
+  const handleIdleUpload = useCallback((file) => {
+    const asset = createUploadedAsset('idle', file)
+    setIdleItems((previous) => [asset, ...previous])
+    setSelectedIdleId(asset.id)
+    addLogLine(`Added idle file: ${file.name}`)
+  }, [addLogLine])
+
+  const handleSetIdle = useCallback(async (asset = selectedIdle) => {
+    if (!asset) return
+
+    const label = getAssetLabel(asset)
+    const file = await assetToFile(asset)
+    if (!file) return
+
+    const started = setIdleAnimation(file, label, { cacheKey: asset.id })
+    if (!started) return
+
+    addLogLine(`Default idle set: ${label}`)
+  }, [addLogLine, selectedIdle, setIdleAnimation])
+
+  const pickRandomIdleAsset = useCallback(() => {
+    if (idleItems.length === 0) return null
+
+    const pool = idleItems.filter(
+      (item) => item.id !== selectedIdleId && getAssetLabel(item) !== activeMotionLabel,
+    )
+
+    const source = pool.length > 0 ? pool : idleItems
+    return source[Math.floor(Math.random() * source.length)] || null
+  }, [activeMotionLabel, idleItems, selectedIdleId])
+
   const handleActionUpload = useCallback((file) => {
     const asset = createUploadedAsset('action', file)
     setActionItems((previous) => [asset, ...previous])
     setSelectedActionId(asset.id)
     addLogLine(`Added action file: ${file.name}`)
   }, [addLogLine])
+
+  useEffect(() => {
+    if (!selectedIdle) return
+    handleSetIdle(selectedIdle)
+  }, [handleSetIdle, selectedIdle])
+
+  useEffect(() => {
+    clearIdleVariationTimer()
+
+    if (!isLoaded || !status.startsWith('Idle: ') || idleItems.length < 2) {
+      return undefined
+    }
+
+    const cycle = idleVariationCycleRef.current + 1
+    idleVariationCycleRef.current = cycle
+    const delay =
+      IDLE_VARIATION_MIN_MS + Math.floor(Math.random() * (IDLE_VARIATION_MAX_MS - IDLE_VARIATION_MIN_MS + 1))
+
+    idleVariationTimeoutRef.current = window.setTimeout(async () => {
+      const nextIdle = pickRandomIdleAsset()
+      if (!nextIdle) return
+
+      const file = await assetToFile(nextIdle)
+      if (!file || idleVariationCycleRef.current !== cycle) return
+
+      const label = getAssetLabel(nextIdle)
+      const started = setIdleAnimation(file, label, {
+        cacheKey: nextIdle.id,
+        persistDefault: false,
+      })
+
+      if (started) {
+        addLogLine(`Idle variation: ${label}`)
+      }
+    }, delay)
+
+    return () => {
+      clearIdleVariationTimer()
+    }
+  }, [addLogLine, clearIdleVariationTimer, idleItems.length, isLoaded, pickRandomIdleAsset, setIdleAnimation, status])
 
   const playSelectedAction = useCallback(async () => {
     if (!selectedAction) return
@@ -339,7 +453,7 @@ export default function WaifuHologramPage() {
     const file = await assetToFile(selectedAction)
     if (!file) return
 
-    const started = playAnimationFile(file, label)
+    const started = playAnimationFile(file, label, { cacheKey: selectedAction.id })
     if (!started) {
       addLogLine(`Action failed: ${label}`)
       return
@@ -384,7 +498,26 @@ export default function WaifuHologramPage() {
             />
 
             <AssetPanel
-              title="Action Library"
+              title="Idle Library"
+              accent="text-emerald-300/80"
+              items={idleItems}
+              selectedId={selectedIdleId}
+              search={idleSearch}
+              renameDraft={idleRenameDraft}
+              emptyLabel="No matching idle files"
+              uploadAccept=".vrma"
+              helper="Pick the default idle loop. The state machine will return here after custom actions."
+              onSearchChange={setIdleSearch}
+              onSelect={setSelectedIdleId}
+              onRenameDraftChange={setIdleRenameDraft}
+              onRename={() => renameAsset(setIdleItems, selectedIdleId, idleRenameDraft, 'Idle')}
+              onUpload={handleIdleUpload}
+              onPrimaryAction={() => handleSetIdle(selectedIdle)}
+              primaryLabel="Set selected"
+            />
+
+            <AssetPanel
+              title="VRMA Library"
               accent="text-amber-300/80"
               items={actionItems}
               selectedId={selectedActionId}
@@ -392,7 +525,7 @@ export default function WaifuHologramPage() {
               renameDraft={actionRenameDraft}
               emptyLabel="No matching action files"
               uploadAccept=".vrma"
-              helper="Load a VRMA file and retarget it onto the active avatar."
+              helper="Play a custom VRMA clip. It will crossfade back to the current idle loop."
               onSearchChange={setActionSearch}
               onSelect={setSelectedActionId}
               onRenameDraftChange={setActionRenameDraft}

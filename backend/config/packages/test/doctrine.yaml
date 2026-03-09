@@ -1,0 +1,5 @@
+# config/packages/test/doctrine.yaml
+# DATABASE_URL is overridden in .env.test to use a dedicated test database
+doctrine:
+    dbal:
+        use_savepoints: true
