@@ -95,6 +95,9 @@ function AssetPanel({
   onUpload,
   onPrimaryAction,
   primaryLabel,
+  primaryDisabled = false,
+  primaryBusy = false,
+  primaryBusyLabel = 'Working...',
 }) {
   const inputRef = useRef(null)
 
@@ -159,10 +162,13 @@ function AssetPanel({
           <button
             type="button"
             onClick={onPrimaryAction}
-            disabled={!selectedItem}
+            disabled={!selectedItem || primaryDisabled}
             className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {primaryLabel}
+            <span className="inline-flex items-center gap-2">
+              {primaryBusy ? <span className="h-4 w-4 rounded-full border-2 border-cyan-100/25 border-t-cyan-100 animate-spin" /> : null}
+              {primaryBusy ? primaryBusyLabel : primaryLabel}
+            </span>
           </button>
           <button
             type="button"
@@ -218,6 +224,25 @@ function getViewerOverlay(status, isLoaded) {
   return 'No avatar loaded yet. Pick one from the library or upload a VRM or GLB file.'
 }
 
+function AvatarLoadingOverlay({ label, keepCurrentAvatar }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+      <div className="max-w-sm rounded-[28px] border border-cyan-300/18 bg-[rgba(3,7,18,0.68)] px-6 py-5 text-center shadow-[0_0_64px_rgba(34,211,238,0.12)] backdrop-blur-md">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/8">
+          <div className="h-10 w-10 rounded-full border-2 border-cyan-100/20 border-t-cyan-100 animate-spin" />
+        </div>
+        <div className="mt-4 text-xs uppercase tracking-[0.28em] text-cyan-200/70">Loading avatar</div>
+        <div className="mt-2 text-base font-medium text-white">{label || 'Preparing selected avatar'}</div>
+        <div className="mt-2 text-sm leading-6 text-white/65">
+          {keepCurrentAvatar
+            ? 'The current avatar stays visible until the next model is ready.'
+            : 'Large VRM and GLB files can take a moment to prepare.'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function WaifuHologramPage() {
   const canvasRef = useRef(null)
   const resetTimeoutRef = useRef(null)
@@ -233,6 +258,7 @@ export default function WaifuHologramPage() {
     framingState,
     status,
     isLoaded,
+    isAvatarLoading,
   } = useHologramViewer(canvasRef)
 
   const [command, setCommand] = useState('idle')
@@ -251,11 +277,17 @@ export default function WaifuHologramPage() {
   const [avatarRenameDraft, setAvatarRenameDraft] = useState('')
   const [idleRenameDraft, setIdleRenameDraft] = useState('')
   const [actionRenameDraft, setActionRenameDraft] = useState('')
+  const [pendingAvatarLabel, setPendingAvatarLabel] = useState('')
+  const [avatarLoadStage, setAvatarLoadStage] = useState('idle')
 
   const selectedAvatar = avatarItems.find((item) => item.id === selectedAvatarId) || null
   const selectedIdle = idleItems.find((item) => item.id === selectedIdleId) || null
   const selectedAction = actionItems.find((item) => item.id === selectedActionId) || null
   const viewerOverlay = getViewerOverlay(status, isLoaded)
+  const showAvatarLoading = avatarLoadStage !== 'idle' || isAvatarLoading
+  const addLogLine = useCallback((line) => {
+    setToolLog((previous) => [line, ...previous].slice(0, 10))
+  }, [])
 
   useEffect(() => {
     setAvatarRenameDraft(selectedAvatar ? getAssetLabel(selectedAvatar) : '')
@@ -283,9 +315,23 @@ export default function WaifuHologramPage() {
     }
   }, [status])
 
-  const addLogLine = useCallback((line) => {
-    setToolLog((previous) => [line, ...previous].slice(0, 10))
-  }, [])
+  useEffect(() => {
+    if (!pendingAvatarLabel || avatarLoadStage === 'idle') return
+
+    if (avatarLoadStage === 'loading' && (status === 'Load failed' || status === 'Unsupported file')) {
+      addLogLine(`Avatar load failed: ${pendingAvatarLabel}`)
+      setPendingAvatarLabel('')
+      setAvatarLoadStage('idle')
+      return
+    }
+
+    if (avatarLoadStage === 'loading' && !isAvatarLoading) {
+      setLoadedName(pendingAvatarLabel)
+      addLogLine(`Loaded avatar: ${pendingAvatarLabel}`)
+      setPendingAvatarLabel('')
+      setAvatarLoadStage('idle')
+    }
+  }, [addLogLine, avatarLoadStage, isAvatarLoading, pendingAvatarLabel, status])
 
   const clearResetTimer = useCallback(() => {
     if (!resetTimeoutRef.current) return
@@ -353,12 +399,27 @@ export default function WaifuHologramPage() {
 
   const loadAvatarAsset = useCallback(async (asset) => {
     if (!asset) return
-    const file = await assetToFile(asset)
-    if (!file) return
+    const label = getAssetLabel(asset)
+    setPendingAvatarLabel(label)
+    setAvatarLoadStage('preparing')
+    addLogLine(`Loading avatar: ${label}`)
 
-    setLoadedName(getAssetLabel(asset))
-    addLogLine(`Loaded avatar: ${getAssetLabel(asset)}`)
-    loadFile(file)
+    try {
+      const file = await assetToFile(asset)
+      if (!file) {
+        setPendingAvatarLabel('')
+        setAvatarLoadStage('idle')
+        return
+      }
+
+      setAvatarLoadStage('loading')
+      loadFile(file)
+    } catch (error) {
+      console.error(error)
+      addLogLine(`Avatar load failed: ${label}`)
+      setPendingAvatarLabel('')
+      setAvatarLoadStage('idle')
+    }
   }, [addLogLine, loadFile])
 
   const handleAvatarUpload = useCallback(async (file) => {
@@ -495,6 +556,9 @@ export default function WaifuHologramPage() {
               onUpload={handleAvatarUpload}
               onPrimaryAction={() => loadAvatarAsset(selectedAvatar)}
               primaryLabel="Load selected"
+              primaryDisabled={showAvatarLoading}
+              primaryBusy={showAvatarLoading}
+              primaryBusyLabel="Loading..."
             />
 
             <AssetPanel
@@ -578,7 +642,14 @@ export default function WaifuHologramPage() {
               {status}
             </div>
 
-            {viewerOverlay ? (
+            {showAvatarLoading ? (
+              <AvatarLoadingOverlay
+                label={pendingAvatarLabel}
+                keepCurrentAvatar={isLoaded}
+              />
+            ) : null}
+
+            {viewerOverlay && !showAvatarLoading ? (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
                 <div className="max-w-md rounded-[24px] border border-cyan-300/16 bg-[rgba(3,7,18,0.55)] px-5 py-4 text-center text-sm leading-6 text-white/76 shadow-[0_0_48px_rgba(34,211,238,0.08)] backdrop-blur">
                   {viewerOverlay}

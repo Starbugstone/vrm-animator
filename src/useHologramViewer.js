@@ -44,6 +44,11 @@ function buildMotionCacheKey(file, label = 'VRMA action') {
   return `${label}::${file.name || 'unnamed'}::${file.size || 0}::${file.lastModified || 0}`
 }
 
+function easeBlendWeight(progress) {
+  const clamped = THREE.MathUtils.clamp(progress, 0, 1)
+  return clamped * clamped * (3 - 2 * clamped)
+}
+
 function boneWorldPosition(vrm, name) {
   const node = vrm?.humanoid?.getNormalizedBoneNode(name)
   if (!node) return null
@@ -86,6 +91,7 @@ export default function useHologramViewer(canvasRef) {
   const internalsRef = useRef(null)
   const [status, setStatus] = useState('Idle')
   const [isLoaded, setIsLoaded] = useState(false)
+  const [isAvatarLoading, setIsAvatarLoading] = useState(false)
   const [framingState, setFramingState] = useState(DEFAULT_FRAMING)
 
   useEffect(() => {
@@ -147,12 +153,21 @@ export default function useHologramViewer(canvasRef) {
     let playbackMode = 'command'
     let activeMotion = null
     let previousMotion = null
-    let transitionEndsAt = 0
+    let transitionBlendDuration = 0
+    let transitionBlendElapsed = 0
     let defaultIdleMotion = null
     const motionCache = new Map()
 
     const setViewerStatus = (nextStatus) => {
       setStatus(nextStatus)
+    }
+
+    const clearCurrentAvatarUrl = (url = currentAvatarUrl) => {
+      if (!url) return
+      if (currentAvatarUrl === url) {
+        currentAvatarUrl = null
+      }
+      URL.revokeObjectURL(url)
     }
 
     const emitFraming = () => {
@@ -216,10 +231,14 @@ export default function useHologramViewer(canvasRef) {
     }
 
     const finalizeTransition = () => {
+      if (activeMotion?.action) {
+        activeMotion.action.setEffectiveWeight(1)
+      }
       if (!previousMotion) return
       stopMotionAction(previousMotion)
       previousMotion = null
-      transitionEndsAt = 0
+      transitionBlendDuration = 0
+      transitionBlendElapsed = 0
     }
 
     const stopCurrentAnimation = ({ resetPose = true } = {}) => {
@@ -333,8 +352,14 @@ export default function useHologramViewer(canvasRef) {
       const blendSeconds = activeMotion ? resolveBlendDuration(activeMotion, motion) : MIN_BLEND_SECONDS
       if (activeMotion?.action && activeMotion.action !== nextAction) {
         previousMotion = activeMotion
-        transitionEndsAt = performance.now() + blendSeconds * 1000
-        nextAction.crossFadeFrom(previousMotion.action, blendSeconds, false)
+        transitionBlendDuration = blendSeconds
+        transitionBlendElapsed = 0
+        previousMotion.action.enabled = true
+        previousMotion.action.setEffectiveWeight(1)
+        nextAction.setEffectiveWeight(0)
+      } else {
+        transitionBlendDuration = 0
+        transitionBlendElapsed = 0
       }
 
       activeMotion = {
@@ -374,6 +399,22 @@ export default function useHologramViewer(canvasRef) {
         })
 
       return true
+    }
+
+    const updateTransitionWeights = (dt) => {
+      if (!previousMotion?.action || !activeMotion?.action || transitionBlendDuration <= 0) {
+        return
+      }
+
+      transitionBlendElapsed = Math.min(transitionBlendElapsed + dt, transitionBlendDuration)
+      const easedWeight = easeBlendWeight(transitionBlendElapsed / transitionBlendDuration)
+
+      previousMotion.action.setEffectiveWeight(1 - easedWeight)
+      activeMotion.action.setEffectiveWeight(easedWeight)
+
+      if (transitionBlendElapsed >= transitionBlendDuration) {
+        finalizeTransition()
+      }
     }
 
     controls.addEventListener('change', syncFramingStateFromCamera)
@@ -563,26 +604,27 @@ export default function useHologramViewer(canvasRef) {
 
       loadVersion += 1
       const thisLoadVersion = loadVersion
+      const avatarUrl = URL.createObjectURL(file)
 
-      setIsLoaded(false)
+      currentAvatarUrl = avatarUrl
+      setIsAvatarLoading(true)
       setViewerStatus('Loading')
-
-      if (currentAvatarUrl) {
-        URL.revokeObjectURL(currentAvatarUrl)
-      }
-      currentAvatarUrl = URL.createObjectURL(file)
-
-      removeCurrentAvatar()
 
       const loader = new GLTFLoader()
       loader.register((parser) => new VRMLoaderPlugin(parser))
 
       loader.load(
-        currentAvatarUrl,
+        avatarUrl,
         (gltf) => {
-          if (thisLoadVersion !== loadVersion) return
+          clearCurrentAvatarUrl(avatarUrl)
+          if (thisLoadVersion !== loadVersion) {
+            disposeObject3D(gltf.scene)
+            return
+          }
           const vrm = gltf.userData.vrm
           if (!vrm) {
+            disposeObject3D(gltf.scene)
+            setIsAvatarLoading(false)
             setViewerStatus('Unsupported file')
             return
           }
@@ -593,6 +635,7 @@ export default function useHologramViewer(canvasRef) {
             VRMUtils.rotateVRM0(vrm)
           }
 
+          removeCurrentAvatar()
           currentVrm = vrm
           fitAvatarToStage(currentVrm)
 
@@ -602,6 +645,7 @@ export default function useHologramViewer(canvasRef) {
           currentMixer = new THREE.AnimationMixer(currentVrm.scene)
           scene.add(currentVrm.scene)
           setIsLoaded(true)
+          setIsAvatarLoading(false)
           setViewerStatus('Avatar loaded')
           if (defaultIdleMotion?.file) {
             requestMotion(defaultIdleMotion)
@@ -609,8 +653,10 @@ export default function useHologramViewer(canvasRef) {
         },
         undefined,
         (error) => {
+          clearCurrentAvatarUrl(avatarUrl)
           if (thisLoadVersion !== loadVersion) return
           console.error(error)
+          setIsAvatarLoading(false)
           setViewerStatus('Load failed')
         },
       )
@@ -813,10 +859,8 @@ export default function useHologramViewer(canvasRef) {
 
       beam.material.opacity = 0.08 + Math.sin(t * 2) * 0.02
       if (playbackMode === 'motion' && currentMixer) {
+        updateTransitionWeights(dt)
         currentMixer.update(dt)
-        if (previousMotion && performance.now() >= transitionEndsAt) {
-          finalizeTransition()
-        }
         if (
           activeMotion?.returnToDefault &&
           defaultIdleMotion &&
@@ -877,7 +921,7 @@ export default function useHologramViewer(canvasRef) {
       stopCurrentAnimation({ resetPose: false })
       removeCurrentAvatar()
       if (currentAvatarUrl) {
-        URL.revokeObjectURL(currentAvatarUrl)
+        clearCurrentAvatarUrl()
       }
       disposeObject3D(stage)
       renderer.dispose()
@@ -914,5 +958,6 @@ export default function useHologramViewer(canvasRef) {
     framingState,
     status,
     isLoaded,
+    isAvatarLoading,
   }
 }

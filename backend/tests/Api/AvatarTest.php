@@ -5,6 +5,7 @@ namespace App\Tests\Api;
 use App\Entity\User;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
@@ -17,9 +18,8 @@ class AvatarTest extends WebTestCase
         parent::setUp();
     }
 
-    private function createAuthenticatedUser(string $email = 'avatar-test@example.com'): string
+    private function createAuthenticatedUser(KernelBrowser $client, string $email = 'avatar-test@example.com'): string
     {
-        $client = static::createClient();
 
         $client->request('POST', '/api/register', [], [], [
             'CONTENT_TYPE' => 'application/json',
@@ -37,7 +37,7 @@ class AvatarTest extends WebTestCase
     public function testCreateAvatar(): void
     {
         $client = static::createClient();
-        $token = $this->createAuthenticatedUser('create-avatar@example.com');
+        $token = $this->createAuthenticatedUser($client, 'create-avatar@example.com');
 
         $client->request('POST', '/api/avatars', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
@@ -60,7 +60,7 @@ class AvatarTest extends WebTestCase
     public function testListOwnAvatars(): void
     {
         $client = static::createClient();
-        $token = $this->createAuthenticatedUser('list-avatar@example.com');
+        $token = $this->createAuthenticatedUser($client, 'list-avatar@example.com');
 
         // Create an avatar
         $client->request('POST', '/api/avatars', [], [], [
@@ -91,7 +91,7 @@ class AvatarTest extends WebTestCase
         $client = static::createClient();
 
         // User 1 creates an avatar
-        $token1 = $this->createAuthenticatedUser('user1-avatar@example.com');
+        $token1 = $this->createAuthenticatedUser($client, 'user1-avatar@example.com');
         $client->request('POST', '/api/avatars', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $token1,
             'CONTENT_TYPE' => 'application/json',
@@ -106,7 +106,7 @@ class AvatarTest extends WebTestCase
         $avatarId = $avatarData['id'];
 
         // User 2 tries to access User 1's avatar
-        $token2 = $this->createAuthenticatedUser('user2-avatar@example.com');
+        $token2 = $this->createAuthenticatedUser($client, 'user2-avatar@example.com');
         $client->request('GET', '/api/avatars/' . $avatarId, [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $token2,
             'HTTP_ACCEPT' => 'application/json',
@@ -118,7 +118,7 @@ class AvatarTest extends WebTestCase
     public function testDeleteAvatar(): void
     {
         $client = static::createClient();
-        $token = $this->createAuthenticatedUser('delete-avatar@example.com');
+        $token = $this->createAuthenticatedUser($client, 'delete-avatar@example.com');
 
         // Create an avatar
         $client->request('POST', '/api/avatars', [], [], [

@@ -12,7 +12,7 @@
         <server name="APP_ENV" value="test" force="true"/>
         <server name="SHELL_VERBOSITY" value="-1"/>
         <server name="SYMFONY_PHPUNIT_REMOVE" value=""/>
-        <server name="SYMFONY_PHPUNIT_VERSION" value="10"/>
+        <server name="SYMFONY_PHPUNIT_VERSION" value="9.6"/>
     </php>
 
     <testsuites>
@@ -21,9 +21,8 @@
         </testsuite>
     </testsuites>
 
-    <source>
-        <include>
-            <directory suffix=".php">src</directory>
-        </include>
-    </source>
+    <listeners>
+        <listener class="Symfony\Bridge\PhpUnit\SymfonyTestsListener" />
+        <listener class="DAMA\DoctrineTestBundle\PHPUnit\PHPUnitListener" />
+    </listeners>
 </phpunit>
