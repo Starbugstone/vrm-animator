@@ -100,16 +100,16 @@ function ViewerFrame({ frameRef }) {
         <input id="yawSlider" class="cameraSlider" type="range" min="-180" max="180" step="1" value="0" />
       </label>
       <label class="cameraControl">
-        <div class="cameraControlRow"><span>Tilt</span><span id="tiltValue">63°</span></div>
-        <input id="tiltSlider" class="cameraSlider" type="range" min="26" max="88" step="1" value="63" />
+        <div class="cameraControlRow"><span>Tilt</span><span id="tiltValue">72°</span></div>
+        <input id="tiltSlider" class="cameraSlider" type="range" min="26" max="88" step="1" value="72" />
       </label>
       <label class="cameraControl">
-        <div class="cameraControlRow"><span>Zoom</span><span id="zoomValue">5.4</span></div>
-        <input id="zoomSlider" class="cameraSlider" type="range" min="1.8" max="12" step="0.05" value="5.4" />
+        <div class="cameraControlRow"><span>Zoom</span><span id="zoomValue">8.00</span></div>
+        <input id="zoomSlider" class="cameraSlider" type="range" min="1.8" max="12" step="0.05" value="8.0" />
       </label>
       <label class="cameraControl">
-        <div class="cameraControlRow"><span>Height</span><span id="heightValue">1.20</span></div>
-        <input id="heightSlider" class="cameraSlider" type="range" min="-0.5" max="3.2" step="0.01" value="1.2" />
+        <div class="cameraControlRow"><span>Height</span><span id="heightValue">0.00</span></div>
+        <input id="heightSlider" class="cameraSlider" type="range" min="-1.5" max="1.5" step="0.01" value="0" />
       </label>
       <label class="cameraControl">
         <div class="cameraControlRow"><span>Shift</span><span id="shiftValue">0.00</span></div>
@@ -150,16 +150,37 @@ function ViewerFrame({ frameRef }) {
     const heightValue = document.getElementById('heightValue')
     const shiftValue = document.getElementById('shiftValue')
 
+    /* ── Scene constants ────────────────────────────────────── */
+    const STAGE_BASE_HEIGHT  = 0.18
+    const STAGE_BASE_Y       = -0.1
+    const STAGE_TOP_Y        = 0.02
+    const STAGE_FLOOR_Y      = STAGE_BASE_Y - STAGE_BASE_HEIGHT / 2
+    const TARGET_BODY_HEIGHT = 2.0
+    const FOCUS_LERP         = 0.30   // blend between stageTop and head for camera focus
+    const FIT_HEIGHT_RATIO   = 0.75   // fraction of body height used for vertical framing
+    const FIT_WIDTH_RATIO    = 0.72   // fraction of body width used for horizontal framing
+    const MIN_FIT_DISTANCE   = 3.5
+    const BOTTOM_EDGE_NDC    = -0.85  // where the stage floor should sit in NDC-Y
+
+    /* ── Default camera pose ──────────────────────────────── */
+    const DEFAULT_POLAR    = 72   // degrees
+    const DEFAULT_DISTANCE = 8.0
+    const DEFAULT_TARGET_Y = 0.8
+
+    /* ── Runtime state ────────────────────────────────────── */
     let currentVrm = null
     let currentUrl = null
     let currentCommand = 'idle'
     let commandTime = 0
+    let baseTargetX = 0
+    let baseTargetY = DEFAULT_TARGET_Y
+    let originalHipsY = 0  // captured after avatar load, used as animation base
     const framingState = {
       azimuth: 0,
-      polar: THREE.MathUtils.degToRad(63),
-      distance: 5.4,
-      targetY: 1.2,
-      targetX: 0,
+      polar: THREE.MathUtils.degToRad(DEFAULT_POLAR),
+      distance: DEFAULT_DISTANCE,
+      targetYOffset: 0,
+      targetXOffset: 0,
     }
     const clock = new THREE.Clock()
 
@@ -170,14 +191,19 @@ function ViewerFrame({ frameRef }) {
     app.appendChild(renderer.domElement)
 
     const scene = new THREE.Scene()
-    scene.fog = new THREE.Fog(0x040816, 6, 20)
+    scene.fog = new THREE.Fog(0x040816, 12, 30)
 
     const camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100)
-    camera.position.set(0, 1.55, 5.4)
+    const initPolar = THREE.MathUtils.degToRad(DEFAULT_POLAR)
+    camera.position.set(
+      DEFAULT_DISTANCE * Math.sin(initPolar) * Math.sin(0),
+      DEFAULT_TARGET_Y + DEFAULT_DISTANCE * Math.cos(initPolar),
+      DEFAULT_DISTANCE * Math.sin(initPolar) * Math.cos(0)
+    )
 
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enablePan = false
-    controls.target.set(0, 1.2, 0)
+    controls.target.set(0, DEFAULT_TARGET_Y, 0)
     controls.minDistance = 1.8
     controls.maxDistance = 12
     controls.minPolarAngle = 0.45
@@ -187,8 +213,8 @@ function ViewerFrame({ frameRef }) {
     function clampFramingState() {
       framingState.polar = THREE.MathUtils.clamp(framingState.polar, controls.minPolarAngle, controls.maxPolarAngle)
       framingState.distance = THREE.MathUtils.clamp(framingState.distance, controls.minDistance, controls.maxDistance)
-      framingState.targetY = THREE.MathUtils.clamp(framingState.targetY, Number(heightSlider.min), Number(heightSlider.max))
-      framingState.targetX = THREE.MathUtils.clamp(framingState.targetX, Number(shiftSlider.min), Number(shiftSlider.max))
+      framingState.targetYOffset = THREE.MathUtils.clamp(framingState.targetYOffset, Number(heightSlider.min), Number(heightSlider.max))
+      framingState.targetXOffset = THREE.MathUtils.clamp(framingState.targetXOffset, Number(shiftSlider.min), Number(shiftSlider.max))
     }
 
     function syncSliderUi() {
@@ -197,14 +223,14 @@ function ViewerFrame({ frameRef }) {
       zoomSlider.min = String(controls.minDistance)
       zoomSlider.max = String(controls.maxDistance)
       zoomSlider.value = framingState.distance.toFixed(2)
-      heightSlider.value = framingState.targetY.toFixed(2)
-      shiftSlider.value = framingState.targetX.toFixed(2)
+      heightSlider.value = framingState.targetYOffset.toFixed(2)
+      shiftSlider.value = framingState.targetXOffset.toFixed(2)
 
       yawValue.textContent = yawSlider.value + '°'
       tiltValue.textContent = tiltSlider.value + '°'
       zoomValue.textContent = framingState.distance.toFixed(2)
-      heightValue.textContent = framingState.targetY.toFixed(2)
-      shiftValue.textContent = framingState.targetX.toFixed(2)
+      heightValue.textContent = framingState.targetYOffset.toFixed(2)
+      shiftValue.textContent = framingState.targetXOffset.toFixed(2)
     }
 
     function applyFramingState() {
@@ -212,7 +238,7 @@ function ViewerFrame({ frameRef }) {
       const offset = new THREE.Vector3().setFromSpherical(
         new THREE.Spherical(framingState.distance, framingState.polar, framingState.azimuth)
       )
-      controls.target.set(framingState.targetX, framingState.targetY, 0)
+      controls.target.set(baseTargetX + framingState.targetXOffset, baseTargetY + framingState.targetYOffset, 0)
       camera.position.copy(controls.target).add(offset)
       controls.update()
       syncSliderUi()
@@ -225,8 +251,8 @@ function ViewerFrame({ frameRef }) {
       framingState.azimuth = spherical.theta
       framingState.polar = spherical.phi
       framingState.distance = spherical.radius
-      framingState.targetY = controls.target.y
-      framingState.targetX = controls.target.x
+      framingState.targetYOffset = controls.target.y - baseTargetY
+      framingState.targetXOffset = controls.target.x - baseTargetX
       clampFramingState()
       syncSliderUi()
     }
@@ -235,8 +261,8 @@ function ViewerFrame({ frameRef }) {
       [yawSlider, (value) => { framingState.azimuth = THREE.MathUtils.degToRad(Number(value)) }],
       [tiltSlider, (value) => { framingState.polar = THREE.MathUtils.degToRad(Number(value)) }],
       [zoomSlider, (value) => { framingState.distance = Number(value) }],
-      [heightSlider, (value) => { framingState.targetY = Number(value) }],
-      [shiftSlider, (value) => { framingState.targetX = Number(value) }],
+      [heightSlider, (value) => { framingState.targetYOffset = Number(value) }],
+      [shiftSlider, (value) => { framingState.targetXOffset = Number(value) }],
     ].forEach(([slider, update]) => {
       slider.addEventListener('input', (event) => {
         update(event.target.value)
@@ -262,10 +288,10 @@ function ViewerFrame({ frameRef }) {
     scene.add(stage)
 
     const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.35, 1.6, 0.18, 64),
+      new THREE.CylinderGeometry(1.35, 1.6, STAGE_BASE_HEIGHT, 64),
       new THREE.MeshStandardMaterial({ color: 0x0d1b36, emissive: 0x0d4cb3, emissiveIntensity: 0.5, metalness: 0.7, roughness: 0.3 })
     )
-    base.position.y = -0.1
+    base.position.y = STAGE_BASE_Y
     stage.add(base)
 
     function makeRing(radius, tube, color, y) {
@@ -322,42 +348,99 @@ function ViewerFrame({ frameRef }) {
       return node.getWorldPosition(new THREE.Vector3())
     }
 
+    function measureAvatar(vrm, bounds) {
+      const head = boneWorldPosition(vrm, 'head')
+      const hips = boneWorldPosition(vrm, 'hips')
+      const fallbackCenter = bounds.getCenter(new THREE.Vector3())
+
+      // Use the bounding-box floor as the true bottom of the mesh.
+      // Bone positions (ankles, toes) sit above the actual shoe / mesh
+      // bottom, which causes the model to be placed too high and the
+      // body height to be underestimated.
+      const footY = bounds.min.y
+      const headY = head?.y ?? bounds.max.y
+      const bodyHeight = Math.max(0.5, headY - footY)
+
+      return {
+        footY,
+        headY,
+        bodyHeight,
+        hipsX: hips?.x ?? fallbackCenter.x,
+        hipsY: hips?.y ?? footY + bodyHeight * 0.53,
+      }
+    }
+
+    function alignBottomEdge(worldY) {
+      const desiredBottomNdcY = BOTTOM_EDGE_NDC
+      const originalCameraY = camera.position.y
+      const originalTargetY = controls.target.y
+      const samplePoint = new THREE.Vector3(controls.target.x, worldY, 0)
+      let center = 0
+      let radius = Math.max(2.5, Math.abs(originalCameraY - worldY) + 1.5)
+      let bestDelta = 0
+      let bestError = Number.POSITIVE_INFINITY
+
+      const evaluate = (delta) => {
+        camera.position.y = originalCameraY + delta
+        controls.target.y = originalTargetY + delta
+        camera.updateMatrixWorld(true)
+
+        const projectedY = samplePoint.clone().project(camera).y
+        const error = Math.abs(projectedY - desiredBottomNdcY)
+        if (error < bestError) {
+          bestError = error
+          bestDelta = delta
+        }
+      }
+
+      for (let pass = 0; pass < 3; pass += 1) {
+        const step = radius / 8
+        for (let i = -8; i <= 8; i += 1) {
+          evaluate(center + i * step)
+        }
+        center = bestDelta
+        radius = step * 2
+      }
+
+      camera.position.y = originalCameraY + bestDelta
+      controls.target.y = originalTargetY + bestDelta
+      controls.update()
+    }
+
     function fitAvatarToStage(vrm) {
       const bounds = new THREE.Box3().setFromObject(vrm.scene)
-      const size = bounds.getSize(new THREE.Vector3())
-      if (!Number.isFinite(size.y) || size.y <= 0) return
+      const initialMetrics = measureAvatar(vrm, bounds)
+      if (!Number.isFinite(initialMetrics.bodyHeight) || initialMetrics.bodyHeight <= 0) return
 
-      const targetHeight = 2.25
-      const scale = targetHeight / size.y
+      // Scale avatar so body matches target height
+      const scale = TARGET_BODY_HEIGHT / initialMetrics.bodyHeight
       vrm.scene.scale.multiplyScalar(scale)
       vrm.scene.updateMatrixWorld(true)
 
+      // Re-measure after scaling and centre avatar on the stage
       const scaledBounds = new THREE.Box3().setFromObject(vrm.scene)
-      const scaledSize = scaledBounds.getSize(new THREE.Vector3())
+      const scaledMetrics = measureAvatar(vrm, scaledBounds)
       const scaledCenter = scaledBounds.getCenter(new THREE.Vector3())
 
-      vrm.scene.position.x -= scaledCenter.x
+      vrm.scene.position.x -= scaledMetrics.hipsX
       vrm.scene.position.z -= scaledCenter.z
-      vrm.scene.position.y -= scaledBounds.min.y
+      vrm.scene.position.y += STAGE_TOP_Y - scaledMetrics.footY
       vrm.scene.updateMatrixWorld(true)
 
+      // Compute camera framing that includes the full character + base
       const finalBounds = new THREE.Box3().setFromObject(vrm.scene)
       const finalSize = finalBounds.getSize(new THREE.Vector3())
-      const head = boneWorldPosition(vrm, 'head')
-      const chest = boneWorldPosition(vrm, 'chest') || boneWorldPosition(vrm, 'spine')
-      const hips = boneWorldPosition(vrm, 'hips')
-      const focusY =
-        chest?.y ??
-        (head && hips ? THREE.MathUtils.lerp(hips.y, head.y, 0.58) : finalBounds.min.y + finalSize.y * 0.54)
-      const focusX = chest?.x ?? hips?.x ?? 0
-      const target = new THREE.Vector3(focusX, focusY, 0)
+      const finalMetrics = measureAvatar(vrm, finalBounds)
+
+      const focusY = THREE.MathUtils.lerp(STAGE_TOP_Y, finalMetrics.headY, FOCUS_LERP)
+      const target = new THREE.Vector3(0, focusY, 0)
 
       const verticalFov = THREE.MathUtils.degToRad(camera.fov)
       const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect)
-      const fitHeight = (finalSize.y * 0.46) / Math.tan(verticalFov / 2)
-      const fitWidth = (finalSize.x * 0.52) / Math.tan(horizontalFov / 2)
-      const distance = Math.max(fitHeight, fitWidth, 2.2) * 1.1
-      const direction = new THREE.Vector3(0, 0.12, 1).normalize()
+      const fitHeight = (finalMetrics.bodyHeight * FIT_HEIGHT_RATIO) / Math.tan(verticalFov / 2)
+      const fitWidth = (Math.max(finalSize.x, 1.1) * FIT_WIDTH_RATIO) / Math.tan(horizontalFov / 2)
+      const distance = Math.max(fitHeight, fitWidth, MIN_FIT_DISTANCE) * 1.02
+      const direction = new THREE.Vector3(0, 0.02, 1).normalize()
 
       controls.target.copy(target)
       camera.position.copy(target).add(direction.multiplyScalar(distance))
@@ -368,6 +451,11 @@ function ViewerFrame({ frameRef }) {
       controls.maxDistance = Math.max(8, distance * 2.4)
       controls.update()
 
+      alignBottomEdge(Math.min(finalBounds.min.y, STAGE_FLOOR_Y))
+      baseTargetX = controls.target.x
+      baseTargetY = controls.target.y
+      framingState.targetXOffset = 0
+      framingState.targetYOffset = 0
       syncFramingStateFromCamera()
     }
 
@@ -412,6 +500,12 @@ function ViewerFrame({ frameRef }) {
 
             currentVrm = vrm
             fitAvatarToStage(currentVrm)
+
+            // Capture the hips rest position AFTER fitting, so animations
+            // can apply deltas instead of overwriting with absolute values.
+            const hipsNode = currentVrm.humanoid?.getNormalizedBoneNode('hips')
+            originalHipsY = hipsNode ? hipsNode.position.y : 0
+
             scene.add(currentVrm.scene)
             overlay.style.display = 'none'
             setStatus('Avatar loaded')
@@ -453,7 +547,7 @@ function ViewerFrame({ frameRef }) {
       const sway = Math.sin(t * 1.8)
 
       if (hips) {
-        hips.position.y = Math.sin(t * 2.2) * 0.01
+        hips.position.y = originalHipsY + Math.sin(t * 2.2) * 0.01
         hips.rotation.set(0, Math.sin(t * 0.8) * 0.04, 0)
       }
       if (spine) spine.rotation.set(Math.sin(t * 1.5) * 0.03, 0, Math.sin(t * 1.4) * 0.03)
@@ -478,7 +572,7 @@ function ViewerFrame({ frameRef }) {
 
       if (currentCommand === 'jump') {
         const arc = Math.max(0, Math.sin((t % 1.0) * Math.PI))
-        if (hips) hips.position.y = arc * 0.22
+        if (hips) hips.position.y = originalHipsY + arc * 0.22
         if (leftUpperArm) leftUpperArm.rotation.set(-0.9, 0, 0.25)
         if (rightUpperArm) rightUpperArm.rotation.set(-0.9, 0, -0.25)
         if (leftUpperLeg) leftUpperLeg.rotation.set(-0.35 + arc * 0.15, 0, 0)
@@ -487,7 +581,7 @@ function ViewerFrame({ frameRef }) {
 
       if (currentCommand === 'dance') {
         if (hips) {
-          hips.position.y = Math.max(0, Math.sin(t * 4)) * 0.05
+          hips.position.y = originalHipsY + Math.max(0, Math.sin(t * 4)) * 0.05
           hips.rotation.y = Math.sin(t * 2.8) * 0.2
         }
         if (chest) chest.rotation.set(Math.sin(t * 3.1) * 0.12, Math.sin(t * 2.8) * 0.24, Math.cos(t * 3.4) * 0.12)
