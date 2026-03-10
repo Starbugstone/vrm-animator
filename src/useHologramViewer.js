@@ -337,11 +337,6 @@ export default function useHologramViewer(canvasRef) {
       if (activeOverlayMotion?.action === finishedAction) {
         stopOverlayMotion()
         updateMotionStatus()
-        return
-      }
-
-      if (previousBaseMotion?.action === finishedAction) {
-        finalizeBaseTransition()
       }
     }
 
@@ -1149,8 +1144,11 @@ export default function useHologramViewer(canvasRef) {
         activeBaseMotion.cacheKey !== defaultIdleMotion.cacheKey
       ) {
         const leadSeconds = Math.min(
-          ACTION_RETURN_LEAD_SECONDS,
-          Math.max(MIN_BLEND_SECONDS, activeBaseMotion.duration * 0.18),
+          activeBaseMotion.duration,
+          Math.max(
+            ACTION_RETURN_LEAD_SECONDS,
+            resolveBlendDuration(activeBaseMotion, defaultIdleMotion) + 0.02,
+          ),
         )
         const remaining = Math.max(0, activeBaseMotion.duration - activeBaseMotion.action.time)
         if (remaining <= leadSeconds) {
