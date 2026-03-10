@@ -1,5 +1,36 @@
 ## TODO
 
+## Current Status
+
+- Updated: 2026-03-10
+- The auth, private asset library, avatar profile, and memory foundation work is implemented.
+- The next major milestone is backend-brokered LLM chat with streaming, provider credentials, conversation persistence, cue parsing, and the single memory tool.
+
+## Implemented Foundation Checklist
+
+- [x] Email/password registration and JWT login
+- [x] Google sign-in exchange from frontend to backend-issued JWT
+- [x] `GET /api/me` and `PATCH /api/me`
+- [x] User surface tightened so user collection endpoints are not exposed
+- [x] Per-user avatar ownership enforcement
+- [x] Per-user animation ownership enforcement
+- [x] Secure avatar upload and authenticated avatar file download
+- [x] Secure animation upload and authenticated animation file download
+- [x] Avatar persona persistence for name, backstory, personality, and system prompt
+- [x] Authoritative per-user per-avatar `memory.md` storage in the backend
+- [x] Memory revision history and revision-aware updates
+- [x] Frontend auth flow wired to backend
+- [x] Frontend avatar, animation, profile, and memory management wired to backend
+- [x] Backend API tests for auth, uploads, ownership isolation, and memory
+- [x] Frontend tests for the current auth and API client integration surface
+- [ ] LLM provider credential storage and management
+- [ ] Conversations and conversation message persistence
+- [ ] Streaming chat endpoint
+- [ ] Cue parsing and streaming event normalization
+- [ ] Frontend streaming chat UI
+- [ ] LLM-triggered memory tool execution
+- [ ] LLM hardening for rate limiting, retries, timeout handling, and provider health checks
+
 ## LLM Integration Decision
 
 - Use a backend-brokered streaming architecture, not direct browser-to-provider calls.
@@ -462,33 +493,60 @@
 
 ## Implementation Order
 
-- Phase 1: Data model and API foundations
-  - extend avatar persona fields
-  - add animation entity and endpoints
-  - add memory entity and revision history
-  - add credential storage and provider metadata endpoints
-- Phase 2: Backend chat orchestration
-  - build provider abstraction
-  - build prompt builder
-  - build SSE endpoint
-  - persist conversations and messages
-  - add cue parsing
-- Phase 3: Frontend chat and settings UI
-  - add auth-aware API client
-  - add LLM settings UI
-  - add avatar persona editor
-  - add memory editor
-  - add streaming chat UI
-  - connect cue events to the viewer
-- Phase 4: Memory tool call
-  - implement the single allowed memory tool
-  - add revision audit logging
-  - surface memory changes in UI
-- Phase 5: Hardening
-  - add rate limits
-  - add retries and timeout handling
+## Next Execution Plan
+
+- [x] Step 1: Ship the auth, avatar, animation, and memory foundation
+  - email/password and Google sign-in
+  - avatar and animation upload plus ownership enforcement
+  - avatar persona editing
+  - backend `memory.md` and revision history
+  - frontend integration for the current authenticated workspace
+- [ ] Step 2: Add provider credential storage and provider metadata APIs
+  - add `LlmCredential` persistence or equivalent secure settings storage
+  - encrypt provider secrets at rest
+  - expose provider metadata endpoints without ever returning raw secrets
+  - add backend tests for ownership and masking behavior
+- [ ] Step 3: Add conversation persistence and backend chat orchestration
+  - add `Conversation` and `ConversationMessage`
+  - add `LlmProviderInterface` plus first provider adapters
+  - add `PromptBuilder`
+  - add `CueParser`
+  - assemble context from avatar profile, memory, animations, and recent messages
+- [ ] Step 4: Add the first streaming chat endpoint
+  - implement `POST /api/avatars/{id}/chat/stream`
+  - stream SSE events for session start, tokens, cues, tool updates, completion, and errors
+  - persist raw provider text plus normalized parsed cues
+  - reject unauthorized avatar access and drop invalid cue tags
+- [ ] Step 5: Add the frontend chat experience
+  - add chat panel UI
+  - add SSE consumer logic
+  - stream visible assistant text incrementally
+  - strip tags from user-visible text
+  - connect cue events into `useHologramViewer`
+- [ ] Step 6: Implement the single allowed tool call
+  - allow only `update_memory`
+  - validate avatar ownership, operation allowlist, and content limits
+  - create revision records and surface memory changes in the UI
+- [ ] Step 7: Harden and verify the LLM path
+  - add rate limiting
+  - add provider timeouts and retry policy
   - add provider health checks
-  - expand automated tests
+  - expand backend and frontend automated tests
+  - run manual QA for streaming, cue playback, memory persistence, and isolation
+
+## Implementation Order
+
+- Phase 1: Foundation
+  - status: complete except for LLM credential storage and provider metadata endpoints
+- Phase 2: Backend chat orchestration
+  - status: not started
+- Phase 3: Frontend chat and LLM settings UI
+  - status: partially complete because the auth-aware API layer, avatar persona editor, and memory editor already exist
+  - remaining: LLM settings UI, streaming chat UI, and cue-driven chat playback
+- Phase 4: Memory tool call
+  - status: not started
+- Phase 5: Hardening
+  - status: partially complete for the current auth/upload/memory surface, but not started for the LLM streaming path
 
 ## Explicit Non-Goals For Initial LLM Release
 

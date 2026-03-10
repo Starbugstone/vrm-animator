@@ -21,9 +21,14 @@ echo "Waiting for database..."
 until php <<'PHP' > /dev/null 2>&1
 <?php
 $pdo = new PDO(
-    'mysql:host=database;port=3306;dbname=vrm_animator',
-    'vrm_user',
-    'vrm_pass',
+    sprintf(
+        'mysql:host=%s;port=%s;dbname=%s',
+        getenv('DATABASE_HOST') ?: 'database',
+        getenv('DATABASE_PORT') ?: '3306',
+        getenv('DATABASE_NAME') ?: 'vrm_animator',
+    ),
+    getenv('DATABASE_USER') ?: 'vrm_user',
+    getenv('DATABASE_PASSWORD') ?: 'vrm_pass',
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
 );
 $pdo->query('SELECT 1');
@@ -32,8 +37,48 @@ do
     sleep 1
 done
 
+echo "Ensuring test database exists..."
+php <<'PHP'
+<?php
+$host = getenv('DATABASE_HOST') ?: 'database';
+$port = getenv('DATABASE_PORT') ?: '3306';
+$appUser = getenv('DATABASE_USER') ?: 'vrm_user';
+$appPassword = getenv('DATABASE_PASSWORD') ?: 'vrm_pass';
+$rootUser = getenv('DATABASE_ROOT_USER') ?: 'root';
+$rootPassword = getenv('DATABASE_ROOT_PASSWORD') ?: 'root';
+$testDatabase = getenv('DATABASE_TEST_NAME') ?: 'vrm_animator_test';
+
+$pdo = new PDO(
+    sprintf('mysql:host=%s;port=%s', $host, $port),
+    $rootUser,
+    $rootPassword,
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
+);
+
+$quotedDatabase = sprintf('`%s`', str_replace('`', '``', $testDatabase));
+$quotedUser = str_replace("'", "''", $appUser);
+$quotedPassword = str_replace("'", "''", $appPassword);
+
+$pdo->exec(sprintf(
+    'CREATE DATABASE IF NOT EXISTS %s CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
+    $quotedDatabase,
+));
+$pdo->exec(sprintf(
+    "CREATE USER IF NOT EXISTS '%s'@'%%' IDENTIFIED BY '%s'",
+    $quotedUser,
+    $quotedPassword,
+));
+$pdo->exec(sprintf(
+    "GRANT ALL PRIVILEGES ON %s.* TO '%s'@'%%'",
+    $quotedDatabase,
+    $quotedUser,
+));
+$pdo->exec('FLUSH PRIVILEGES');
+PHP
+
 echo "Running database migrations..."
 php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+APP_ENV=test php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
 
 # Fix permissions
 chown -R www-data:www-data /var/www/html/var /var/www/html/config/jwt 2>/dev/null || true
