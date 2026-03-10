@@ -39,7 +39,8 @@ vrm-animator/
 ├── default_vrm/                  # Third-party example VRM avatars (.vrm, .glb)
 ├── default_vrma/                 # Third-party example VRMA motions (.vrma)
 ├── vrm/                          # Project VRM avatars (.vrm, .glb)
-├── vrma/                         # Project VRMA animations (.vrma)
+├── vrma/                         # Project VRMA body animations (.vrma)
+├── expressions_vrma/             # Project facial and mouth VRMA overlays (.vrma)
 ├── idle/                         # Bundled idle clips (.vrma)
 ├── waifu_hologram_webpage.jsx    # Main hologram UI (to be split into src/)
 ├── docker-compose.yml
@@ -55,7 +56,7 @@ vrm-animator/
 
 - **Backend**: All persistent data, auth, and business rules. No UI. API-only.
 - **Frontend**: All UI and client-side state. Communicates with backend only via HTTP/JSON and JWT.
-- **Assets**: Example avatars/animations live in `default_vrm/` and `default_vrma/`; project asset libraries live in `vrm/`, `vrma/`, and `idle/`; user-uploaded assets are stored and served by the backend.
+- **Assets**: Example avatars/animations live in `default_vrm/` and `default_vrma/`; project asset libraries live in `vrm/`, `vrma/`, `expressions_vrma/`, and `idle/`; user-uploaded assets are stored and served by the backend.
 
 ---
 

@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "kind": "expression_catalog",
+  "selection": {
+    "strategy": "weighted_random",
+    "emotion_match": "shared_tag",
+    "speech_fallback_tags": ["speech", "fallback"],
+    "notes": [
+      "Pick one expression clip whose tags overlap the normalized emotion tag from the LLM.",
+      "If no emotion tag is present, pick from entries tagged with both speech and fallback.",
+      "Expression clips must stay on the facial overlay layer only."
+    ]
+  },
+  "entries": [
+    {
+      "file": "Mouth Talking Test.vrma",
+      "label": "Neutral Speech Test",
+      "tags": ["speech", "fallback", "neutral", "testing"],
+      "channels": ["mouth", "eyes"],
+      "weight": 3
+    },
+    {
+      "file": "Mouth Yawn Test.vrma",
+      "label": "Yawn Test",
+      "tags": ["sleepy", "yawn", "reaction", "testing"],
+      "channels": ["mouth", "eyes"],
+      "weight": 1
+    },
+    {
+      "file": "Speech Calm A.vrma",
+      "label": "Speech Calm A",
+      "tags": ["speech", "fallback", "neutral", "calm"],
+      "channels": ["mouth", "eyes"],
+      "weight": 3
+    },
+    {
+      "file": "Speech Bright B.vrma",
+      "label": "Speech Bright B",
+      "tags": ["speech", "fallback", "neutral", "bright"],
+      "channels": ["mouth", "eyes", "face"],
+      "weight": 2
+    },
+    {
+      "file": "Speech Soft C.vrma",
+      "label": "Speech Soft C",
+      "tags": ["speech", "fallback", "neutral", "soft"],
+      "channels": ["mouth", "eyes", "face"],
+      "weight": 2
+    },
+    {
+      "file": "Happy Talk.vrma",
+      "label": "Happy Talk",
+      "tags": ["speech", "happy", "joyful", "positive"],
+      "channels": ["mouth", "eyes", "face"],
+      "weight": 3
+    },
+    {
+      "file": "Sad Talk.vrma",
+      "label": "Sad Talk",
+      "tags": ["speech", "sad", "melancholy", "downcast"],
+      "channels": ["mouth", "eyes", "face"],
+      "weight": 3
+    },
+    {
+      "file": "Angry Talk.vrma",
+      "label": "Angry Talk",
+      "tags": ["speech", "angry", "frustrated", "irritated"],
+      "channels": ["mouth", "eyes", "face"],
+      "weight": 3
+    },
+    {
+      "file": "Playful Talk.vrma",
+      "label": "Playful Talk",
+      "tags": ["speech", "playful", "teasing", "flirty", "cheeky"],
+      "channels": ["mouth", "eyes", "face"],
+      "weight": 3
+    },
+    {
+      "file": "Shouting Talk.vrma",
+      "label": "Shouting Talk",
+      "tags": ["speech", "shouting", "excited", "emphatic", "loud"],
+      "channels": ["mouth", "eyes", "face"],
+      "weight": 2
+    },
+    {
+      "file": "Sleepy Talk.vrma",
+      "label": "Sleepy Talk",
+      "tags": ["speech", "sleepy", "tired", "low_energy"],
+      "channels": ["mouth", "eyes", "face"],
+      "weight": 2
+    },
+    {
+      "file": "Surprised Reaction.vrma",
+      "label": "Surprised Reaction",
+      "tags": ["reaction", "surprised", "startled", "shocked"],
+      "channels": ["mouth", "eyes", "face"],
+      "weight": 2
+    }
+  ]
+}

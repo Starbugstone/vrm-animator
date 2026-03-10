@@ -31,10 +31,29 @@ The viewer loads assets from all of these locations:
 - `default_vrma/`: bundled third-party example VRMA motions.
 - `vrm/`: project VRM avatars.
 - `vrma/`: project VRMA motions.
+- `expressions_vrma/`: facial and mouth-only VRMA overlays.
 - `idle/`: idle VRMA loops used as the return state after one-shot actions.
 - Browser uploads: temporary VRM, GLB, or VRMA files added during the current session.
 
 Browser uploads are viewer-local for the current session. They are not yet persisted by the backend.
+
+## Tag Catalog Strategy
+
+The project now keeps two local metadata catalogs that bridge the current frontend-only viewer and the future backend-driven LLM flow:
+
+- `vrma/catalog.json`: body action tags and weighted random selection hints.
+- `expressions_vrma/catalog.json`: facial/mouth expression tags and speech fallback pools.
+
+Current selection rules:
+
+- Pick body actions and expression overlays independently.
+- If the LLM returns an emotion tag such as `happy`, `sad`, or `playful`, choose:
+  - one random body action whose tags overlap the emotion tag
+  - one random expression overlay whose tags overlap the same emotion tag
+- If the LLM does not return an emotion tag, choose a random expression overlay tagged with both `speech` and `fallback`.
+- Expression overlays must remain face-only and never drive body pose.
+
+These catalogs are local scaffolding for now. Once the backend owns animation metadata, the same tags and weights should move into persisted records and be validated server-side.
 
 ## API Endpoints
 
@@ -103,6 +122,7 @@ vrm-animator/
 |- default_vrma/     # Third-party example VRMA motions
 |- vrm/              # Project VRM assets
 |- vrma/             # Project VRMA assets
+|- expressions_vrma/ # Project facial/mouth VRMA overlays
 |- idle/             # Idle VRMA clips
 |- waifu_hologram_webpage.jsx
 |- docker-compose.yml

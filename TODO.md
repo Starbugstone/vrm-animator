@@ -31,6 +31,43 @@
 - The frontend updates the chat bubble live and triggers emotions or animations as soon as tags arrive.
 - After completion, the backend stores the message pair and applies any allowed memory update.
 
+## Immediate Frontend-Only Cue Plan
+
+- Maintain two local catalogs:
+  - `vrma/catalog.json` for body actions
+  - `expressions_vrma/catalog.json` for face and mouth overlays
+- Normalize emotion tags into a small shared vocabulary first:
+  - `neutral`
+  - `happy`
+  - `sad`
+  - `angry`
+  - `playful`
+  - `shouting`
+  - `sleepy`
+  - `surprised`
+  - `thinking`
+  - `calm`
+- Current frontend selection rule:
+  - choose one random expression overlay whose tags overlap the normalized emotion tag
+  - choose one random body action whose tags overlap the same tag
+  - if no emotion tag is present, choose one random expression overlay tagged with both `speech` and `fallback`
+  - if no body action matches, keep the current idle and play only the expression overlay
+- Expression overlays must remain facial only:
+  - mouth visemes
+  - eye direction
+  - blink
+  - facial emotion presets
+  - never hips, arms, spine, or any body transform
+- Seed expression library to keep expanding now:
+  - `Happy Talk`
+  - `Sad Talk`
+  - `Angry Talk`
+  - `Playful Talk`
+  - `Shouting Talk`
+  - `Sleepy Talk`
+  - `Surprised Reaction`
+  - several neutral speech fallback clips
+
 ## Prompt and Response Contract
 
 - The LLM must receive four distinct context blocks:
@@ -342,6 +379,11 @@
   - strip tags from visible text
   - trigger animation or emotion cues immediately
   - surface errors without breaking the viewer
+- Add cue selection logic that consumes the local catalogs before backend metadata exists:
+  - normalize the incoming tag
+  - pick a weighted-random expression overlay from `expressions_vrma/catalog.json`
+  - pick a weighted-random body action from `vrma/catalog.json`
+  - keep neutral speech fallbacks for tagless replies
 - Integrate the chat cue layer with `useHologramViewer`:
   - play validated animation tags
   - queue or debounce overlapping cues
@@ -460,3 +502,25 @@
 - Evaluate structured output in addition to inline cue tags if provider support is consistent.
 - Consider optional semantic memory summarization so `memory.md` stays compact.
 - Consider ephemeral provider sessions only if they preserve the same security guarantees as the backend proxy.
+
+## Backend Integration Steps For The Catalogs
+
+- Add first-class backend metadata fields for both body actions and expression overlays:
+  - `name`
+  - `description`
+  - `tags`
+  - `weight`
+  - `kind` such as `action`, `expression`, `speech_fallback`, `reaction`
+  - `channels` such as `mouth`, `eyes`, `face`, `body`
+- Split animation storage logically:
+  - body actions in the existing animation library
+  - face/mouth overlays in a dedicated expression category
+- During chat orchestration, the backend should:
+  - normalize provider emotion tags into the shared vocabulary
+  - resolve allowed candidate assets for the selected avatar
+  - optionally choose the final asset server-side for authoritative behavior
+  - stream either the normalized tag or the resolved asset id back to the frontend
+- Preferred end state:
+  - frontend still supports local weighted random selection for preview mode
+  - backend becomes the source of truth for production
+  - both frontend and backend use the same normalized tag vocabulary
