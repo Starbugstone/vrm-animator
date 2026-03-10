@@ -20,4 +20,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-The VRM files are atributed to diffrent licencing and may not be used without permission from the original owners. Links are in the readme.
+The VRM / VRMA files in default_vrm and default_vrma are atributed to diffrent licencing and may not be used without permission from the original owners. these files are included as a demo so the project  can be sampled easily. Links are in the readme.
+
+expressions_vrma are generated for this project and so respect the MIT licencing.

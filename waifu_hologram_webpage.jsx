@@ -28,6 +28,12 @@ const projectVrmaModules = import.meta.glob('./vrma/**/*.vrma', {
   query: '?url',
 })
 
+const projectExpressionVrmaModules = import.meta.glob('./expressions_vrma/**/*.vrma', {
+  eager: true,
+  import: 'default',
+  query: '?url',
+})
+
 const defaultVrmaModules = import.meta.glob('./default_vrma/**/*.vrma', {
   eager: true,
   import: 'default',
@@ -103,6 +109,12 @@ const PROJECT_ACTIONS = buildBundledAssets(projectVrmaModules, {
   sourceLabel: 'Project asset',
 })
 
+const PROJECT_EXPRESSION_ACTIONS = buildBundledAssets(projectExpressionVrmaModules, {
+  type: 'expression',
+  source: 'project',
+  sourceLabel: 'Expression asset',
+})
+
 const BUNDLED_AVATARS = [...DEFAULT_AVATARS, ...PROJECT_AVATARS]
 const BUNDLED_ACTIONS = [...DEFAULT_ACTIONS, ...PROJECT_ACTIONS]
 const DEFAULT_IDLE_ID = BUNDLED_IDLE_ACTIONS.find((item) => item.name === 'idle_main.vrma')?.id || BUNDLED_IDLE_ACTIONS[0]?.id || ''
@@ -157,10 +169,15 @@ function AssetPanel({
   onRename,
   onUpload,
   onPrimaryAction,
+  onSecondaryAction,
   primaryLabel,
+  secondaryLabel,
   primaryDisabled = false,
+  secondaryDisabled = false,
   primaryBusy = false,
   primaryBusyLabel = 'Working...',
+  secondaryBusy = false,
+  secondaryBusyLabel = 'Working...',
 }) {
   const inputRef = useRef(null)
 
@@ -236,6 +253,19 @@ function AssetPanel({
               {primaryBusy ? primaryBusyLabel : primaryLabel}
             </span>
           </button>
+          {onSecondaryAction ? (
+            <button
+              type="button"
+              onClick={onSecondaryAction}
+              disabled={!selectedItem || secondaryDisabled}
+              className="rounded-2xl border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-300/20 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="inline-flex items-center gap-2">
+                {secondaryBusy ? <span className="h-4 w-4 rounded-full border-2 border-amber-100/25 border-t-amber-100 animate-spin" /> : null}
+                {secondaryBusy ? secondaryBusyLabel : secondaryLabel}
+              </span>
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
@@ -324,6 +354,7 @@ export default function WaifuHologramPage() {
     loadFile,
     setIdleAnimation,
     playAnimationFile,
+    playOverlayAnimationFile,
     setCommand: setViewerCommand,
     setFramingValue,
     setViewerOption,
@@ -341,21 +372,26 @@ export default function WaifuHologramPage() {
   const [avatarItems, setAvatarItems] = useState(BUNDLED_AVATARS)
   const [idleItems, setIdleItems] = useState(BUNDLED_IDLE_ACTIONS)
   const [actionItems, setActionItems] = useState(BUNDLED_ACTIONS)
+  const [expressionItems, setExpressionItems] = useState(PROJECT_EXPRESSION_ACTIONS)
   const [avatarSearch, setAvatarSearch] = useState('')
   const [idleSearch, setIdleSearch] = useState('')
   const [actionSearch, setActionSearch] = useState('')
+  const [expressionSearch, setExpressionSearch] = useState('')
   const [selectedAvatarId, setSelectedAvatarId] = useState(DEFAULT_AVATARS[0]?.id || PROJECT_AVATARS[0]?.id || '')
   const [selectedIdleId, setSelectedIdleId] = useState(DEFAULT_IDLE_ID)
   const [selectedActionId, setSelectedActionId] = useState(DEFAULT_ACTIONS[0]?.id || PROJECT_ACTIONS[0]?.id || '')
+  const [selectedExpressionId, setSelectedExpressionId] = useState(PROJECT_EXPRESSION_ACTIONS[0]?.id || '')
   const [avatarRenameDraft, setAvatarRenameDraft] = useState('')
   const [idleRenameDraft, setIdleRenameDraft] = useState('')
   const [actionRenameDraft, setActionRenameDraft] = useState('')
+  const [expressionRenameDraft, setExpressionRenameDraft] = useState('')
   const [pendingAvatarLabel, setPendingAvatarLabel] = useState('')
   const [avatarLoadStage, setAvatarLoadStage] = useState('idle')
 
   const selectedAvatar = avatarItems.find((item) => item.id === selectedAvatarId) || null
   const selectedIdle = idleItems.find((item) => item.id === selectedIdleId) || null
   const selectedAction = actionItems.find((item) => item.id === selectedActionId) || null
+  const selectedExpression = expressionItems.find((item) => item.id === selectedExpressionId) || null
   const viewerOverlay = getViewerOverlay(status, isLoaded)
   const showAvatarLoading = avatarLoadStage !== 'idle' || isAvatarLoading
   const addLogLine = useCallback((line) => {
@@ -373,6 +409,10 @@ export default function WaifuHologramPage() {
   useEffect(() => {
     setActionRenameDraft(selectedAction ? getAssetLabel(selectedAction) : '')
   }, [selectedAction])
+
+  useEffect(() => {
+    setExpressionRenameDraft(selectedExpression ? getAssetLabel(selectedExpression) : '')
+  }, [selectedExpression])
 
   useEffect(() => {
     if (status.startsWith('Idle: ')) {
@@ -540,6 +580,13 @@ export default function WaifuHologramPage() {
     addLogLine(`Added action file: ${file.name}`)
   }, [addLogLine])
 
+  const handleExpressionUpload = useCallback((file) => {
+    const asset = createUploadedAsset('expression', file)
+    setExpressionItems((previous) => [asset, ...previous])
+    setSelectedExpressionId(asset.id)
+    addLogLine(`Added expression file: ${file.name}`)
+  }, [addLogLine])
+
   useEffect(() => {
     if (!selectedIdle) return
     handleSetIdle(selectedIdle)
@@ -598,6 +645,24 @@ export default function WaifuHologramPage() {
     setActiveMotionLabel(label)
     addLogLine(`Playing action: ${label}`)
   }, [addLogLine, clearResetTimer, playAnimationFile, selectedAction])
+
+  const playSelectedExpression = useCallback(async () => {
+    if (!selectedExpression) return
+
+    const label = getAssetLabel(selectedExpression)
+    const file = await assetToFile(selectedExpression)
+    if (!file) return
+
+    const started = playOverlayAnimationFile(file, label, {
+      cacheKey: `${selectedExpression.id}:overlay`,
+    })
+    if (!started) {
+      addLogLine(`Expression overlay failed: ${label}`)
+      return
+    }
+
+    addLogLine(`Playing expression overlay: ${label}`)
+  }, [addLogLine, playOverlayAnimationFile, selectedExpression])
 
   const handleViewerOptionChange = useCallback((key, value) => {
     setViewerOption(key, value)
@@ -676,6 +741,25 @@ export default function WaifuHologramPage() {
               onUpload={handleActionUpload}
               onPrimaryAction={playSelectedAction}
               primaryLabel="Play selected"
+            />
+
+            <AssetPanel
+              title="Expression VRMA"
+              accent="text-rose-300/80"
+              items={expressionItems}
+              selectedId={selectedExpressionId}
+              search={expressionSearch}
+              renameDraft={expressionRenameDraft}
+              emptyLabel="No matching expression files"
+              uploadAccept=".vrma"
+              helper="Expression-only VRMAs for face and mouth testing. These play over the current body animation."
+              onSearchChange={setExpressionSearch}
+              onSelect={setSelectedExpressionId}
+              onRenameDraftChange={setExpressionRenameDraft}
+              onRename={() => renameAsset(setExpressionItems, selectedExpressionId, expressionRenameDraft, 'Expression')}
+              onUpload={handleExpressionUpload}
+              onPrimaryAction={playSelectedExpression}
+              primaryLabel="Play expression"
             />
 
             <section className="rounded-3xl border border-white/10 bg-white/5 p-4 md:col-span-2 xl:col-span-1">

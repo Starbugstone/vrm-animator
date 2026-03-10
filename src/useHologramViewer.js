@@ -38,11 +38,15 @@ const DEFAULT_ACTION_BLEND_SECONDS = 0.3
 const MIN_BLEND_SECONDS = 0.12
 const MAX_BLEND_RATIO = 0.35
 const ACTION_RETURN_LEAD_SECONDS = 0.28
+const OVERLAY_FADE_SECONDS = 0.12
 const AUTO_BLINK_INTERVAL_MIN_SECONDS = 2.8
 const AUTO_BLINK_INTERVAL_MAX_SECONDS = 6.4
 const AUTO_BLINK_CLOSE_SECONDS = 0.08
 const AUTO_BLINK_HOLD_SECONDS = 0.04
 const AUTO_BLINK_OPEN_SECONDS = 0.12
+
+const MOTION_LAYER_BASE = 'base'
+const MOTION_LAYER_OVERLAY = 'overlay'
 
 function buildMotionCacheKey(file, label = 'VRMA action') {
   if (!file) return label
@@ -162,12 +166,14 @@ export default function useHologramViewer(canvasRef) {
     let currentCommand = 'idle'
     let commandTime = 0
     let loadVersion = 0
-    let motionRequestVersion = 0
+    let baseMotionRequestVersion = 0
+    let overlayMotionRequestVersion = 0
     let playbackMode = 'command'
-    let activeMotion = null
-    let previousMotion = null
-    let transitionBlendDuration = 0
-    let transitionBlendElapsed = 0
+    let activeBaseMotion = null
+    let previousBaseMotion = null
+    let baseTransitionBlendDuration = 0
+    let baseTransitionBlendElapsed = 0
+    let activeOverlayMotion = null
     let defaultIdleMotion = null
     let autoBlinkEnabled = true
     let lookAtCameraEnabled = false
@@ -285,25 +291,69 @@ export default function useHologramViewer(canvasRef) {
       }
     }
 
-    const finalizeTransition = () => {
-      if (activeMotion?.action) {
-        activeMotion.action.setEffectiveWeight(1)
+    const updateMotionStatus = () => {
+      if (activeOverlayMotion && activeBaseMotion) {
+        const prefix = activeBaseMotion.kind === 'idle' ? 'Idle + mouth' : 'Playing action + mouth'
+        setViewerStatus(`${prefix}: ${activeBaseMotion.label} + ${activeOverlayMotion.label}`)
+        return
       }
-      if (!previousMotion) return
-      stopMotionAction(previousMotion)
-      previousMotion = null
-      transitionBlendDuration = 0
-      transitionBlendElapsed = 0
+
+      if (activeOverlayMotion) {
+        setViewerStatus(`Playing mouth: ${activeOverlayMotion.label}`)
+        return
+      }
+
+      if (activeBaseMotion) {
+        setViewerStatus(`${activeBaseMotion.kind === 'idle' ? 'Idle' : 'Playing action'}: ${activeBaseMotion.label}`)
+        return
+      }
+
+      if (playbackMode === 'command') {
+        setViewerStatus(`Command: ${currentCommand}`)
+      }
+    }
+
+    const finalizeBaseTransition = () => {
+      if (activeBaseMotion?.action) {
+        activeBaseMotion.action.setEffectiveWeight(1)
+      }
+      if (!previousBaseMotion) return
+      stopMotionAction(previousBaseMotion)
+      previousBaseMotion = null
+      baseTransitionBlendDuration = 0
+      baseTransitionBlendElapsed = 0
+    }
+
+    const stopOverlayMotion = () => {
+      overlayMotionRequestVersion += 1
+      if (!activeOverlayMotion) return
+      stopMotionAction(activeOverlayMotion)
+      activeOverlayMotion = null
+    }
+
+    const handleMixerFinished = (event) => {
+      const finishedAction = event.action
+
+      if (activeOverlayMotion?.action === finishedAction) {
+        stopOverlayMotion()
+        updateMotionStatus()
+        return
+      }
+
+      if (previousBaseMotion?.action === finishedAction) {
+        finalizeBaseTransition()
+      }
     }
 
     const stopCurrentAnimation = ({ resetPose = true } = {}) => {
       playbackMode = 'command'
-      motionRequestVersion += 1
-      finalizeTransition()
+      baseMotionRequestVersion += 1
+      finalizeBaseTransition()
+      stopOverlayMotion()
 
-      if (activeMotion) {
-        stopMotionAction(activeMotion)
-        activeMotion = null
+      if (activeBaseMotion) {
+        stopMotionAction(activeBaseMotion)
+        activeBaseMotion = null
       }
 
       if (currentMixer) {
@@ -324,6 +374,27 @@ export default function useHologramViewer(canvasRef) {
       const toDuration = Math.max(MIN_BLEND_SECONDS, toMotion?.duration || preferred)
       const cap = Math.max(MIN_BLEND_SECONDS, Math.min(fromDuration, toDuration) * MAX_BLEND_RATIO)
       return Math.min(preferred, cap)
+    }
+
+    const createExpressionOnlyClip = (clip) => {
+      const expressionManager = currentVrm?.expressionManager
+      if (!clip || !expressionManager) return null
+
+      const expressionTrackNames = new Set(
+        Object.keys(expressionManager.expressionMap || {})
+          .map((expressionName) => expressionManager.getExpressionTrackName?.(expressionName))
+          .filter(Boolean),
+      )
+
+      const expressionTracks = clip.tracks
+        .filter((track) => expressionTrackNames.has(track.name))
+        .map((track) => track.clone())
+
+      if (expressionTracks.length === 0) {
+        return null
+      }
+
+      return new THREE.AnimationClip(`${clip.name || 'expression-overlay'}:expressions`, clip.duration, expressionTracks)
     }
 
     const loadMotionClip = (motion) => {
@@ -357,7 +428,12 @@ export default function useHologramViewer(canvasRef) {
             }
 
             try {
-              const clip = createVRMAnimationClip(vrmAnimation, currentVrm)
+              const sourceClip = createVRMAnimationClip(vrmAnimation, currentVrm)
+              const clip = motion.expressionOnly ? createExpressionOnlyClip(sourceClip) : sourceClip
+              if (!clip) {
+                reject(new Error('Expression clip has no supported facial tracks'))
+                return
+              }
               const loadedMotion = {
                 clip,
                 duration: clip.duration || 0,
@@ -377,13 +453,17 @@ export default function useHologramViewer(canvasRef) {
       })
     }
 
-    const startLoadedMotion = (motion) => {
+    const startBaseMotion = (motion) => {
       if (!currentMixer) return false
-      if (activeMotion?.cacheKey === motion.cacheKey && activeMotion?.kind === motion.kind && !previousMotion) {
+      if (
+        activeBaseMotion?.cacheKey === motion.cacheKey &&
+        activeBaseMotion?.kind === motion.kind &&
+        !previousBaseMotion
+      ) {
         return true
       }
 
-      finalizeTransition()
+      finalizeBaseTransition()
 
       playbackMode = 'motion'
 
@@ -404,26 +484,63 @@ export default function useHologramViewer(canvasRef) {
 
       nextAction.play()
 
-      const blendSeconds = activeMotion ? resolveBlendDuration(activeMotion, motion) : MIN_BLEND_SECONDS
-      if (activeMotion?.action && activeMotion.action !== nextAction) {
-        previousMotion = activeMotion
-        transitionBlendDuration = blendSeconds
-        transitionBlendElapsed = 0
-        previousMotion.action.enabled = true
-        previousMotion.action.setEffectiveWeight(1)
+      const blendSeconds = activeBaseMotion ? resolveBlendDuration(activeBaseMotion, motion) : MIN_BLEND_SECONDS
+      if (activeBaseMotion?.action && activeBaseMotion.action !== nextAction) {
+        previousBaseMotion = activeBaseMotion
+        baseTransitionBlendDuration = blendSeconds
+        baseTransitionBlendElapsed = 0
+        previousBaseMotion.action.enabled = true
+        previousBaseMotion.action.setEffectiveWeight(1)
         nextAction.setEffectiveWeight(0)
       } else {
-        transitionBlendDuration = 0
-        transitionBlendElapsed = 0
+        baseTransitionBlendDuration = 0
+        baseTransitionBlendElapsed = 0
       }
 
-      activeMotion = {
+      activeBaseMotion = {
         ...motion,
         action: nextAction,
         returnQueued: false,
       }
 
-      setViewerStatus(`${motion.kind === 'idle' ? 'Idle' : 'Playing action'}: ${motion.label}`)
+      updateMotionStatus()
+      return true
+    }
+
+    const startOverlayMotion = (motion) => {
+      if (!currentMixer) return false
+      if (activeOverlayMotion?.cacheKey === motion.cacheKey) {
+        return true
+      }
+
+      if (activeOverlayMotion) {
+        stopMotionAction(activeOverlayMotion)
+      }
+
+      const nextAction = currentMixer.clipAction(motion.clip)
+      nextAction.reset()
+      nextAction.enabled = true
+      nextAction.paused = false
+      nextAction.setEffectiveTimeScale(1)
+      nextAction.setEffectiveWeight(1)
+
+      if (motion.loop) {
+        nextAction.setLoop(THREE.LoopRepeat, Infinity)
+        nextAction.clampWhenFinished = false
+      } else {
+        nextAction.setLoop(THREE.LoopOnce, 1)
+        nextAction.clampWhenFinished = false
+      }
+
+      nextAction.fadeIn(OVERLAY_FADE_SECONDS)
+      nextAction.play()
+
+      activeOverlayMotion = {
+        ...motion,
+        action: nextAction,
+      }
+
+      updateMotionStatus()
       return true
     }
 
@@ -434,41 +551,76 @@ export default function useHologramViewer(canvasRef) {
         return false
       }
 
-      if (activeMotion?.cacheKey === motion.cacheKey && activeMotion?.kind === motion.kind && !previousMotion) {
+      const layer = motion.layer === MOTION_LAYER_OVERLAY ? MOTION_LAYER_OVERLAY : MOTION_LAYER_BASE
+      const activeMotion = layer === MOTION_LAYER_OVERLAY ? activeOverlayMotion : activeBaseMotion
+      const isDuplicateBaseMotion =
+        layer === MOTION_LAYER_BASE &&
+        activeMotion?.cacheKey === motion.cacheKey &&
+        activeMotion?.kind === motion.kind &&
+        !previousBaseMotion
+      const isDuplicateOverlayMotion =
+        layer === MOTION_LAYER_OVERLAY && activeMotion?.cacheKey === motion.cacheKey
+
+      if (isDuplicateBaseMotion || isDuplicateOverlayMotion) {
         return true
       }
 
-      motionRequestVersion += 1
-      const requestVersion = motionRequestVersion
-      setViewerStatus(`${motion.kind === 'idle' ? 'Loading idle' : 'Loading action'}: ${motion.label}`)
+      if (layer === MOTION_LAYER_OVERLAY) {
+        overlayMotionRequestVersion += 1
+      } else {
+        baseMotionRequestVersion += 1
+      }
+
+      const requestVersion =
+        layer === MOTION_LAYER_OVERLAY ? overlayMotionRequestVersion : baseMotionRequestVersion
+      const loadingLabel =
+        layer === MOTION_LAYER_OVERLAY
+          ? `Loading mouth: ${motion.label}`
+          : `${motion.kind === 'idle' ? 'Loading idle' : 'Loading action'}: ${motion.label}`
+
+      setViewerStatus(loadingLabel)
 
       loadMotionClip(motion)
         .then((loadedMotion) => {
-          if (requestVersion !== motionRequestVersion) return
-          startLoadedMotion(loadedMotion)
+          if (layer === MOTION_LAYER_OVERLAY && requestVersion !== overlayMotionRequestVersion) return
+          if (layer === MOTION_LAYER_BASE && requestVersion !== baseMotionRequestVersion) return
+
+          if (layer === MOTION_LAYER_OVERLAY) {
+            startOverlayMotion(loadedMotion)
+            return
+          }
+
+          startBaseMotion(loadedMotion)
         })
         .catch((error) => {
-          if (requestVersion !== motionRequestVersion) return
+          if (layer === MOTION_LAYER_OVERLAY && requestVersion !== overlayMotionRequestVersion) return
+          if (layer === MOTION_LAYER_BASE && requestVersion !== baseMotionRequestVersion) return
           console.error(error)
-          setViewerStatus(motion.kind === 'idle' ? 'Idle load failed' : 'Action load failed')
+          setViewerStatus(
+            layer === MOTION_LAYER_OVERLAY
+              ? 'Mouth load failed'
+              : motion.kind === 'idle'
+                ? 'Idle load failed'
+                : 'Action load failed',
+          )
         })
 
       return true
     }
 
-    const updateTransitionWeights = (dt) => {
-      if (!previousMotion?.action || !activeMotion?.action || transitionBlendDuration <= 0) {
+    const updateBaseTransitionWeights = (dt) => {
+      if (!previousBaseMotion?.action || !activeBaseMotion?.action || baseTransitionBlendDuration <= 0) {
         return
       }
 
-      transitionBlendElapsed = Math.min(transitionBlendElapsed + dt, transitionBlendDuration)
-      const easedWeight = easeBlendWeight(transitionBlendElapsed / transitionBlendDuration)
+      baseTransitionBlendElapsed = Math.min(baseTransitionBlendElapsed + dt, baseTransitionBlendDuration)
+      const easedWeight = easeBlendWeight(baseTransitionBlendElapsed / baseTransitionBlendDuration)
 
-      previousMotion.action.setEffectiveWeight(1 - easedWeight)
-      activeMotion.action.setEffectiveWeight(easedWeight)
+      previousBaseMotion.action.setEffectiveWeight(1 - easedWeight)
+      activeBaseMotion.action.setEffectiveWeight(easedWeight)
 
-      if (transitionBlendElapsed >= transitionBlendDuration) {
-        finalizeTransition()
+      if (baseTransitionBlendElapsed >= baseTransitionBlendDuration) {
+        finalizeBaseTransition()
       }
     }
 
@@ -645,6 +797,7 @@ export default function useHologramViewer(canvasRef) {
       applyBlinkWeight(0)
       stopCurrentAnimation({ resetPose: false })
       if (currentMixer) {
+        currentMixer.removeEventListener('finished', handleMixerFinished)
         currentMixer.stopAllAction()
         currentMixer.uncacheRoot(currentVrm.scene)
         currentMixer = null
@@ -699,6 +852,7 @@ export default function useHologramViewer(canvasRef) {
           originalHipsY = hipsNode ? hipsNode.position.y : 0
 
           currentMixer = new THREE.AnimationMixer(currentVrm.scene)
+          currentMixer.addEventListener('finished', handleMixerFinished)
           scene.add(currentVrm.scene)
           resetBlinkState()
           applyLookAtTarget(currentVrm)
@@ -743,7 +897,7 @@ export default function useHologramViewer(canvasRef) {
         return true
       }
 
-      if (playbackMode !== 'motion' || !activeMotion || activeMotion.kind === 'idle') {
+      if (playbackMode !== 'motion' || !activeBaseMotion || activeBaseMotion.kind === 'idle') {
         return requestMotion(nextIdleMotion)
       }
 
@@ -760,9 +914,29 @@ export default function useHologramViewer(canvasRef) {
         file,
         label,
         kind: 'action',
+        layer: options.layer || MOTION_LAYER_BASE,
         cacheKey: options.cacheKey || buildMotionCacheKey(file, label),
-        loop: false,
-        returnToDefault: true,
+        loop: options.loop ?? false,
+        returnToDefault: options.layer === MOTION_LAYER_OVERLAY ? false : (options.returnToDefault ?? true),
+      })
+    }
+
+    const playOverlayAnimationFile = (file, label = file?.name || 'VRMA overlay', options = {}) => {
+      if (!file) return false
+
+      if (defaultIdleMotion?.file && (!activeBaseMotion || playbackMode !== 'motion')) {
+        requestMotion(defaultIdleMotion)
+      }
+
+      return requestMotion({
+        file,
+        label,
+        kind: options.kind || 'overlay',
+        layer: MOTION_LAYER_OVERLAY,
+        expressionOnly: options.expressionOnly ?? true,
+        cacheKey: options.cacheKey || buildMotionCacheKey(file, label),
+        loop: options.loop ?? false,
+        returnToDefault: false,
       })
     }
 
@@ -962,26 +1136,29 @@ export default function useHologramViewer(canvasRef) {
 
       beam.material.opacity = 0.08 + Math.sin(t * 2) * 0.02
       updateAutoBlink(dt)
-      if (playbackMode === 'motion' && currentMixer) {
-        updateTransitionWeights(dt)
+      if (currentMixer) {
+        updateBaseTransitionWeights(dt)
         currentMixer.update(dt)
-        if (
-          activeMotion?.returnToDefault &&
+      }
+      if (
+        playbackMode === 'motion' &&
+        activeBaseMotion?.action &&
+        activeBaseMotion.returnToDefault &&
           defaultIdleMotion &&
-          !activeMotion.returnQueued &&
-          activeMotion.cacheKey !== defaultIdleMotion.cacheKey
-        ) {
-          const leadSeconds = Math.min(
-            ACTION_RETURN_LEAD_SECONDS,
-            Math.max(MIN_BLEND_SECONDS, activeMotion.duration * 0.18),
-          )
-          const remaining = Math.max(0, activeMotion.duration - activeMotion.action.time)
-          if (remaining <= leadSeconds) {
-            activeMotion.returnQueued = true
-            requestMotion(defaultIdleMotion)
-          }
+        !activeBaseMotion.returnQueued &&
+        activeBaseMotion.cacheKey !== defaultIdleMotion.cacheKey
+      ) {
+        const leadSeconds = Math.min(
+          ACTION_RETURN_LEAD_SECONDS,
+          Math.max(MIN_BLEND_SECONDS, activeBaseMotion.duration * 0.18),
+        )
+        const remaining = Math.max(0, activeBaseMotion.duration - activeBaseMotion.action.time)
+        if (remaining <= leadSeconds) {
+          activeBaseMotion.returnQueued = true
+          requestMotion(defaultIdleMotion)
         }
-      } else {
+      }
+      if (playbackMode !== 'motion') {
         applyCommand(dt)
       }
       controls.update()
@@ -996,6 +1173,7 @@ export default function useHologramViewer(canvasRef) {
       loadFile: loadAvatarFromFile,
       setIdleAnimation,
       playAnimationFile,
+      playOverlayAnimationFile,
       setCommand: (nextCommand) => {
         stopCurrentAnimation({ resetPose: true })
         playbackMode = 'command'
@@ -1066,6 +1244,10 @@ export default function useHologramViewer(canvasRef) {
     return internalsRef.current?.playAnimationFile(file, label, options) ?? false
   }, [])
 
+  const playOverlayAnimationFile = useCallback((file, label, options) => {
+    return internalsRef.current?.playOverlayAnimationFile(file, label, options) ?? false
+  }, [])
+
   const setCommand = useCallback((command) => {
     internalsRef.current?.setCommand(command)
   }, [])
@@ -1082,6 +1264,7 @@ export default function useHologramViewer(canvasRef) {
     loadFile,
     setIdleAnimation,
     playAnimationFile,
+    playOverlayAnimationFile,
     setCommand,
     setFramingValue,
     setViewerOption,
