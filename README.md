@@ -18,10 +18,38 @@ This starts:
 |---------|-----|-------------|
 | PHP | http://localhost:8080 | Symfony API backend |
 | Node | http://localhost:5173 | Vite frontend dev server |
-| DB | localhost:3306 | MariaDB 11 |
+| DB | localhost:3307 | MariaDB 11 |
 | Mail | http://localhost:8025 | Mailpit |
 
 On first launch the PHP container installs Composer dependencies, generates the JWT keypair, and runs the database migrations.
+
+## Environment Files
+
+This repo uses committed `.env` templates with safe dummy values and local `.env.local` overrides for real machine-specific secrets.
+
+### Frontend
+
+Create or update `./.env.local` for local-only frontend settings:
+
+```env
+VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+```
+
+The committed frontend `.env` file is a placeholder template only. Do not store real client IDs or secrets in the committed template.
+
+### Backend
+
+Create or update `./backend/.env.local` for local-only backend settings:
+
+```env
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+```
+
+The committed `backend/.env` file must keep dummy/example values only. Never copy real values from `.env.local` into a committed `.env` file.
+
+### Docker port note
+
+The Docker stack publishes MariaDB on host port `3307` by default to avoid conflicts with an existing local MySQL or MariaDB install. If you need a different host port, set `MARIADB_HOST_PORT` before running `docker compose up`.
 
 ## Asset Libraries
 

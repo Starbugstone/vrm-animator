@@ -112,7 +112,7 @@ class AvatarTest extends WebTestCase
             'HTTP_ACCEPT' => 'application/json',
         ]);
 
-        $this->assertResponseStatusCodeSame(403);
+        $this->assertResponseStatusCodeSame(404);
     }
 
     public function testDeleteAvatar(): void

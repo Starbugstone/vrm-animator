@@ -80,6 +80,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **SOLID, DRY, KISS, YAGNI**: Design for single responsibility, avoid duplication, keep solutions simple, add features only when required.
 - **Readability**: Clear naming; comments explain *why*, not *what*. Follow existing project style.
 - **Modularity**: Break complex logic into small, cohesive, loosely coupled functions/modules.
+- **Environment files**: When a local-only `.env.local` value is added or changed, update the corresponding committed `.env` template with a dummy placeholder value in the same key. Never copy or leak real values from `.env.local` into a committed `.env` file.
 
 ### 3.2 Backend (Symfony)
 

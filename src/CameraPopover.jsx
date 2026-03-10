@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 
-const COMMANDS = ['idle', 'clap', 'jump', 'dance', 'spin']
+
 
 const SLIDERS = [
   { key: 'yaw', label: 'Yaw', min: -180, max: 180, step: 1, unit: 'deg' },
@@ -32,10 +32,8 @@ function formatSliderValue(step, value, unit) {
 export default function CameraPopover({
   framingValues,
   viewerOptions,
-  activeCommand,
   onFramingChange,
   onOptionChange,
-  onCommand,
 }) {
   const [open, setOpen] = useState(true)
   const [minimized, setMinimized] = useState(false)
@@ -127,10 +125,6 @@ export default function CameraPopover({
 
       {minimized ? null : (
         <>
-          <div className="rounded-2xl border border-white/8 bg-black/20 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-cyan-100/80">
-            Active motion: {activeCommand}
-          </div>
-
           {SLIDERS.map(({ key, label, min, max, step, unit }) => {
             const value = framingValues[key] ?? 0
             return (
@@ -172,22 +166,6 @@ export default function CameraPopover({
             ))}
           </div>
 
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {COMMANDS.map((command) => (
-              <button
-                key={command}
-                type="button"
-                onClick={() => onCommand(command)}
-                className={`rounded-xl border px-2.5 py-1 text-[11px] font-medium transition ${
-                  activeCommand === command
-                    ? 'border-cyan-300 bg-cyan-300/20 text-cyan-100'
-                    : 'border-white/10 bg-white/5 text-white/70 hover:border-cyan-300/30 hover:text-white'
-                }`}
-              >
-                {command}
-              </button>
-            ))}
-          </div>
         </>
       )}
     </div>

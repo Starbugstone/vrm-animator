@@ -639,64 +639,83 @@ export default function useHologramViewer(canvasRef) {
     const stage = new THREE.Group()
     scene.add(stage)
 
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.35, 1.6, STAGE_BASE_HEIGHT, 64),
+    // Slick modern desktop hologram base
+    const baseRadius = 1.4;
+    
+    // Core metallic cylinder
+    const baseCore = new THREE.Mesh(
+      new THREE.CylinderGeometry(baseRadius, baseRadius, STAGE_BASE_HEIGHT, 64),
       new THREE.MeshStandardMaterial({
-        color: 0x0d1b36,
-        emissive: 0x0d4cb3,
-        emissiveIntensity: 0.5,
-        metalness: 0.7,
-        roughness: 0.3,
+        color: 0x111111,
+        metalness: 0.9,
+        roughness: 0.2,
       }),
     )
-    base.position.y = STAGE_BASE_Y
-    stage.add(base)
+    baseCore.position.y = STAGE_BASE_Y
+    stage.add(baseCore)
 
-    function makeRing(radius, tube, color, y) {
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(radius, tube, 12, 96),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75 }),
-      )
-      ring.rotation.x = Math.PI / 2
-      ring.position.y = y
-      stage.add(ring)
-      return ring
-    }
+    // Inner glowing ring/plate
+    const innerPlate = new THREE.Mesh(
+      new THREE.CylinderGeometry(baseRadius - 0.05, baseRadius - 0.05, STAGE_BASE_HEIGHT + 0.005, 64),
+      new THREE.MeshStandardMaterial({
+        color: 0x000000,
+        emissive: 0x00e5ff,
+        emissiveIntensity: 0.6,
+        metalness: 0.8,
+        roughness: 0.2,
+      }),
+    )
+    innerPlate.position.y = STAGE_BASE_Y
+    stage.add(innerPlate)
 
-    const rings = [
-      makeRing(0.95, 0.01, 0x7c9dff, 0.02),
-      makeRing(1.18, 0.01, 0x7cf7ff, 0.07),
-      makeRing(1.42, 0.01, 0x7c9dff, 0.12),
-    ]
-
-    const beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.82, 1.25, 3, 40, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: 0x59e8ff,
+    // Sleek top glass surface
+    const glassTop = new THREE.Mesh(
+      new THREE.CylinderGeometry(baseRadius, baseRadius, 0.01, 64),
+      new THREE.MeshPhysicalMaterial({
+        color: 0x050505,
+        metalness: 0.9,
+        roughness: 0.05,
         transparent: true,
-        opacity: 0.1,
+        opacity: 0.7,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.1,
+      }),
+    )
+    glassTop.position.y = STAGE_BASE_Y + (STAGE_BASE_HEIGHT / 2) + 0.005
+    stage.add(glassTop)
+
+    // Neon ring 1
+    const neonRing1 = new THREE.Mesh(
+      new THREE.TorusGeometry(baseRadius - 0.15, 0.005, 16, 100),
+      new THREE.MeshBasicMaterial({ color: 0x00e5ff }),
+    )
+    neonRing1.rotation.x = Math.PI / 2
+    neonRing1.position.y = STAGE_BASE_Y + (STAGE_BASE_HEIGHT / 2) + 0.01
+    stage.add(neonRing1)
+
+    // Neon ring 2
+    const neonRing2 = new THREE.Mesh(
+      new THREE.TorusGeometry(baseRadius - 0.3, 0.002, 16, 100),
+      new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.5 }),
+    )
+    neonRing2.rotation.x = Math.PI / 2
+    neonRing2.position.y = STAGE_BASE_Y + (STAGE_BASE_HEIGHT / 2) + 0.01
+    stage.add(neonRing2)
+
+    // Clean, subtle beam
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(baseRadius - 0.35, baseRadius - 0.35, 4, 64, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0x00e5ff,
+        transparent: true,
+        opacity: 0.03,
         side: THREE.DoubleSide,
         depthWrite: false,
+        blending: THREE.AdditiveBlending,
       }),
     )
-    beam.position.y = 1.35
+    beam.position.y = 2.0
     stage.add(beam)
-
-    const particles = new THREE.Group()
-    stage.add(particles)
-    for (let index = 0; index < 28; index += 1) {
-      const particle = new THREE.Mesh(
-        new THREE.SphereGeometry(0.015 + Math.random() * 0.02, 12, 12),
-        new THREE.MeshBasicMaterial({ color: 0x99f7ff, transparent: true, opacity: 0.8 }),
-      )
-      particle.userData = {
-        angle: Math.random() * Math.PI * 2,
-        radius: 0.7 + Math.random() * 0.9,
-        speed: 0.3 + Math.random() * 0.6,
-        height: Math.random() * 2.4,
-      }
-      particles.add(particle)
-    }
 
     const bone = (name) => currentVrm?.humanoid?.getNormalizedBoneNode(name) || null
 
@@ -1112,24 +1131,11 @@ export default function useHologramViewer(canvasRef) {
       const dt = clock.getDelta()
       const t = clock.elapsedTime
 
-      rings.forEach((ring, index) => {
-        ring.rotation.z += dt * (0.35 + index * 0.08)
-        ring.position.y = 0.02 + index * 0.05 + Math.sin(t * 2 + index) * 0.01
-      })
-
-      particles.children.forEach((particle) => {
-        particle.userData.height += dt * particle.userData.speed
-        if (particle.userData.height > 2.8) {
-          particle.userData.height = 0
-        }
-        particle.position.set(
-          Math.cos(t * 0.6 + particle.userData.angle) * particle.userData.radius,
-          particle.userData.height,
-          Math.sin(t * 0.6 + particle.userData.angle) * particle.userData.radius,
-        )
-      })
-
-      beam.material.opacity = 0.08 + Math.sin(t * 2) * 0.02
+      neonRing1.rotation.z -= dt * 0.2
+      neonRing2.rotation.z += dt * 0.3
+      
+      innerPlate.material.emissiveIntensity = 0.5 + Math.sin(t * 3) * 0.15
+      beam.material.opacity = 0.02 + Math.sin(t * 2) * 0.015
       updateAutoBlink(dt)
       if (currentMixer) {
         updateBaseTransitionWeights(dt)

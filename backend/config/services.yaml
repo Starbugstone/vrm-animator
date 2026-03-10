@@ -17,3 +17,11 @@ services:
         arguments:
             $persistProcessor: '@api_platform.doctrine.orm.state.persist_processor'
 
+    App\State\AvatarDeleteProcessor:
+        arguments:
+            $removeProcessor: '@api_platform.doctrine.orm.state.remove_processor'
+
+    App\State\AnimationDeleteProcessor:
+        arguments:
+            $removeProcessor: '@api_platform.doctrine.orm.state.remove_processor'
+

@@ -8,6 +8,8 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Post;
+use App\State\AvatarDeleteProcessor;
+use App\State\AvatarOwnedItemProvider;
 use App\State\AvatarOwnedProvider;
 use App\State\AvatarSetOwnerProcessor;
 use App\Repository\AvatarRepository;
@@ -26,7 +28,7 @@ use Symfony\Component\Validator\Constraints as Assert;
         ),
         new Get(
             normalizationContext: ['groups' => ['avatar:read']],
-            security: "object.getOwner() == user",
+            provider: AvatarOwnedItemProvider::class,
         ),
         new Post(
             normalizationContext: ['groups' => ['avatar:read']],
@@ -36,10 +38,12 @@ use Symfony\Component\Validator\Constraints as Assert;
         new Patch(
             normalizationContext: ['groups' => ['avatar:read']],
             denormalizationContext: ['groups' => ['avatar:write']],
-            security: "object.getOwner() == user",
+            provider: AvatarOwnedItemProvider::class,
+            processor: AvatarSetOwnerProcessor::class,
         ),
         new Delete(
-            security: "object.getOwner() == user",
+            provider: AvatarOwnedItemProvider::class,
+            processor: AvatarDeleteProcessor::class,
         ),
     ],
     normalizationContext: ['groups' => ['avatar:read']],
@@ -58,9 +62,33 @@ class Avatar
     #[Groups(['avatar:read', 'avatar:write', 'user:read'])]
     private ?string $name = null;
 
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    #[Groups(['avatar:read', 'avatar:write'])]
+    private ?string $backstory = null;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    #[Groups(['avatar:read', 'avatar:write'])]
+    private ?string $personality = null;
+
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    #[Groups(['avatar:read', 'avatar:write'])]
+    private ?string $systemPrompt = null;
+
     #[ORM\Column(length: 255)]
     #[Groups(['avatar:read', 'avatar:write', 'user:read'])]
     private ?string $filename = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    #[Groups(['avatar:read'])]
+    private ?string $storedFilename = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    #[Groups(['avatar:read'])]
+    private ?string $mimeType = null;
+
+    #[ORM\Column(nullable: true)]
+    #[Groups(['avatar:read'])]
+    private ?int $sizeBytes = null;
 
     #[ORM\Column(type: Types::BOOLEAN)]
     #[Groups(['avatar:read', 'avatar:write', 'user:read'])]
@@ -101,6 +129,39 @@ class Avatar
         return $this;
     }
 
+    public function getBackstory(): ?string
+    {
+        return $this->backstory;
+    }
+
+    public function setBackstory(?string $backstory): static
+    {
+        $this->backstory = $backstory;
+        return $this;
+    }
+
+    public function getPersonality(): ?string
+    {
+        return $this->personality;
+    }
+
+    public function setPersonality(?string $personality): static
+    {
+        $this->personality = $personality;
+        return $this;
+    }
+
+    public function getSystemPrompt(): ?string
+    {
+        return $this->systemPrompt;
+    }
+
+    public function setSystemPrompt(?string $systemPrompt): static
+    {
+        $this->systemPrompt = $systemPrompt;
+        return $this;
+    }
+
     public function getFilename(): ?string
     {
         return $this->filename;
@@ -112,7 +173,45 @@ class Avatar
         return $this;
     }
 
+    public function getStoredFilename(): ?string
+    {
+        return $this->storedFilename;
+    }
+
+    public function setStoredFilename(?string $storedFilename): static
+    {
+        $this->storedFilename = $storedFilename;
+        return $this;
+    }
+
+    public function getMimeType(): ?string
+    {
+        return $this->mimeType;
+    }
+
+    public function setMimeType(?string $mimeType): static
+    {
+        $this->mimeType = $mimeType;
+        return $this;
+    }
+
+    public function getSizeBytes(): ?int
+    {
+        return $this->sizeBytes;
+    }
+
+    public function setSizeBytes(?int $sizeBytes): static
+    {
+        $this->sizeBytes = $sizeBytes;
+        return $this;
+    }
+
     public function isDefault(): bool
+    {
+        return $this->isDefault;
+    }
+
+    public function getIsDefault(): bool
     {
         return $this->isDefault;
     }

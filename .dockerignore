@@ -1,0 +1,11 @@
+.git
+.cursor
+.vite
+dist
+node_modules
+backend/vendor
+backend/var
+backend/.phpunit.result.cache
+backend/test_output.log
+.env.local
+backend/.env.local

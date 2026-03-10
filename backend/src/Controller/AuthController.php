@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\User;
+use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -54,7 +55,14 @@ class AuthController extends AbstractController
         $user->setPassword($hashedPassword);
 
         $entityManager->persist($user);
-        $entityManager->flush();
+        try {
+            $entityManager->flush();
+        } catch (UniqueConstraintViolationException) {
+            return $this->json(
+                ['errors' => ['email' => 'This email is already registered.']],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
 
         $token = $jwtManager->create($user);
 

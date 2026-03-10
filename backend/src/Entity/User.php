@@ -2,10 +2,6 @@
 
 namespace App\Entity;
 
-use ApiPlatform\Metadata\ApiResource;
-use ApiPlatform\Metadata\Get;
-use ApiPlatform\Metadata\GetCollection;
-use ApiPlatform\Metadata\Patch;
 use App\Repository\UserRepository;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\Common\Collections\Collection;
@@ -21,18 +17,6 @@ use Symfony\Component\Validator\Constraints as Assert;
 #[ORM\Table(name: '`user`')]
 #[ORM\HasLifecycleCallbacks]
 #[UniqueEntity(fields: ['email'], message: 'This email is already registered.')]
-#[ApiResource(
-    operations: [
-        new Get(normalizationContext: ['groups' => ['user:read']]),
-        new GetCollection(normalizationContext: ['groups' => ['user:read']]),
-        new Patch(
-            normalizationContext: ['groups' => ['user:read']],
-            denormalizationContext: ['groups' => ['user:update']],
-            security: "object == user",
-        ),
-    ],
-    normalizationContext: ['groups' => ['user:read']],
-)]
 class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
     #[ORM\Id]
@@ -60,6 +44,12 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column(length: 255, nullable: true)]
     #[Groups(['user:read', 'user:create', 'user:update', 'avatar:read'])]
     private ?string $displayName = null;
+
+    #[ORM\Column(length: 255, nullable: true, unique: true)]
+    private ?string $googleSubject = null;
+
+    #[ORM\Column(type: Types::DATETIME_IMMUTABLE, nullable: true)]
+    private ?\DateTimeImmutable $googleLinkedAt = null;
 
     #[ORM\Column(type: Types::DATETIME_IMMUTABLE)]
     #[Groups(['user:read'])]
@@ -152,6 +142,28 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     public function setDisplayName(?string $displayName): static
     {
         $this->displayName = $displayName;
+        return $this;
+    }
+
+    public function getGoogleSubject(): ?string
+    {
+        return $this->googleSubject;
+    }
+
+    public function setGoogleSubject(?string $googleSubject): static
+    {
+        $this->googleSubject = $googleSubject;
+        return $this;
+    }
+
+    public function getGoogleLinkedAt(): ?\DateTimeImmutable
+    {
+        return $this->googleLinkedAt;
+    }
+
+    public function setGoogleLinkedAt(?\DateTimeImmutable $googleLinkedAt): static
+    {
+        $this->googleLinkedAt = $googleLinkedAt;
         return $this;
     }
 

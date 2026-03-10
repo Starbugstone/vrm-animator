@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CameraPopover from './src/CameraPopover.jsx'
+import AvatarProfilePanel from './src/components/AvatarProfilePanel.jsx'
+import MemoryPanel from './src/components/MemoryPanel.jsx'
+import { listAnimations, updateAnimation, uploadAnimation, downloadAnimationFile } from './src/api/animations.js'
+import { fetchAvatarMemory, fetchAvatarMemoryRevisions, updateAvatarMemory } from './src/api/memory.js'
+import { listAvatars, updateAvatar, uploadAvatar, downloadAvatarFile } from './src/api/avatars.js'
 import useHologramViewer from './src/useHologramViewer.js'
 
-const COMMANDS = ['idle', 'clap', 'jump', 'dance', 'spin']
+
 
 const projectVrmModules = import.meta.glob('./vrm/**/*.{vrm,glb}', {
   eager: true,
@@ -128,6 +133,7 @@ function getAssetLabel(asset) {
 function getAssetSourceTag(asset) {
   if (asset?.source === 'upload') return 'Upload'
   if (asset?.source === 'example') return 'Example'
+  if (asset?.source === 'user') return 'Mine'
   return 'Project'
 }
 
@@ -147,10 +153,49 @@ function createUploadedAsset(type, file) {
 async function assetToFile(asset) {
   if (!asset) return null
   if (asset.file) return asset.file
+  if (asset.source === 'user') {
+    if (asset.type === 'avatar') {
+      return downloadAvatarFile(asset.authToken, asset.remoteId, asset.name)
+    }
+    return downloadAnimationFile(asset.authToken, asset.remoteId, asset.name)
+  }
 
   const response = await fetch(asset.url)
   const blob = await response.blob()
   return new File([blob], asset.name, { type: blob.type || 'application/octet-stream' })
+}
+
+function createPersistedAvatarAsset(record, authToken) {
+  return {
+    id: `avatar:user:${record.id}`,
+    remoteId: record.id,
+    type: 'avatar',
+    name: record.filename,
+    label: record.name,
+    source: 'user',
+    sourceLabel: 'My avatar',
+    groupLabel: 'Persisted asset',
+    authToken,
+    backstory: record.backstory || '',
+    personality: record.personality || '',
+    systemPrompt: record.systemPrompt || '',
+  }
+}
+
+function createPersistedAnimationAsset(record, authToken) {
+  return {
+    id: `${record.kind}:user:${record.id}`,
+    remoteId: record.id,
+    type: record.kind,
+    name: record.filename,
+    label: record.name,
+    source: 'user',
+    sourceLabel: 'My animation',
+    groupLabel: 'Persisted asset',
+    authToken,
+    description: record.description || '',
+    keywords: Array.isArray(record.keywords) ? record.keywords : [],
+  }
 }
 
 function AssetPanel({
@@ -344,7 +389,7 @@ const VIEWER_OPTION_LABELS = {
   lookAtCamera: 'Eyes follow camera',
 }
 
-export default function WaifuHologramPage() {
+export default function WaifuHologramPage({ token, user, onLogout }) {
   const canvasRef = useRef(null)
   const resetTimeoutRef = useRef(null)
   const idleVariationTimeoutRef = useRef(null)
@@ -355,7 +400,6 @@ export default function WaifuHologramPage() {
     setIdleAnimation,
     playAnimationFile,
     playOverlayAnimationFile,
-    setCommand: setViewerCommand,
     setFramingValue,
     setViewerOption,
     viewerOptions,
@@ -365,10 +409,11 @@ export default function WaifuHologramPage() {
     isAvatarLoading,
   } = useHologramViewer(canvasRef)
 
-  const [command, setCommand] = useState('idle')
   const [activeMotionLabel, setActiveMotionLabel] = useState('idle')
   const [toolLog, setToolLog] = useState(['System ready'])
   const [loadedName, setLoadedName] = useState('None loaded yet')
+  const [persistedAvatars, setPersistedAvatars] = useState([])
+  const [persistedAnimations, setPersistedAnimations] = useState([])
   const [avatarItems, setAvatarItems] = useState(BUNDLED_AVATARS)
   const [idleItems, setIdleItems] = useState(BUNDLED_IDLE_ACTIONS)
   const [actionItems, setActionItems] = useState(BUNDLED_ACTIONS)
@@ -387,16 +432,114 @@ export default function WaifuHologramPage() {
   const [expressionRenameDraft, setExpressionRenameDraft] = useState('')
   const [pendingAvatarLabel, setPendingAvatarLabel] = useState('')
   const [avatarLoadStage, setAvatarLoadStage] = useState('idle')
+  const [memoryRecord, setMemoryRecord] = useState(null)
+  const [memoryRevisions, setMemoryRevisions] = useState([])
+  const [isLibraryBusy, setIsLibraryBusy] = useState(false)
+  const [isProfileBusy, setIsProfileBusy] = useState(false)
+  const [isMemoryBusy, setIsMemoryBusy] = useState(false)
+  const [statusNotice, setStatusNotice] = useState('')
 
   const selectedAvatar = avatarItems.find((item) => item.id === selectedAvatarId) || null
   const selectedIdle = idleItems.find((item) => item.id === selectedIdleId) || null
   const selectedAction = actionItems.find((item) => item.id === selectedActionId) || null
   const selectedExpression = expressionItems.find((item) => item.id === selectedExpressionId) || null
+  const selectedManagedAvatar =
+    selectedAvatar?.source === 'user'
+      ? persistedAvatars.find((entry) => entry.id === selectedAvatar.remoteId) || null
+      : null
   const viewerOverlay = getViewerOverlay(status, isLoaded)
   const showAvatarLoading = avatarLoadStage !== 'idle' || isAvatarLoading
   const addLogLine = useCallback((line) => {
     setToolLog((previous) => [line, ...previous].slice(0, 10))
   }, [])
+
+  const refreshLibraries = useCallback(async () => {
+    if (!token) return
+
+    setIsLibraryBusy(true)
+    try {
+      const [avatars, animations] = await Promise.all([
+        listAvatars(token),
+        listAnimations(token),
+      ])
+
+      setPersistedAvatars(Array.isArray(avatars) ? avatars : [])
+      setPersistedAnimations(Array.isArray(animations) ? animations : [])
+    } catch (error) {
+      console.error(error)
+      addLogLine(`Library sync failed: ${error.message}`)
+    } finally {
+      setIsLibraryBusy(false)
+    }
+  }, [addLogLine, token])
+
+  useEffect(() => {
+    refreshLibraries()
+  }, [refreshLibraries])
+
+  useEffect(() => {
+    const nextAvatarItems = [
+      ...persistedAvatars.map((entry) => createPersistedAvatarAsset(entry, token)),
+      ...BUNDLED_AVATARS,
+    ]
+    const nextAnimations = persistedAnimations.map((entry) => createPersistedAnimationAsset(entry, token))
+
+    setAvatarItems(nextAvatarItems)
+    setIdleItems([...nextAnimations.filter((entry) => entry.type === 'idle'), ...BUNDLED_IDLE_ACTIONS])
+    setActionItems([...nextAnimations.filter((entry) => entry.type === 'action'), ...BUNDLED_ACTIONS])
+    setExpressionItems([...nextAnimations.filter((entry) => entry.type === 'expression'), ...PROJECT_EXPRESSION_ACTIONS])
+  }, [persistedAnimations, persistedAvatars, token])
+
+  useEffect(() => {
+    if (avatarItems.length > 0 && !avatarItems.some((entry) => entry.id === selectedAvatarId)) {
+      setSelectedAvatarId(avatarItems[0].id)
+    }
+    if (idleItems.length > 0 && !idleItems.some((entry) => entry.id === selectedIdleId)) {
+      setSelectedIdleId(idleItems[0].id)
+    }
+    if (actionItems.length > 0 && !actionItems.some((entry) => entry.id === selectedActionId)) {
+      setSelectedActionId(actionItems[0].id)
+    }
+    if (expressionItems.length > 0 && !expressionItems.some((entry) => entry.id === selectedExpressionId)) {
+      setSelectedExpressionId(expressionItems[0].id)
+    }
+  }, [actionItems, avatarItems, expressionItems, idleItems, selectedActionId, selectedAvatarId, selectedExpressionId, selectedIdleId])
+
+  useEffect(() => {
+    if (!selectedManagedAvatar || !token) {
+      setMemoryRecord(null)
+      setMemoryRevisions([])
+      return
+    }
+
+    let cancelled = false
+
+    async function loadMemory() {
+      try {
+        const [memory, revisions] = await Promise.all([
+          fetchAvatarMemory(token, selectedManagedAvatar.id),
+          fetchAvatarMemoryRevisions(token, selectedManagedAvatar.id),
+        ])
+
+        if (!cancelled) {
+          setMemoryRecord(memory)
+          setMemoryRevisions(Array.isArray(revisions) ? revisions : [])
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error(error)
+          addLogLine(`Memory load failed: ${error.message}`)
+          setMemoryRecord(null)
+          setMemoryRevisions([])
+        }
+      }
+    }
+
+    loadMemory()
+    return () => {
+      cancelled = true
+    }
+  }, [addLogLine, selectedManagedAvatar, token])
 
   useEffect(() => {
     setAvatarRenameDraft(selectedAvatar ? getAssetLabel(selectedAvatar) : '')
@@ -422,9 +565,6 @@ export default function WaifuHologramPage() {
     if (status.startsWith('Playing action: ')) {
       setActiveMotionLabel(status.slice('Playing action: '.length))
       return
-    }
-    if (status.startsWith('Command: ')) {
-      setActiveMotionLabel(status.slice(9))
     }
   }, [status])
 
@@ -458,57 +598,36 @@ export default function WaifuHologramPage() {
     idleVariationTimeoutRef.current = null
   }, [])
 
-  const runCommand = useCallback((incoming, contextLabel) => {
-    const normalized = String(incoming || '').trim().toLowerCase()
-    if (!COMMANDS.includes(normalized)) return false
 
-    clearResetTimer()
-    setCommand(normalized)
-    setActiveMotionLabel(normalized)
-    addLogLine(contextLabel ? `${contextLabel}: ${normalized}` : `Tool command: ${normalized}`)
-    setViewerCommand(normalized)
-
-    if (normalized === 'jump' || normalized === 'spin') {
-      resetTimeoutRef.current = window.setTimeout(() => {
-        setCommand('idle')
-        setActiveMotionLabel('idle')
-        setViewerCommand('idle')
-        resetTimeoutRef.current = null
-      }, normalized === 'jump' ? 1000 : 1450)
-    }
-
-    return true
-  }, [addLogLine, clearResetTimer, setViewerCommand])
-
-  useEffect(() => {
-    window.hologramTool = {
-      execute: runCommand,
-      commands: COMMANDS,
-      help: 'Use window.hologramTool.execute("dance") or dispatch a hologram-command event.',
-    }
-
-    const onEvent = (event) => {
-      runCommand(event?.detail?.command)
-    }
-
-    window.addEventListener('hologram-command', onEvent)
-    return () => {
-      clearResetTimer()
-      clearIdleVariationTimer()
-      window.removeEventListener('hologram-command', onEvent)
-      delete window.hologramTool
-    }
-  }, [clearIdleVariationTimer, clearResetTimer, runCommand])
-
-  const renameAsset = useCallback((setItems, selectedId, value, typeLabel) => {
+  const renameAsset = useCallback(async (setItems, selectedAsset, value, typeLabel) => {
     const trimmed = value.trim()
-    if (!selectedId || !trimmed) return
+    if (!selectedAsset || !trimmed) return
 
-    setItems((previous) =>
-      previous.map((item) => (item.id === selectedId ? { ...item, alias: trimmed } : item)),
-    )
-    addLogLine(`${typeLabel} renamed: ${trimmed}`)
-  }, [addLogLine])
+    try {
+      if (selectedAsset.source === 'user') {
+        if (selectedAsset.type === 'avatar') {
+          const updatedAvatar = await updateAvatar(token, selectedAsset.remoteId, { name: trimmed })
+          setPersistedAvatars((previous) =>
+            previous.map((entry) => (entry.id === updatedAvatar.id ? updatedAvatar : entry)),
+          )
+        } else {
+          const updatedAnimation = await updateAnimation(token, selectedAsset.remoteId, { name: trimmed })
+          setPersistedAnimations((previous) =>
+            previous.map((entry) => (entry.id === updatedAnimation.id ? updatedAnimation : entry)),
+          )
+        }
+      } else {
+        setItems((previous) =>
+          previous.map((item) => (item.id === selectedAsset.id ? { ...item, alias: trimmed } : item)),
+        )
+      }
+
+      addLogLine(`${typeLabel} renamed: ${trimmed}`)
+    } catch (error) {
+      console.error(error)
+      addLogLine(`${typeLabel} rename failed: ${error.message}`)
+    }
+  }, [addLogLine, token])
 
   const loadAvatarAsset = useCallback(async (asset) => {
     if (!asset) return
@@ -536,18 +655,43 @@ export default function WaifuHologramPage() {
   }, [addLogLine, loadFile])
 
   const handleAvatarUpload = useCallback(async (file) => {
-    const asset = createUploadedAsset('avatar', file)
-    setAvatarItems((previous) => [asset, ...previous])
-    setSelectedAvatarId(asset.id)
-    await loadAvatarAsset(asset)
-  }, [loadAvatarAsset])
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const created = await uploadAvatar(token, formData)
+      setPersistedAvatars((previous) => [created, ...previous])
+      const asset = createPersistedAvatarAsset(created, token)
+      setSelectedAvatarId(asset.id)
+      await loadAvatarAsset(asset)
+      addLogLine(`Uploaded avatar: ${created.name}`)
+    } catch (error) {
+      console.error(error)
+      addLogLine(`Avatar upload failed: ${error.message}`)
+    }
+  }, [addLogLine, loadAvatarAsset, token])
+
+  const uploadAnimationByKind = useCallback(async (file, kind, onSelected) => {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('kind', kind)
+      if (selectedManagedAvatar) {
+        formData.append('avatarId', String(selectedManagedAvatar.id))
+      }
+
+      const created = await uploadAnimation(token, formData)
+      setPersistedAnimations((previous) => [created, ...previous])
+      onSelected(`${created.kind}:user:${created.id}`)
+      addLogLine(`Uploaded ${kind}: ${created.name}`)
+    } catch (error) {
+      console.error(error)
+      addLogLine(`${kind} upload failed: ${error.message}`)
+    }
+  }, [addLogLine, selectedManagedAvatar, token])
 
   const handleIdleUpload = useCallback((file) => {
-    const asset = createUploadedAsset('idle', file)
-    setIdleItems((previous) => [asset, ...previous])
-    setSelectedIdleId(asset.id)
-    addLogLine(`Added idle file: ${file.name}`)
-  }, [addLogLine])
+    uploadAnimationByKind(file, 'idle', setSelectedIdleId)
+  }, [uploadAnimationByKind])
 
   const handleSetIdle = useCallback(async (asset = selectedIdle) => {
     if (!asset) return
@@ -574,18 +718,60 @@ export default function WaifuHologramPage() {
   }, [activeMotionLabel, idleItems, selectedIdleId])
 
   const handleActionUpload = useCallback((file) => {
-    const asset = createUploadedAsset('action', file)
-    setActionItems((previous) => [asset, ...previous])
-    setSelectedActionId(asset.id)
-    addLogLine(`Added action file: ${file.name}`)
-  }, [addLogLine])
+    uploadAnimationByKind(file, 'action', setSelectedActionId)
+  }, [uploadAnimationByKind])
 
   const handleExpressionUpload = useCallback((file) => {
-    const asset = createUploadedAsset('expression', file)
-    setExpressionItems((previous) => [asset, ...previous])
-    setSelectedExpressionId(asset.id)
-    addLogLine(`Added expression file: ${file.name}`)
-  }, [addLogLine])
+    uploadAnimationByKind(file, 'expression', setSelectedExpressionId)
+  }, [uploadAnimationByKind])
+
+  const handleSaveAvatarProfile = useCallback(async (payload) => {
+    if (!selectedManagedAvatar) return
+
+    setIsProfileBusy(true)
+    setStatusNotice('')
+    try {
+      const updatedAvatar = await updateAvatar(token, selectedManagedAvatar.id, payload)
+      setPersistedAvatars((previous) =>
+        previous.map((entry) => (entry.id === updatedAvatar.id ? updatedAvatar : entry)),
+      )
+      const [nextMemory, revisions] = await Promise.all([
+        fetchAvatarMemory(token, selectedManagedAvatar.id),
+        fetchAvatarMemoryRevisions(token, selectedManagedAvatar.id),
+      ])
+      setMemoryRecord(nextMemory)
+      setMemoryRevisions(Array.isArray(revisions) ? revisions : [])
+      setStatusNotice('Avatar profile saved.')
+      addLogLine(`Saved avatar profile: ${updatedAvatar.name}`)
+    } catch (error) {
+      console.error(error)
+      setStatusNotice(error.message)
+      addLogLine(`Avatar profile save failed: ${error.message}`)
+    } finally {
+      setIsProfileBusy(false)
+    }
+  }, [addLogLine, selectedManagedAvatar, token])
+
+  const handleSaveMemory = useCallback(async (payload) => {
+    if (!selectedManagedAvatar) return
+
+    setIsMemoryBusy(true)
+    setStatusNotice('')
+    try {
+      const updatedMemory = await updateAvatarMemory(token, selectedManagedAvatar.id, payload)
+      const revisions = await fetchAvatarMemoryRevisions(token, selectedManagedAvatar.id)
+      setMemoryRecord(updatedMemory)
+      setMemoryRevisions(Array.isArray(revisions) ? revisions : [])
+      setStatusNotice('Avatar memory saved.')
+      addLogLine(`Saved memory for: ${selectedManagedAvatar.name}`)
+    } catch (error) {
+      console.error(error)
+      setStatusNotice(error.message)
+      addLogLine(`Memory save failed: ${error.message}`)
+    } finally {
+      setIsMemoryBusy(false)
+    }
+  }, [addLogLine, selectedManagedAvatar, token])
 
   useEffect(() => {
     if (!selectedIdle) return
@@ -641,7 +827,6 @@ export default function WaifuHologramPage() {
     }
 
     clearResetTimer()
-    setCommand('idle')
     setActiveMotionLabel(label)
     addLogLine(`Playing action: ${label}`)
   }, [addLogLine, clearResetTimer, playAnimationFile, selectedAction])
@@ -678,9 +863,30 @@ export default function WaifuHologramPage() {
             <div className="text-xs uppercase tracking-[0.3em] text-cyan-300/80">AI Hologram Console</div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">VRM Holo Avatar</h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/70">
-              Local preview shell for curated example assets, project libraries, and one-off VRM or VRMA uploads.
+              Secure workspace for your private avatars, animations, and avatar memory, with bundled demo assets still available for preview.
             </p>
           </div>
+
+          <section className="mb-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-[0.28em] text-white/45">Signed in as</div>
+                <div className="mt-1 text-sm font-medium text-cyan-100">{user?.displayName || user?.email}</div>
+                <div className="mt-1 text-xs text-white/55">{user?.email}</div>
+              </div>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white/80 transition hover:border-cyan-300/30 hover:bg-white/10"
+              >
+                Logout
+              </button>
+            </div>
+            <div className="mt-3 text-xs text-white/50">
+              {isLibraryBusy ? 'Syncing your backend libraries…' : 'Backend libraries synced.'}
+            </div>
+            {statusNotice ? <div className="mt-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-100">{statusNotice}</div> : null}
+          </section>
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
             <AssetPanel
@@ -692,11 +898,11 @@ export default function WaifuHologramPage() {
               renameDraft={avatarRenameDraft}
               emptyLabel="No matching VRM files"
               uploadAccept=".vrm,.glb"
-              helper="Browse bundled examples, project VRM files, or a temporary upload."
+              helper="Browse bundled examples or upload private avatars that persist in your account."
               onSearchChange={setAvatarSearch}
               onSelect={setSelectedAvatarId}
               onRenameDraftChange={setAvatarRenameDraft}
-              onRename={() => renameAsset(setAvatarItems, selectedAvatarId, avatarRenameDraft, 'Avatar')}
+              onRename={() => renameAsset(setAvatarItems, selectedAvatar, avatarRenameDraft, 'Avatar')}
               onUpload={handleAvatarUpload}
               onPrimaryAction={() => loadAvatarAsset(selectedAvatar)}
               primaryLabel="Load selected"
@@ -714,11 +920,11 @@ export default function WaifuHologramPage() {
               renameDraft={idleRenameDraft}
               emptyLabel="No matching idle files"
               uploadAccept=".vrma"
-              helper="Pick the default idle loop. Action playback crossfades back here after one-shot clips."
+              helper="Pick the default idle loop. Uploaded idles are stored in your private animation library."
               onSearchChange={setIdleSearch}
               onSelect={setSelectedIdleId}
               onRenameDraftChange={setIdleRenameDraft}
-              onRename={() => renameAsset(setIdleItems, selectedIdleId, idleRenameDraft, 'Idle')}
+              onRename={() => renameAsset(setIdleItems, selectedIdle, idleRenameDraft, 'Idle')}
               onUpload={handleIdleUpload}
               onPrimaryAction={() => handleSetIdle(selectedIdle)}
               primaryLabel="Set selected"
@@ -733,11 +939,11 @@ export default function WaifuHologramPage() {
               renameDraft={actionRenameDraft}
               emptyLabel="No matching action files"
               uploadAccept=".vrma"
-              helper="Play bundled example motions, project clips, or a temporary upload."
+              helper="Play bundled motions or upload private action clips tied to your account."
               onSearchChange={setActionSearch}
               onSelect={setSelectedActionId}
               onRenameDraftChange={setActionRenameDraft}
-              onRename={() => renameAsset(setActionItems, selectedActionId, actionRenameDraft, 'Action')}
+              onRename={() => renameAsset(setActionItems, selectedAction, actionRenameDraft, 'Action')}
               onUpload={handleActionUpload}
               onPrimaryAction={playSelectedAction}
               primaryLabel="Play selected"
@@ -752,14 +958,27 @@ export default function WaifuHologramPage() {
               renameDraft={expressionRenameDraft}
               emptyLabel="No matching expression files"
               uploadAccept=".vrma"
-              helper="Expression-only VRMAs for face and mouth testing. These play over the current body animation."
+              helper="Expression-only VRMAs for face and mouth testing. Uploaded overlays remain private to your account."
               onSearchChange={setExpressionSearch}
               onSelect={setSelectedExpressionId}
               onRenameDraftChange={setExpressionRenameDraft}
-              onRename={() => renameAsset(setExpressionItems, selectedExpressionId, expressionRenameDraft, 'Expression')}
+              onRename={() => renameAsset(setExpressionItems, selectedExpression, expressionRenameDraft, 'Expression')}
               onUpload={handleExpressionUpload}
               onPrimaryAction={playSelectedExpression}
               primaryLabel="Play expression"
+            />
+
+            <AvatarProfilePanel
+              avatar={selectedManagedAvatar}
+              busy={isProfileBusy}
+              onSave={handleSaveAvatarProfile}
+            />
+
+            <MemoryPanel
+              memory={memoryRecord}
+              revisions={memoryRevisions}
+              busy={isMemoryBusy}
+              onSave={handleSaveMemory}
             />
 
             <section className="rounded-3xl border border-white/10 bg-white/5 p-4 md:col-span-2 xl:col-span-1">
@@ -794,10 +1013,8 @@ export default function WaifuHologramPage() {
             <CameraPopover
               framingValues={framingState}
               viewerOptions={viewerOptions}
-              activeCommand={activeMotionLabel}
               onFramingChange={setFramingValue}
               onOptionChange={handleViewerOptionChange}
-              onCommand={runCommand}
             />
 
             <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-5 sm:p-8">

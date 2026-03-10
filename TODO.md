@@ -395,6 +395,9 @@
   - current conversation state
   - current memory snapshot state
   - streaming status state
+- Manual deploy reminder:
+  - In Google Cloud Console, under the `CJ-WAIFU` project, add the final deploy URL to the authorized auth origins/redirect settings for the existing Google OAuth client.
+  - This is a manual release step performed by Matthew, not an in-app automation task.
 
 ## Frontend and Viewer Rules
 

@@ -5,6 +5,7 @@ namespace App\State;
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProcessorInterface;
 use App\Entity\Avatar;
+use App\Service\AvatarMemoryService;
 use Symfony\Bundle\SecurityBundle\Security;
 
 /**
@@ -15,6 +16,7 @@ class AvatarSetOwnerProcessor implements ProcessorInterface
     public function __construct(
         private ProcessorInterface $persistProcessor,
         private Security $security,
+        private AvatarMemoryService $avatarMemoryService,
     ) {
     }
 
@@ -26,6 +28,12 @@ class AvatarSetOwnerProcessor implements ProcessorInterface
             $data->setOwner($user);
         }
 
-        return $this->persistProcessor->process($data, $operation, $uriVariables, $context);
+        $result = $this->persistProcessor->process($data, $operation, $uriVariables, $context);
+
+        if ($data instanceof Avatar) {
+            $this->avatarMemoryService->syncAvatarIdentity($data, 'system');
+        }
+
+        return $result;
     }
 }

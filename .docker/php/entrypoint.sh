@@ -18,7 +18,17 @@ fi
 
 # Wait for database to be ready, then run migrations
 echo "Waiting for database..."
-until php /var/www/html/bin/console doctrine:query:sql "SELECT 1" > /dev/null 2>&1; do
+until php <<'PHP' > /dev/null 2>&1
+<?php
+$pdo = new PDO(
+    'mysql:host=database;port=3306;dbname=vrm_animator',
+    'vrm_user',
+    'vrm_pass',
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+);
+$pdo->query('SELECT 1');
+PHP
+do
     sleep 1
 done
 

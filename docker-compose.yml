@@ -21,7 +21,7 @@ services:
     image: mariadb:11
     container_name: vrm-database
     ports:
-      - "3306:3306"
+      - "${MARIADB_HOST_PORT:-3307}:3306"
     environment:
       MARIADB_ROOT_PASSWORD: root
       MARIADB_DATABASE: vrm_animator
