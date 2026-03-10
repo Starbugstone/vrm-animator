@@ -38,6 +38,11 @@ const DEFAULT_ACTION_BLEND_SECONDS = 0.3
 const MIN_BLEND_SECONDS = 0.12
 const MAX_BLEND_RATIO = 0.35
 const ACTION_RETURN_LEAD_SECONDS = 0.28
+const AUTO_BLINK_INTERVAL_MIN_SECONDS = 2.8
+const AUTO_BLINK_INTERVAL_MAX_SECONDS = 6.4
+const AUTO_BLINK_CLOSE_SECONDS = 0.08
+const AUTO_BLINK_HOLD_SECONDS = 0.04
+const AUTO_BLINK_OPEN_SECONDS = 0.12
 
 function buildMotionCacheKey(file, label = 'VRMA action') {
   if (!file) return label
@@ -53,6 +58,10 @@ function boneWorldPosition(vrm, name) {
   const node = vrm?.humanoid?.getNormalizedBoneNode(name)
   if (!node) return null
   return node.getWorldPosition(new THREE.Vector3())
+}
+
+function sampleBlinkDelay() {
+  return THREE.MathUtils.randFloat(AUTO_BLINK_INTERVAL_MIN_SECONDS, AUTO_BLINK_INTERVAL_MAX_SECONDS)
 }
 
 function measureAvatar(vrm, bounds) {
@@ -93,6 +102,10 @@ export default function useHologramViewer(canvasRef) {
   const [isLoaded, setIsLoaded] = useState(false)
   const [isAvatarLoading, setIsAvatarLoading] = useState(false)
   const [framingState, setFramingState] = useState(DEFAULT_FRAMING)
+  const [viewerOptions, setViewerOptions] = useState({
+    autoBlink: true,
+    lookAtCamera: false,
+  })
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -156,10 +169,52 @@ export default function useHologramViewer(canvasRef) {
     let transitionBlendDuration = 0
     let transitionBlendElapsed = 0
     let defaultIdleMotion = null
+    let autoBlinkEnabled = true
+    let lookAtCameraEnabled = false
     const motionCache = new Map()
+    const blinkState = {
+      phase: 'waiting',
+      timer: sampleBlinkDelay(),
+      weight: 0,
+    }
 
     const setViewerStatus = (nextStatus) => {
       setStatus(nextStatus)
+    }
+
+    const setExpressionWeight = (expressionManager, name, weight) => {
+      if (!expressionManager?.getExpression?.(name)) return false
+      expressionManager.setValue(name, weight)
+      return true
+    }
+
+    const applyBlinkWeight = (weight, vrm = currentVrm) => {
+      const expressionManager = vrm?.expressionManager
+      if (!expressionManager) return false
+
+      const clampedWeight = THREE.MathUtils.clamp(weight, 0, 1)
+      if (setExpressionWeight(expressionManager, 'blink', clampedWeight)) {
+        return true
+      }
+
+      const leftApplied = setExpressionWeight(expressionManager, 'blinkLeft', clampedWeight)
+      const rightApplied = setExpressionWeight(expressionManager, 'blinkRight', clampedWeight)
+      return leftApplied || rightApplied
+    }
+
+    const resetBlinkState = () => {
+      blinkState.phase = 'waiting'
+      blinkState.timer = sampleBlinkDelay()
+      blinkState.weight = 0
+    }
+
+    const applyLookAtTarget = (vrm = currentVrm) => {
+      if (!vrm?.lookAt) return
+      vrm.lookAt.autoUpdate = true
+      vrm.lookAt.target = lookAtCameraEnabled ? camera : null
+      if (!lookAtCameraEnabled) {
+        vrm.lookAt.reset()
+      }
     }
 
     const clearCurrentAvatarUrl = (url = currentAvatarUrl) => {
@@ -587,6 +642,7 @@ export default function useHologramViewer(canvasRef) {
 
     const removeCurrentAvatar = () => {
       if (!currentVrm) return
+      applyBlinkWeight(0)
       stopCurrentAnimation({ resetPose: false })
       if (currentMixer) {
         currentMixer.stopAllAction()
@@ -644,6 +700,8 @@ export default function useHologramViewer(canvasRef) {
 
           currentMixer = new THREE.AnimationMixer(currentVrm.scene)
           scene.add(currentVrm.scene)
+          resetBlinkState()
+          applyLookAtTarget(currentVrm)
           setIsLoaded(true)
           setIsAvatarLoading(false)
           setViewerStatus('Avatar loaded')
@@ -783,6 +841,51 @@ export default function useHologramViewer(canvasRef) {
       }
     }
 
+    const updateAutoBlink = (dt) => {
+      if (!currentVrm) return
+
+      if (!autoBlinkEnabled) {
+        if (blinkState.weight > 0) {
+          blinkState.weight = 0
+          applyBlinkWeight(0)
+        }
+        return
+      }
+
+      if (!currentVrm.expressionManager) return
+
+      blinkState.timer -= dt
+
+      if (blinkState.phase === 'waiting') {
+        if (blinkState.timer <= 0) {
+          blinkState.phase = 'closing'
+          blinkState.timer = AUTO_BLINK_CLOSE_SECONDS
+        }
+      } else if (blinkState.phase === 'closing') {
+        const progress = 1 - blinkState.timer / AUTO_BLINK_CLOSE_SECONDS
+        blinkState.weight = THREE.MathUtils.clamp(progress, 0, 1)
+        if (blinkState.timer <= 0) {
+          blinkState.phase = 'holding'
+          blinkState.timer = AUTO_BLINK_HOLD_SECONDS
+          blinkState.weight = 1
+        }
+      } else if (blinkState.phase === 'holding') {
+        blinkState.weight = 1
+        if (blinkState.timer <= 0) {
+          blinkState.phase = 'opening'
+          blinkState.timer = AUTO_BLINK_OPEN_SECONDS
+        }
+      } else if (blinkState.phase === 'opening') {
+        const progress = blinkState.timer / AUTO_BLINK_OPEN_SECONDS
+        blinkState.weight = THREE.MathUtils.clamp(progress, 0, 1)
+        if (blinkState.timer <= 0) {
+          resetBlinkState()
+        }
+      }
+
+      applyBlinkWeight(blinkState.weight)
+    }
+
     let middleDragging = false
     let lastMouseY = 0
 
@@ -858,6 +961,7 @@ export default function useHologramViewer(canvasRef) {
       })
 
       beam.material.opacity = 0.08 + Math.sin(t * 2) * 0.02
+      updateAutoBlink(dt)
       if (playbackMode === 'motion' && currentMixer) {
         updateTransitionWeights(dt)
         currentMixer.update(dt)
@@ -880,8 +984,9 @@ export default function useHologramViewer(canvasRef) {
       } else {
         applyCommand(dt)
       }
-      currentVrm?.update(dt)
       controls.update()
+      camera.updateMatrixWorld(true)
+      currentVrm?.update(dt)
       renderer.render(scene, camera)
     }
 
@@ -906,6 +1011,26 @@ export default function useHologramViewer(canvasRef) {
         if (key === 'height') framing.targetYOffset = numericValue
         if (key === 'shift') framing.targetXOffset = numericValue
         applyFramingState()
+      },
+      setViewerOption: (key, value) => {
+        const enabled = Boolean(value)
+
+        if (key === 'autoBlink') {
+          autoBlinkEnabled = enabled
+          resetBlinkState()
+          if (!enabled) {
+            applyBlinkWeight(0)
+          }
+        }
+
+        if (key === 'lookAtCamera') {
+          lookAtCameraEnabled = enabled
+          applyLookAtTarget()
+        }
+
+        setViewerOptions((previous) => (
+          previous[key] === enabled ? previous : { ...previous, [key]: enabled }
+        ))
       },
     }
 
@@ -949,12 +1074,18 @@ export default function useHologramViewer(canvasRef) {
     internalsRef.current?.setFramingValue(key, value)
   }, [])
 
+  const setViewerOption = useCallback((key, value) => {
+    internalsRef.current?.setViewerOption(key, value)
+  }, [])
+
   return {
     loadFile,
     setIdleAnimation,
     playAnimationFile,
     setCommand,
     setFramingValue,
+    setViewerOption,
+    viewerOptions,
     framingState,
     status,
     isLoaded,

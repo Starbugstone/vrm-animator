@@ -10,6 +10,19 @@ const SLIDERS = [
   { key: 'shift', label: 'Shift', min: -1.5, max: 1.5, step: 0.01, unit: '' },
 ]
 
+const VIEWER_OPTIONS = [
+  {
+    key: 'autoBlink',
+    label: 'Auto blink',
+    description: 'Use VRM blink expressions for natural idle blinking.',
+  },
+  {
+    key: 'lookAtCamera',
+    label: 'Eyes follow camera',
+    description: 'Bind the VRM look-at target to the active camera.',
+  },
+]
+
 function formatSliderValue(step, value, unit) {
   const numericValue = typeof value === 'number' ? value : Number(value || 0)
   const text = Number.isInteger(step) ? numericValue.toFixed(0) : numericValue.toFixed(2)
@@ -18,8 +31,10 @@ function formatSliderValue(step, value, unit) {
 
 export default function CameraPopover({
   framingValues,
+  viewerOptions,
   activeCommand,
   onFramingChange,
+  onOptionChange,
   onCommand,
 }) {
   const [open, setOpen] = useState(true)
@@ -138,6 +153,24 @@ export default function CameraPopover({
               </label>
             )
           })}
+
+          <div className="space-y-2 rounded-2xl border border-white/10 bg-black/20 p-3">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/80">Viewer assists</div>
+            {VIEWER_OPTIONS.map(({ key, label, description }) => (
+              <label key={key} className="flex items-start justify-between gap-3 rounded-2xl border border-white/8 bg-white/5 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="text-sm text-white/85">{label}</div>
+                  <div className="mt-1 text-[11px] leading-5 text-white/45">{description}</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={Boolean(viewerOptions[key])}
+                  onChange={(event) => onOptionChange(key, event.target.checked)}
+                  className="mt-1 h-4 w-4 accent-cyan-400"
+                />
+              </label>
+            ))}
+          </div>
 
           <div className="mt-1 flex flex-wrap gap-1.5">
             {COMMANDS.map((command) => (

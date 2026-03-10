@@ -243,6 +243,11 @@ function AvatarLoadingOverlay({ label, keepCurrentAvatar }) {
   )
 }
 
+const VIEWER_OPTION_LABELS = {
+  autoBlink: 'Auto blink',
+  lookAtCamera: 'Eyes follow camera',
+}
+
 export default function WaifuHologramPage() {
   const canvasRef = useRef(null)
   const resetTimeoutRef = useRef(null)
@@ -255,6 +260,8 @@ export default function WaifuHologramPage() {
     playAnimationFile,
     setCommand: setViewerCommand,
     setFramingValue,
+    setViewerOption,
+    viewerOptions,
     framingState,
     status,
     isLoaded,
@@ -526,6 +533,12 @@ export default function WaifuHologramPage() {
     addLogLine(`Playing action: ${label}`)
   }, [addLogLine, clearResetTimer, playAnimationFile, selectedAction])
 
+  const handleViewerOptionChange = useCallback((key, value) => {
+    setViewerOption(key, value)
+    const label = VIEWER_OPTION_LABELS[key] || key
+    addLogLine(`${label}: ${value ? 'on' : 'off'}`)
+  }, [addLogLine, setViewerOption])
+
   return (
     <div className="min-h-screen w-full bg-[radial-gradient(circle_at_top,_#11214b_0%,_#071125_35%,_#030712_100%)] text-white">
       <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)]">
@@ -623,8 +636,10 @@ export default function WaifuHologramPage() {
 
             <CameraPopover
               framingValues={framingState}
+              viewerOptions={viewerOptions}
               activeCommand={activeMotionLabel}
               onFramingChange={setFramingValue}
+              onOptionChange={handleViewerOptionChange}
               onCommand={runCommand}
             />
 
