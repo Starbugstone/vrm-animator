@@ -1,0 +1,11 @@
+The example VRMA motions in this folder were sourced from:
+https://vroid.booth.pm/items/5512385
+
+Credit text required by the upstream pack:
+Animation credits to pixiv Inc.'s VRoid Project
+
+These files are included in this repository only as third-party demo/example assets.
+This repository does not own the animations or the rights to them.
+
+Copyright, ownership, and usage terms remain with the original publisher.
+See Readme_VRMA_MotionPack_EN.txt and Readme_VRMA_MotionPack_JP.txt in this folder for the upstream terms.

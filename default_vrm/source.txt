@@ -1,0 +1,8 @@
+The example VRM characters in this folder were sourced from:
+https://hub.vroid.com/en/users/121271631
+
+These files are included in this repository only as third-party demo/example assets.
+This repository does not own the characters, models, or rights to them.
+
+Copyright, ownership, and usage terms remain with the original creator.
+Do not assume these files can be reused or redistributed outside the creator's original terms.

@@ -1,66 +1,74 @@
 # VRM Animator
 
-Local React/Vite dev shell for the `waifu_hologram_webpage.jsx` VRM hologram viewer, with a Symfony backend for user authentication and avatar management.
+Local React/Vite shell for the hologram viewer in `waifu_hologram_webpage.jsx`, backed by a Symfony API for JWT auth and avatar metadata.
 
 ## Requirements
 
-- Docker & Docker Compose
+- Docker and Docker Compose
 
-## Quick Start (Docker)
+## Quick Start
 
 ```bash
 docker compose up -d --build
 ```
 
-This starts four services:
+This starts:
 
-| Service   | URL                      | Description                  |
-|-----------|--------------------------|------------------------------|
-| **PHP**   | http://localhost:8080     | Symfony API backend          |
-| **Node**  | http://localhost:5173     | Vite frontend dev server     |
-| **DB**    | localhost:3306            | MariaDB 11                   |
-| **Mail**  | http://localhost:8025     | Mailpit (dev email catcher)  |
+| Service | URL | Description |
+|---------|-----|-------------|
+| PHP | http://localhost:8080 | Symfony API backend |
+| Node | http://localhost:5173 | Vite frontend dev server |
+| DB | localhost:3306 | MariaDB 11 |
+| Mail | http://localhost:8025 | Mailpit |
 
-On first launch, the PHP container will automatically:
-1. Install Composer dependencies
-2. Generate JWT keypair
-3. Run database migrations
+On first launch the PHP container installs Composer dependencies, generates the JWT keypair, and runs the database migrations.
+
+## Asset Libraries
+
+The viewer loads assets from all of these locations:
+
+- `default_vrm/`: bundled third-party example VRM avatars.
+- `default_vrma/`: bundled third-party example VRMA motions.
+- `vrm/`: project VRM avatars.
+- `vrma/`: project VRMA motions.
+- `idle/`: idle VRMA loops used as the return state after one-shot actions.
+- Browser uploads: temporary VRM, GLB, or VRMA files added during the current session.
+
+Browser uploads are viewer-local for the current session. They are not yet persisted by the backend.
 
 ## API Endpoints
 
 ### Authentication
 
-| Method | Endpoint             | Description                      |
-|--------|----------------------|----------------------------------|
-| POST   | `/api/register`      | Create account, returns JWT      |
-| POST   | `/api/login_check`   | Login with email/password, returns JWT |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/register` | Create account and return a JWT |
+| POST | `/api/login_check` | Login and return a JWT |
 
-### Avatars (requires `Authorization: Bearer <token>`)
+### Avatars
 
-| Method | Endpoint              | Description              |
-|--------|-----------------------|--------------------------|
-| GET    | `/api/avatars`        | List your avatars        |
-| POST   | `/api/avatars`        | Create a new avatar      |
-| GET    | `/api/avatars/{id}`   | Get avatar details       |
-| PATCH  | `/api/avatars/{id}`   | Update an avatar         |
-| DELETE | `/api/avatars/{id}`   | Delete an avatar         |
+All avatar API requests are stateless and require `Authorization: Bearer <token>`.
 
-### API Documentation
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/avatars` | List your avatar records |
+| POST | `/api/avatars` | Create an avatar record |
+| GET | `/api/avatars/{id}` | Get one avatar record |
+| PATCH | `/api/avatars/{id}` | Update an avatar record |
+| DELETE | `/api/avatars/{id}` | Delete an avatar record |
 
-Interactive API docs are available at `http://localhost:8080/api/docs`.
+API docs are available at `http://localhost:8080/api/docs`.
 
-## Local Development (without Docker)
+## Local Development
 
-### Frontend only
+### Frontend
 
 ```bash
 npm install
 npm run dev
 ```
 
-Vite will print a local URL, usually `http://localhost:5173/`.
-
-### Backend only
+### Backend
 
 ```bash
 cd backend
@@ -70,44 +78,44 @@ php bin/console doctrine:migrations:migrate
 symfony server:start
 ```
 
-## Running Tests
+## Verification
 
-### Backend (PHPUnit)
+### Backend tests
 
 ```bash
 docker compose exec php bin/phpunit
 ```
 
-### Frontend (Vitest)
+### Frontend build check
 
 ```bash
-docker compose exec node npx vitest run
+npm run build
 ```
 
 ## Project Structure
 
-```
-├── .docker/                  # Docker configuration
-│   ├── php/                  # PHP/Apache Dockerfile & vhost
-│   └── node/                 # Node Dockerfile
-├── backend/                  # Symfony backend
-│   ├── config/               # Symfony config (security, doctrine, etc.)
-│   ├── src/
-│   │   ├── Controller/       # AuthController (register)
-│   │   ├── Entity/           # User, Avatar entities
-│   │   ├── Repository/       # Doctrine repositories
-│   │   └── State/            # API Platform state processors/providers
-│   └── tests/                # PHPUnit tests
-├── src/                      # React frontend source
-├── docker-compose.yml        # Docker Compose config
-├── package.json              # Node dependencies
-└── vite.config.js            # Vite config
+```text
+vrm-animator/
+|- .docker/
+|- backend/
+|- src/
+|- default_vrm/      # Third-party example VRM avatars
+|- default_vrma/     # Third-party example VRMA motions
+|- vrm/              # Project VRM assets
+|- vrma/             # Project VRMA assets
+|- idle/             # Idle VRMA clips
+|- waifu_hologram_webpage.jsx
+|- docker-compose.yml
+|- package.json
+`- vite.config.js
 ```
 
-## Using the App
+## Third-Party Example Assets
 
-1. Run `docker compose up -d --build`.
-2. Open `http://localhost:5173` for the VRM viewer frontend.
-3. Register via `POST /api/register` with `{"email": "...", "password": "...", "displayName": "..."}`.
-4. Use the returned JWT token to manage avatars via the API.
-5. Upload `.vrm` or `.glb` avatars with the viewer's upload panel.
+The files in `default_vrm/` and `default_vrma/` are included as example/demo assets only. This repository does not claim ownership of those files.
+
+- Example VRM avatars were sourced from `https://hub.vroid.com/en/users/121271631`.
+- Example VRMA motions were sourced from `https://vroid.booth.pm/items/5512385`.
+- VRMA credit text: `Animation credits to pixiv Inc.'s VRoid Project`.
+
+Ownership, copyright, and license terms remain with the original creators and publishers. Reuse, redistribution, and downstream usage must follow the original terms provided by those creators. See `default_vrm/source.txt`, `default_vrma/source.txt`, and the bundled upstream readme files in `default_vrma/` for the relevant notices.

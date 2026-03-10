@@ -4,19 +4,31 @@ import useHologramViewer from './src/useHologramViewer.js'
 
 const COMMANDS = ['idle', 'clap', 'jump', 'dance', 'spin']
 
-const bundledVrmModules = import.meta.glob('./vrm/*.{vrm,glb}', {
+const projectVrmModules = import.meta.glob('./vrm/**/*.{vrm,glb}', {
   eager: true,
   import: 'default',
   query: '?url',
 })
 
-const bundledIdleModules = import.meta.glob('./idle/*.vrma', {
+const defaultVrmModules = import.meta.glob('./default_vrm/**/*.{vrm,glb}', {
   eager: true,
   import: 'default',
   query: '?url',
 })
 
-const bundledVrmaModules = import.meta.glob('./vrma/*.vrma', {
+const bundledIdleModules = import.meta.glob('./idle/**/*.vrma', {
+  eager: true,
+  import: 'default',
+  query: '?url',
+})
+
+const projectVrmaModules = import.meta.glob('./vrma/**/*.vrma', {
+  eager: true,
+  import: 'default',
+  query: '?url',
+})
+
+const defaultVrmaModules = import.meta.glob('./default_vrma/**/*.vrma', {
   eager: true,
   import: 'default',
   query: '?url',
@@ -30,32 +42,81 @@ function getDisplayBase(name) {
   return name.replace(/\.[^.]+$/, '')
 }
 
-function buildBundledAssets(modules, type) {
+function getAssetGroup(path) {
+  const normalized = path.replace(/^\.\//, '')
+  const segments = normalized.split('/')
+  return segments.slice(1, -1).join(' / ')
+}
+
+function buildBundledAssets(modules, options) {
+  const { type, source, sourceLabel } = options
+
   return Object.entries(modules)
     .filter(([path]) => !path.endsWith('.gitignore'))
     .map(([path, url]) => {
       const name = getFileName(path)
       return {
-        id: `${type}:${path}`,
+        id: `${type}:${source}:${path}`,
         type,
         name,
         label: getDisplayBase(name),
-        source: 'bundled',
+        source,
+        sourceLabel,
+        groupLabel: getAssetGroup(path),
         url,
       }
     })
-    .sort((left, right) => left.label.localeCompare(right.label))
+    .sort((left, right) => {
+      const groupCompare = left.groupLabel.localeCompare(right.groupLabel)
+      if (groupCompare !== 0) return groupCompare
+      return left.label.localeCompare(right.label)
+    })
 }
 
-const BUNDLED_AVATARS = buildBundledAssets(bundledVrmModules, 'avatar')
-const BUNDLED_IDLE_ACTIONS = buildBundledAssets(bundledIdleModules, 'idle')
-const BUNDLED_ACTIONS = buildBundledAssets(bundledVrmaModules, 'action')
+const DEFAULT_AVATARS = buildBundledAssets(defaultVrmModules, {
+  type: 'avatar',
+  source: 'example',
+  sourceLabel: 'Bundled example',
+})
+
+const PROJECT_AVATARS = buildBundledAssets(projectVrmModules, {
+  type: 'avatar',
+  source: 'project',
+  sourceLabel: 'Project asset',
+})
+
+const BUNDLED_IDLE_ACTIONS = buildBundledAssets(bundledIdleModules, {
+  type: 'idle',
+  source: 'project',
+  sourceLabel: 'Project idle',
+})
+
+const DEFAULT_ACTIONS = buildBundledAssets(defaultVrmaModules, {
+  type: 'action',
+  source: 'example',
+  sourceLabel: 'Bundled example',
+})
+
+const PROJECT_ACTIONS = buildBundledAssets(projectVrmaModules, {
+  type: 'action',
+  source: 'project',
+  sourceLabel: 'Project asset',
+})
+
+const BUNDLED_AVATARS = [...DEFAULT_AVATARS, ...PROJECT_AVATARS]
+const BUNDLED_ACTIONS = [...DEFAULT_ACTIONS, ...PROJECT_ACTIONS]
 const DEFAULT_IDLE_ID = BUNDLED_IDLE_ACTIONS.find((item) => item.name === 'idle_main.vrma')?.id || BUNDLED_IDLE_ACTIONS[0]?.id || ''
 const IDLE_VARIATION_MIN_MS = 9000
 const IDLE_VARIATION_MAX_MS = 16000
 
 function getAssetLabel(asset) {
   return asset?.alias?.trim() || asset?.label || asset?.name || 'Unnamed'
+}
+
+function getAssetSourceTag(asset) {
+  if (asset?.source === 'upload') return 'Upload'
+  if (asset?.source === 'example') return 'Example'
+  return 'Project'
 }
 
 function createUploadedAsset(type, file) {
@@ -65,6 +126,8 @@ function createUploadedAsset(type, file) {
     name: file.name,
     label: getDisplayBase(file.name),
     source: 'upload',
+    sourceLabel: 'Session upload',
+    groupLabel: '',
     file,
   }
 }
@@ -142,7 +205,7 @@ function AssetPanel({
           {filteredItems.length === 0 ? <option value="">{emptyLabel}</option> : null}
           {filteredItems.map((item) => (
             <option key={item.id} value={item.id}>
-              {getAssetLabel(item)}
+              [{getAssetSourceTag(item)}] {getAssetLabel(item)}
             </option>
           ))}
         </select>
@@ -151,6 +214,9 @@ function AssetPanel({
           {selectedItem ? (
             <>
               <div className="font-medium text-cyan-200">{getAssetLabel(selectedItem)}</div>
+              <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-white/45">
+                {[selectedItem.sourceLabel, selectedItem.groupLabel].filter(Boolean).join(' / ')}
+              </div>
               <div className="mt-1 break-all text-xs text-white/45">{selectedItem.name}</div>
             </>
           ) : (
@@ -278,9 +344,9 @@ export default function WaifuHologramPage() {
   const [avatarSearch, setAvatarSearch] = useState('')
   const [idleSearch, setIdleSearch] = useState('')
   const [actionSearch, setActionSearch] = useState('')
-  const [selectedAvatarId, setSelectedAvatarId] = useState(BUNDLED_AVATARS[0]?.id || '')
+  const [selectedAvatarId, setSelectedAvatarId] = useState(DEFAULT_AVATARS[0]?.id || PROJECT_AVATARS[0]?.id || '')
   const [selectedIdleId, setSelectedIdleId] = useState(DEFAULT_IDLE_ID)
-  const [selectedActionId, setSelectedActionId] = useState(BUNDLED_ACTIONS[0]?.id || '')
+  const [selectedActionId, setSelectedActionId] = useState(DEFAULT_ACTIONS[0]?.id || PROJECT_ACTIONS[0]?.id || '')
   const [avatarRenameDraft, setAvatarRenameDraft] = useState('')
   const [idleRenameDraft, setIdleRenameDraft] = useState('')
   const [actionRenameDraft, setActionRenameDraft] = useState('')
@@ -547,7 +613,7 @@ export default function WaifuHologramPage() {
             <div className="text-xs uppercase tracking-[0.3em] text-cyan-300/80">AI Hologram Console</div>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">VRM Holo Avatar</h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-white/70">
-              Local preview shell for testing VRM avatars and temporary action files without needing fullscreen.
+              Local preview shell for curated example assets, project libraries, and one-off VRM or VRMA uploads.
             </p>
           </div>
 
@@ -561,7 +627,7 @@ export default function WaifuHologramPage() {
               renameDraft={avatarRenameDraft}
               emptyLabel="No matching VRM files"
               uploadAccept=".vrm,.glb"
-              helper="Search local VRM files, upload another one, or rename the visible label."
+              helper="Browse bundled examples, project VRM files, or a temporary upload."
               onSearchChange={setAvatarSearch}
               onSelect={setSelectedAvatarId}
               onRenameDraftChange={setAvatarRenameDraft}
@@ -583,7 +649,7 @@ export default function WaifuHologramPage() {
               renameDraft={idleRenameDraft}
               emptyLabel="No matching idle files"
               uploadAccept=".vrma"
-              helper="Pick the default idle loop. The state machine will return here after custom actions."
+              helper="Pick the default idle loop. Action playback crossfades back here after one-shot clips."
               onSearchChange={setIdleSearch}
               onSelect={setSelectedIdleId}
               onRenameDraftChange={setIdleRenameDraft}
@@ -602,7 +668,7 @@ export default function WaifuHologramPage() {
               renameDraft={actionRenameDraft}
               emptyLabel="No matching action files"
               uploadAccept=".vrma"
-              helper="Play a custom VRMA clip. It will crossfade back to the current idle loop."
+              helper="Play bundled example motions, project clips, or a temporary upload."
               onSearchChange={setActionSearch}
               onSelect={setSelectedActionId}
               onRenameDraftChange={setActionRenameDraft}
@@ -615,6 +681,13 @@ export default function WaifuHologramPage() {
             <section className="rounded-3xl border border-white/10 bg-white/5 p-4 md:col-span-2 xl:col-span-1">
               <div className="mb-2 text-xs uppercase tracking-[0.28em] text-white/45">Loaded avatar</div>
               <div className="rounded-2xl bg-black/25 px-3 py-2 text-sm text-white/75">{loadedName}</div>
+            </section>
+
+            <section className="rounded-3xl border border-amber-300/15 bg-amber-300/5 p-4 md:col-span-2 xl:col-span-1">
+              <div className="mb-2 text-xs uppercase tracking-[0.28em] text-amber-200/70">Asset rights</div>
+              <div className="text-sm leading-6 text-white/70">
+                Bundled example VRM and VRMA files are third-party sample assets. Check the README and source files before reusing or redistributing them outside this demo project.
+              </div>
             </section>
 
             <section className="rounded-3xl border border-white/10 bg-white/5 p-4 md:col-span-2 xl:col-span-1">

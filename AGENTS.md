@@ -36,8 +36,10 @@ vrm-animator/
 │   ├── CameraPopover.jsx
 │   ├── useHologramViewer.js      # VRM/VRMA viewer hook
 │   └── (future: api/, components/, hooks/, etc.)
-├── vrm/                          # Bundled default VRM avatars (.vrm, .glb)
-├── vrma/                         # Bundled default animations (.vrma)
+├── default_vrm/                  # Third-party example VRM avatars (.vrm, .glb)
+├── default_vrma/                 # Third-party example VRMA motions (.vrma)
+├── vrm/                          # Project VRM avatars (.vrm, .glb)
+├── vrma/                         # Project VRMA animations (.vrma)
 ├── idle/                         # Bundled idle clips (.vrma)
 ├── waifu_hologram_webpage.jsx    # Main hologram UI (to be split into src/)
 ├── docker-compose.yml
@@ -53,7 +55,7 @@ vrm-animator/
 
 - **Backend**: All persistent data, auth, and business rules. No UI. API-only.
 - **Frontend**: All UI and client-side state. Communicates with backend only via HTTP/JSON and JWT.
-- **Assets**: Default avatars/animations live in `vrm/`, `vrma/`, `idle/`; user-uploaded assets are stored and served by the backend.
+- **Assets**: Example avatars/animations live in `default_vrm/` and `default_vrma/`; project asset libraries live in `vrm/`, `vrma/`, and `idle/`; user-uploaded assets are stored and served by the backend.
 
 ---
 
@@ -108,7 +110,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
   - Ensure frontend has a proper login/register flow and stores/uses JWT for all API calls; no session dependency.
 
 - **Default avatars and animations**
-  - Backend exposes or references a **curated set of default avatars and animations** (e.g. from `vrm/`, `vrma/`, `idle/` or from a DB seed). Frontend can list “default” assets and use them without requiring uploads.
+  - Backend exposes or references a **curated set of default avatars and animations** (e.g. from `default_vrm/`, `default_vrma/`, `vrm/`, `vrma/`, `idle/` or from a DB seed). Frontend can list “default” assets and use them without requiring uploads.
   - Option: backend serves default asset list (and optionally files) so one source of truth.
 
 - **User-uploaded avatars and animations**
