@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "kind": "action_catalog",
+  "entries": [
+    {
+      "file": "Dance-Twirl.vrma",
+      "label": "Dance Twirl",
+      "description": "Expressive twirl motion for energetic or celebratory moments.",
+      "keywords": ["dance", "celebrate", "playful"],
+      "emotionTags": ["happy", "playful", "excited"]
+    },
+    {
+      "file": "Finger-Gun.vrma",
+      "label": "Finger Gun",
+      "description": "Cheeky gesture for playful or teasing replies.",
+      "keywords": ["gesture", "playful", "teasing"],
+      "emotionTags": ["playful", "cheeky", "happy"]
+    },
+    {
+      "file": "Hand-on-hip.vrma",
+      "label": "Hand on Hip",
+      "description": "Confident stance for bold or self-assured responses.",
+      "keywords": ["pose", "confident", "idle"],
+      "emotionTags": ["confident", "calm", "neutral"]
+    },
+    {
+      "file": "kneel-wave.vrma",
+      "label": "Kneel Wave",
+      "description": "Soft greeting motion for friendly introductions.",
+      "keywords": ["greeting", "wave", "welcome"],
+      "emotionTags": ["happy", "warm", "friendly"]
+    },
+    {
+      "file": "Spin.vrma",
+      "label": "Spin",
+      "description": "Quick spinning motion for excited or flashy moments.",
+      "keywords": ["spin", "celebrate", "showcase"],
+      "emotionTags": ["excited", "happy", "surprised"]
+    },
+    {
+      "file": "Swing-arms.vrma",
+      "label": "Swing Arms",
+      "description": "Loose conversational body motion for casual speech.",
+      "keywords": ["speech", "casual", "body"],
+      "emotionTags": ["neutral", "calm", "friendly"]
+    },
+    {
+      "file": "Victory-fingers.vrma",
+      "label": "Victory Fingers",
+      "description": "Celebration pose for successful or positive replies.",
+      "keywords": ["victory", "celebrate", "positive"],
+      "emotionTags": ["happy", "celebrate", "excited"]
+    }
+  ]
+}

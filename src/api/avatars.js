@@ -1,7 +1,7 @@
 import { apiRequest, downloadFile } from './client'
 
 export function listAvatars(token) {
-  return apiRequest('/api/avatars', { token }).then((data) => data['hydra:member'] || data)
+  return apiRequest('/api/avatars', { token }).then((data) => data.member || data['hydra:member'] || data)
 }
 
 export function uploadAvatar(token, formData) {
@@ -20,6 +20,13 @@ export function updateAvatar(token, avatarId, payload) {
       'Content-Type': 'application/merge-patch+json',
     },
     body: JSON.stringify(payload),
+  })
+}
+
+export function deleteAvatar(token, avatarId) {
+  return apiRequest(`/api/avatars/${avatarId}`, {
+    method: 'DELETE',
+    token,
   })
 }
 

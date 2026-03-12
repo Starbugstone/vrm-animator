@@ -22,7 +22,7 @@ export default function MemoryPanel({ memory, revisions, busy, onSave }) {
         <div>
           <div className="text-xs uppercase tracking-[0.28em] text-white/45">Memory</div>
           <div className="mt-1 text-sm text-white/60">
-            Revision {memory.revision} · Last updated by {memory.lastUpdatedBy}
+            Revision {memory.revision} | Last updated by {memory.lastUpdatedBy}
           </div>
         </div>
         <button
@@ -31,7 +31,7 @@ export default function MemoryPanel({ memory, revisions, busy, onSave }) {
           disabled={busy}
           className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? 'Saving…' : 'Save memory'}
+          {busy ? 'Saving...' : 'Save memory'}
         </button>
       </div>
 
@@ -46,7 +46,7 @@ export default function MemoryPanel({ memory, revisions, busy, onSave }) {
       <div className="mt-2 space-y-2">
         {revisions.slice(0, 5).map((entry) => (
           <div key={entry.id} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/65">
-            Revision {entry.revision} · {entry.source} · {new Date(entry.createdAt).toLocaleString()}
+            Revision {entry.revision} | {entry.source} | {new Date(entry.createdAt).toLocaleString()}
           </div>
         ))}
       </div>

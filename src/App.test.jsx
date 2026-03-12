@@ -16,10 +16,6 @@ vi.mock('./hooks/useAuth.js', () => ({
   }),
 }))
 
-vi.mock('../waifu_hologram_webpage.jsx', () => ({
-  default: () => <div>Workspace</div>,
-}))
-
 describe('App', () => {
   it('renders the authentication screen when not authenticated', () => {
     render(<App />)

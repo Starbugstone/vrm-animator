@@ -22,6 +22,7 @@ class AuthenticationTest extends WebTestCase
 
         $data = json_decode($client->getResponse()->getContent(), true);
         $this->assertArrayHasKey('token', $data);
+        $this->assertArrayHasKey('refreshToken', $data);
         $this->assertArrayHasKey('user', $data);
         $this->assertEquals('test@example.com', $data['user']['email']);
         $this->assertEquals('Test User', $data['user']['displayName']);
@@ -92,6 +93,8 @@ class AuthenticationTest extends WebTestCase
 
         $data = json_decode($client->getResponse()->getContent(), true);
         $this->assertArrayHasKey('token', $data);
+        $this->assertArrayHasKey('refreshToken', $data);
+        $this->assertArrayHasKey('user', $data);
     }
 
     public function testLoginWithInvalidCredentials(): void

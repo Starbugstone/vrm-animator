@@ -14,6 +14,14 @@ export function loginUser(payload) {
   })
 }
 
+export function refreshAuthToken(refreshToken) {
+  return apiRequest('/api/token/refresh', {
+    method: 'POST',
+    json: { refreshToken },
+    skipAuthRefresh: true,
+  })
+}
+
 export function loginWithGoogle(idToken) {
   return apiRequest('/api/auth/google', {
     method: 'POST',

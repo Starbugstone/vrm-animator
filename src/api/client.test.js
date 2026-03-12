@@ -1,8 +1,11 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { downloadFile } from './client'
+import { clearAuthSession, registerAuthHandlers, syncAuthSession } from './authSession'
+import { apiRequest, downloadFile } from './client'
 
 afterEach(() => {
   vi.restoreAllMocks()
+  clearAuthSession()
+  registerAuthHandlers({ refresh: null, logout: null })
 })
 
 describe('downloadFile', () => {
@@ -21,5 +24,40 @@ describe('downloadFile', () => {
     expect(file).toBeInstanceOf(File)
     expect(file.name).toBe('avatar.vrm')
     expect(file.size).toBeGreaterThan(0)
+  })
+})
+
+describe('apiRequest', () => {
+  it('refreshes an expired access token and retries once', async () => {
+    const refresh = vi.fn().mockResolvedValue({
+      token: 'fresh-access-token',
+      refreshToken: 'fresh-refresh-token',
+    })
+
+    registerAuthHandlers({ refresh, logout: vi.fn() })
+    syncAuthSession({ token: 'expired-access-token', refreshToken: 'stale-refresh-token' })
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({ message: 'Expired access token.' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({ id: 1, email: 'user@example.com' }),
+      })
+
+    const data = await apiRequest('/api/me', { token: 'expired-access-token' })
+
+    expect(refresh).toHaveBeenCalledWith('stale-refresh-token')
+    expect(data).toEqual({ id: 1, email: 'user@example.com' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    const secondHeaders = fetchMock.mock.calls[1][1].headers
+    expect(secondHeaders.get('Authorization')).toBe('Bearer fresh-access-token')
   })
 })

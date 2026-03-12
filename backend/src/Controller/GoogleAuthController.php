@@ -3,9 +3,9 @@
 namespace App\Controller;
 
 use App\Entity\User;
+use App\Service\AuthResponseFactory;
 use App\Service\GoogleIdentityVerifier;
 use Doctrine\ORM\EntityManagerInterface;
-use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -20,7 +20,7 @@ class GoogleAuthController extends AbstractController
         Request $request,
         EntityManagerInterface $entityManager,
         GoogleIdentityVerifier $googleIdentityVerifier,
-        JWTTokenManagerInterface $jwtManager,
+        AuthResponseFactory $authResponseFactory,
         UserPasswordHasherInterface $passwordHasher,
     ): JsonResponse {
         $payload = json_decode($request->getContent(), true);
@@ -68,12 +68,7 @@ class GoogleAuthController extends AbstractController
 
         return $this->json([
             'message' => 'Google sign-in successful.',
-            'token' => $jwtManager->create($user),
-            'user' => [
-                'id' => $user->getId(),
-                'email' => $user->getEmail(),
-                'displayName' => $user->getDisplayName(),
-            ],
+            ...$authResponseFactory->createResponseData($user),
         ]);
     }
 }

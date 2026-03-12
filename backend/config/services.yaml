@@ -5,6 +5,15 @@ services:
     _defaults:
         autowire: true
         autoconfigure: true
+        bind:
+            string $llmCredentialEncryptionKey: '%env(LLM_CREDENTIAL_ENCRYPTION_KEY)%'
+            bool $llmTestMode: '%env(bool:LLM_TEST_MODE)%'
+            int $refreshTokenTtl: '%env(int:REFRESH_TOKEN_TTL)%'
+            string $sharedAssetRoot: '%env(SHARED_ASSET_ROOT)%'
+
+    App\Security\JwtAuthenticationSuccessHandler:
+        arguments:
+            $authResponseFactory: '@App\Service\AuthResponseFactory'
 
     App\:
         resource: '../src/'
@@ -24,4 +33,17 @@ services:
     App\State\AnimationDeleteProcessor:
         arguments:
             $removeProcessor: '@api_platform.doctrine.orm.state.remove_processor'
+
+    App\Service\Llm\OpenRouterProvider:
+        tags: ['app.llm_provider']
+
+    App\Service\Llm\MiniMaxProvider:
+        tags: ['app.llm_provider']
+
+    App\Service\Llm\GlmProvider:
+        tags: ['app.llm_provider']
+
+    App\Service\Llm\LlmProviderResolver:
+        arguments:
+            $providers: !tagged_iterator app.llm_provider
 

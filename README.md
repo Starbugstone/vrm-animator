@@ -1,6 +1,6 @@
 # VRM Animator
 
-Local React/Vite shell for the hologram viewer in `waifu_hologram_webpage.jsx`, backed by a Symfony API for JWT auth and avatar metadata.
+React/Vite frontend for the dedicated `Viewer` and `Manage` pages, backed by a Symfony API for JWT auth, private asset CRUD, avatar memory, and LLM configuration.
 
 ## Requirements
 
@@ -53,23 +53,21 @@ The Docker stack publishes MariaDB on host port `3307` by default to avoid confl
 
 ## Asset Libraries
 
-The viewer loads assets from all of these locations:
+The viewer loads shared assets from these backend-served locations:
 
 - `default_vrm/`: bundled third-party example VRM avatars.
 - `default_vrma/`: bundled third-party example VRMA motions.
-- `vrm/`: project VRM avatars.
-- `vrma/`: project VRMA motions.
 - `expressions_vrma/`: facial and mouth-only VRMA overlays.
 - `idle/`: idle VRMA loops used as the return state after one-shot actions.
-- Browser uploads: temporary VRM, GLB, or VRMA files added during the current session.
+- User uploads: stored by the backend under per-user private directories and only served back to the owning user.
 
-Browser uploads are viewer-local for the current session. They are not yet persisted by the backend.
+User uploads are not shared catalogs. They live in backend storage scoped per account.
 
 ## Tag Catalog Strategy
 
 The project now keeps two local metadata catalogs that bridge the current frontend-only viewer and the future backend-driven LLM flow:
 
-- `vrma/catalog.json`: body action tags and weighted random selection hints.
+- `default_vrma/catalog.json`: shared default body action tags and weighted random selection hints.
 - `expressions_vrma/catalog.json`: facial/mouth expression tags and speech fallback pools.
 
 Current selection rules:
@@ -148,11 +146,8 @@ vrm-animator/
 |- src/
 |- default_vrm/      # Third-party example VRM avatars
 |- default_vrma/     # Third-party example VRMA motions
-|- vrm/              # Project VRM assets
-|- vrma/             # Project VRMA assets
 |- expressions_vrma/ # Project facial/mouth VRMA overlays
 |- idle/             # Idle VRMA clips
-|- waifu_hologram_webpage.jsx
 |- docker-compose.yml
 |- package.json
 `- vite.config.js

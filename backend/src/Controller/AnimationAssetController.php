@@ -40,7 +40,7 @@ class AnimationAssetController extends AbstractController
         }
 
         try {
-            $storedAsset = $uploadedAssetStorage->storeUploadedFile('animation', $file, ['vrma']);
+            $storedAsset = $uploadedAssetStorage->storeUploadedFile('animation', $file, ['vrma'], $user->getId());
         } catch (\InvalidArgumentException $exception) {
             return $this->json(['message' => $exception->getMessage()], Response::HTTP_BAD_REQUEST);
         }
@@ -64,6 +64,10 @@ class AnimationAssetController extends AbstractController
             static fn (mixed $value): string => trim((string) $value),
             $request->request->all('keywords'),
         )));
+        $emotionTags = array_values(array_filter(array_map(
+            static fn (mixed $value): string => trim((string) $value),
+            $request->request->all('emotionTags'),
+        )));
 
         $name = trim((string) $request->request->get('name', pathinfo($storedAsset->originalFilename, PATHINFO_FILENAME)));
 
@@ -77,6 +81,7 @@ class AnimationAssetController extends AbstractController
             ->setSizeBytes($storedAsset->sizeBytes)
             ->setDescription($this->normalizeNullableString($request->request->get('description')))
             ->setKeywords($keywords)
+            ->setEmotionTags($emotionTags)
             ->setKind($kind)
             ->setIsDefault(false);
 
@@ -102,7 +107,7 @@ class AnimationAssetController extends AbstractController
             return $this->json(['message' => 'Animation file is not stored by the backend.'], Response::HTTP_NOT_FOUND);
         }
 
-        $absolutePath = $uploadedAssetStorage->getAbsolutePath('animation', $animation->getStoredFilename());
+        $absolutePath = $uploadedAssetStorage->getAbsolutePath('animation', $animation->getStoredFilename(), $user->getId());
         if (!is_file($absolutePath)) {
             return $this->json(['message' => 'Animation file is missing.'], Response::HTTP_NOT_FOUND);
         }

@@ -18,7 +18,7 @@ class AvatarDeleteProcessor implements ProcessorInterface
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): mixed
     {
         if ($data instanceof Avatar) {
-            $this->uploadedAssetStorage->deleteStoredFile('avatar', $data->getStoredFilename());
+            $this->uploadedAssetStorage->deleteStoredFile('avatar', $data->getStoredFilename(), $data->getOwner()?->getId());
         }
 
         return $this->removeProcessor->process($data, $operation, $uriVariables, $context);

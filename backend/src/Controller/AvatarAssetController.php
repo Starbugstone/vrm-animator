@@ -40,7 +40,7 @@ class AvatarAssetController extends AbstractController
         }
 
         try {
-            $storedAsset = $uploadedAssetStorage->storeUploadedFile('avatar', $file, ['vrm', 'glb']);
+            $storedAsset = $uploadedAssetStorage->storeUploadedFile('avatar', $file, ['vrm', 'glb'], $user->getId());
         } catch (\InvalidArgumentException $exception) {
             return $this->json(['message' => $exception->getMessage()], Response::HTTP_BAD_REQUEST);
         }
@@ -83,7 +83,7 @@ class AvatarAssetController extends AbstractController
             return $this->json(['message' => 'Avatar file is not stored by the backend.'], Response::HTTP_NOT_FOUND);
         }
 
-        $absolutePath = $uploadedAssetStorage->getAbsolutePath('avatar', $avatar->getStoredFilename());
+        $absolutePath = $uploadedAssetStorage->getAbsolutePath('avatar', $avatar->getStoredFilename(), $user->getId());
         if (!is_file($absolutePath)) {
             return $this->json(['message' => 'Avatar file is missing.'], Response::HTTP_NOT_FOUND);
         }

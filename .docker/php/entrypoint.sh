@@ -76,9 +76,24 @@ $pdo->exec(sprintf(
 $pdo->exec('FLUSH PRIVILEGES');
 PHP
 
+run_migration_command() {
+    local label="$1"
+    shift
+
+    echo "Running ${label}..."
+    if timeout 90 "$@"; then
+        return 0
+    fi
+
+    local exit_code=$?
+    echo "Warning: ${label} did not complete cleanly (exit ${exit_code}). Continuing startup so Apache can serve requests."
+    return 0
+}
+
 echo "Running database migrations..."
-php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
-APP_ENV=test php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+run_migration_command "database migrations" php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+rm -rf /var/www/html/var/cache/test
+run_migration_command "test database migrations" env APP_ENV=test php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
 
 # Fix permissions
 chown -R www-data:www-data /var/www/html/var /var/www/html/config/jwt 2>/dev/null || true

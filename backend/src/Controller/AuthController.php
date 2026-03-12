@@ -3,9 +3,9 @@
 namespace App\Controller;
 
 use App\Entity\User;
+use App\Service\AuthResponseFactory;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
-use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -22,7 +22,7 @@ class AuthController extends AbstractController
         UserPasswordHasherInterface $passwordHasher,
         EntityManagerInterface $entityManager,
         ValidatorInterface $validator,
-        JWTTokenManagerInterface $jwtManager,
+        AuthResponseFactory $authResponseFactory,
     ): JsonResponse {
         $data = json_decode($request->getContent(), true);
 
@@ -64,16 +64,9 @@ class AuthController extends AbstractController
             );
         }
 
-        $token = $jwtManager->create($user);
-
         return $this->json([
             'message' => 'User registered successfully.',
-            'token' => $token,
-            'user' => [
-                'id' => $user->getId(),
-                'email' => $user->getEmail(),
-                'displayName' => $user->getDisplayName(),
-            ],
+            ...$authResponseFactory->createResponseData($user),
         ], Response::HTTP_CREATED);
     }
 }

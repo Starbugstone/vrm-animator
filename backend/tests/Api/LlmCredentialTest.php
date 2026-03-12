@@ -1,0 +1,211 @@
+<?php
+
+namespace App\Tests\Api;
+
+use App\Entity\LlmCredential;
+use App\Repository\LlmCredentialRepository;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+
+class LlmCredentialTest extends WebTestCase
+{
+    private function registerUser($client, string $email): string
+    {
+        $client->request('POST', '/api/register', [], [], [
+            'CONTENT_TYPE' => 'application/json',
+        ], json_encode([
+            'email' => $email,
+            'password' => 'password123',
+            'displayName' => 'Credential User',
+        ]));
+
+        $data = json_decode($client->getResponse()->getContent(), true);
+
+        return $data['token'];
+    }
+
+    public function testProviderCatalogIsAvailable(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'llm-providers@example.com');
+
+        $client->request('GET', '/api/llm/providers', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $data = json_decode($client->getResponse()->getContent(), true);
+
+        $providerIds = array_column($data['providers'] ?? [], 'id');
+        $this->assertContains('openrouter', $providerIds);
+        $this->assertContains('minimax', $providerIds);
+        $this->assertContains('glm', $providerIds);
+    }
+
+    public function testOpenRouterModelsCanBeListedAndFiltered(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'llm-openrouter-models@example.com');
+
+        $client->request('GET', '/api/llm/providers/openrouter/models?billing=free', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $freeModels = json_decode($client->getResponse()->getContent(), true);
+        $this->assertCount(1, $freeModels['models']);
+        $this->assertTrue($freeModels['models'][0]['isFree']);
+
+        $client->request('GET', '/api/llm/providers/openrouter/models?billing=paid&search=gpt-4.1', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $paidModels = json_decode($client->getResponse()->getContent(), true);
+        $this->assertCount(1, $paidModels['models']);
+        $this->assertFalse($paidModels['models'][0]['isFree']);
+        $this->assertSame('openai/gpt-4.1-mini', $paidModels['models'][0]['id']);
+    }
+
+    public function testCredentialCanBeCreatedListedAndUpdatedWithoutExposingRawSecret(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'llm-owner@example.com');
+
+        $client->request('POST', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'Primary OpenRouter',
+            'provider' => 'openrouter',
+            'secret' => 'openrouter-secret-token',
+            'defaultModel' => 'openai/gpt-4.1-mini',
+            'isActive' => true,
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $created = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('Primary OpenRouter', $created['name']);
+        $this->assertSame('openrouter', $created['provider']);
+        $this->assertSame('openai/gpt-4.1-mini', $created['defaultModel']);
+        $this->assertTrue($created['isActive']);
+        $this->assertTrue($created['hasSecret']);
+        $this->assertArrayNotHasKey('secret', $created);
+        $this->assertStringEndsWith('oken', $created['maskedSecret']);
+
+        /** @var LlmCredentialRepository $repository */
+        $repository = static::getContainer()->get(LlmCredentialRepository::class);
+        /** @var LlmCredential $persisted */
+        $persisted = $repository->find($created['id']);
+        $this->assertNotSame('openrouter-secret-token', $persisted->getEncryptedSecret());
+
+        $client->request('GET', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $listed = json_decode($client->getResponse()->getContent(), true);
+        $this->assertCount(1, $listed['credentials']);
+        $this->assertSame($created['maskedSecret'], $listed['credentials'][0]['maskedSecret']);
+
+        $client->request('PATCH', '/api/llm/credentials/'.$created['id'], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'Renamed OpenRouter',
+            'secret' => 'new-secret-token',
+            'defaultModel' => 'anthropic/claude-3.7-sonnet',
+            'isActive' => false,
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+        $updated = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('Renamed OpenRouter', $updated['name']);
+        $this->assertSame('anthropic/claude-3.7-sonnet', $updated['defaultModel']);
+        $this->assertFalse($updated['isActive']);
+        $this->assertStringEndsWith('oken', $updated['maskedSecret']);
+    }
+
+    public function testCredentialEndpointsArePrivateToOwner(): void
+    {
+        $client = static::createClient();
+        $ownerToken = $this->registerUser($client, 'llm-owner-2@example.com');
+
+        $client->request('POST', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$ownerToken,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'GLM Primary',
+            'provider' => 'glm',
+            'secret' => 'glm-secret-token',
+            'defaultModel' => 'glm-4.5',
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $created = json_decode($client->getResponse()->getContent(), true);
+
+        $otherToken = $this->registerUser($client, 'llm-other@example.com');
+
+        $client->request('GET', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$otherToken,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $listed = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame([], $listed['credentials']);
+
+        $client->request('PATCH', '/api/llm/credentials/'.$created['id'], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$otherToken,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'isActive' => false,
+        ]));
+
+        $this->assertResponseStatusCodeSame(404);
+
+        $client->request('DELETE', '/api/llm/credentials/'.$created['id'], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$otherToken,
+        ]);
+
+        $this->assertResponseStatusCodeSame(404);
+    }
+
+    public function testUserCanStoreMultipleNamedCredentialsForSameProvider(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'llm-multiple@example.com');
+
+        foreach ([1, 2] as $attempt) {
+            $client->request('POST', '/api/llm/credentials', [], [], [
+                'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_ACCEPT' => 'application/json',
+            ], json_encode([
+                'name' => 'MiniMax '.$attempt,
+                'provider' => 'minimax',
+                'secret' => 'minimax-secret-'.$attempt,
+                'defaultModel' => 'MiniMax-M1',
+            ]));
+
+            $this->assertResponseStatusCodeSame(201);
+        }
+
+        $client->request('GET', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $listed = json_decode($client->getResponse()->getContent(), true);
+        $this->assertCount(2, $listed['credentials']);
+        $this->assertSame(['MiniMax 1', 'MiniMax 2'], array_column($listed['credentials'], 'name'));
+    }
+}

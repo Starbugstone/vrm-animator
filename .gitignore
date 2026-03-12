@@ -3,8 +3,5 @@ dist/
 .vite/
 .env.local
 backend/.env.local
-vrm/
-vrma/
-
 # Docker
 .docker/data/

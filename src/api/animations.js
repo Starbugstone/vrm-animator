@@ -1,7 +1,7 @@
 import { apiRequest, downloadFile } from './client'
 
 export function listAnimations(token) {
-  return apiRequest('/api/animations', { token }).then((data) => data['hydra:member'] || data)
+  return apiRequest('/api/animations', { token }).then((data) => data.member || data['hydra:member'] || data)
 }
 
 export function uploadAnimation(token, formData) {
@@ -20,6 +20,13 @@ export function updateAnimation(token, animationId, payload) {
       'Content-Type': 'application/merge-patch+json',
     },
     body: JSON.stringify(payload),
+  })
+}
+
+export function deleteAnimation(token, animationId) {
+  return apiRequest(`/api/animations/${animationId}`, {
+    method: 'DELETE',
+    token,
   })
 }
 

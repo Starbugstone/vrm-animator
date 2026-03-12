@@ -44,6 +44,8 @@ const AUTO_BLINK_INTERVAL_MAX_SECONDS = 6.4
 const AUTO_BLINK_CLOSE_SECONDS = 0.08
 const AUTO_BLINK_HOLD_SECONDS = 0.04
 const AUTO_BLINK_OPEN_SECONDS = 0.12
+const IDLE_VARIANT_INTERVAL_MIN_SECONDS = 12
+const IDLE_VARIANT_INTERVAL_MAX_SECONDS = 24
 
 const MOTION_LAYER_BASE = 'base'
 const MOTION_LAYER_OVERLAY = 'overlay'
@@ -66,6 +68,10 @@ function boneWorldPosition(vrm, name) {
 
 function sampleBlinkDelay() {
   return THREE.MathUtils.randFloat(AUTO_BLINK_INTERVAL_MIN_SECONDS, AUTO_BLINK_INTERVAL_MAX_SECONDS)
+}
+
+function sampleIdleVariantDelay() {
+  return THREE.MathUtils.randFloat(IDLE_VARIANT_INTERVAL_MIN_SECONDS, IDLE_VARIANT_INTERVAL_MAX_SECONDS)
 }
 
 function measureAvatar(vrm, bounds) {
@@ -175,6 +181,9 @@ export default function useHologramViewer(canvasRef) {
     let baseTransitionBlendElapsed = 0
     let activeOverlayMotion = null
     let defaultIdleMotion = null
+    let idleVariantPool = []
+    let idleVariantTimer = Number.POSITIVE_INFINITY
+    let lastIdleVariantCacheKey = null
     let autoBlinkEnabled = true
     let lookAtCameraEnabled = false
     const motionCache = new Map()
@@ -284,6 +293,10 @@ export default function useHologramViewer(canvasRef) {
       motionCache.clear()
     }
 
+    const resetIdleVariantTimer = () => {
+      idleVariantTimer = idleVariantPool.length > 0 ? sampleIdleVariantDelay() : Number.POSITIVE_INFINITY
+    }
+
     const stopMotionAction = (motion) => {
       motion?.action?.stop()
       if (motion?.action) {
@@ -345,6 +358,7 @@ export default function useHologramViewer(canvasRef) {
       baseMotionRequestVersion += 1
       finalizeBaseTransition()
       stopOverlayMotion()
+      idleVariantTimer = Number.POSITIVE_INFINITY
 
       if (activeBaseMotion) {
         stopMotionAction(activeBaseMotion)
@@ -496,6 +510,13 @@ export default function useHologramViewer(canvasRef) {
         ...motion,
         action: nextAction,
         returnQueued: false,
+      }
+
+      if (defaultIdleMotion?.cacheKey === motion.cacheKey) {
+        resetIdleVariantTimer()
+      } else if (motion.kind === 'idle') {
+        idleVariantTimer = Number.POSITIVE_INFINITY
+        lastIdleVariantCacheKey = motion.cacheKey
       }
 
       updateMotionStatus()
@@ -870,6 +891,7 @@ export default function useHologramViewer(canvasRef) {
           scene.add(currentVrm.scene)
           resetBlinkState()
           applyLookAtTarget(currentVrm)
+          resetIdleVariantTimer()
           setIsLoaded(true)
           setIsAvatarLoading(false)
           setViewerStatus('Avatar loaded')
@@ -904,6 +926,8 @@ export default function useHologramViewer(canvasRef) {
 
       if (isPersistentIdle) {
         defaultIdleMotion = nextIdleMotion
+        lastIdleVariantCacheKey = null
+        resetIdleVariantTimer()
       }
 
       if (!currentVrm || !currentMixer) {
@@ -918,6 +942,24 @@ export default function useHologramViewer(canvasRef) {
       return true
     }
 
+    const setIdleVariantPool = (motions) => {
+      idleVariantPool = Array.isArray(motions)
+        ? motions
+          .filter((motion) => motion?.file)
+          .map((motion) => ({
+            file: motion.file,
+            label: motion.label,
+            cacheKey: motion.cacheKey || buildMotionCacheKey(motion.file, motion.label),
+            kind: 'idle',
+            loop: false,
+            returnToDefault: true,
+          }))
+        : []
+
+      resetIdleVariantTimer()
+      return idleVariantPool.length
+    }
+
     const playAnimationFile = (file, label = file?.name || 'VRMA action', options = {}) => {
       if (!file) return false
 
@@ -927,7 +969,7 @@ export default function useHologramViewer(canvasRef) {
       return requestMotion({
         file,
         label,
-        kind: 'action',
+        kind: options.kind || 'action',
         layer: options.layer || MOTION_LAYER_BASE,
         cacheKey: options.cacheKey || buildMotionCacheKey(file, label),
         loop: options.loop ?? false,
@@ -1145,7 +1187,7 @@ export default function useHologramViewer(canvasRef) {
         playbackMode === 'motion' &&
         activeBaseMotion?.action &&
         activeBaseMotion.returnToDefault &&
-          defaultIdleMotion &&
+        defaultIdleMotion &&
         !activeBaseMotion.returnQueued &&
         activeBaseMotion.cacheKey !== defaultIdleMotion.cacheKey
       ) {
@@ -1162,6 +1204,29 @@ export default function useHologramViewer(canvasRef) {
           requestMotion(defaultIdleMotion)
         }
       }
+      if (
+        playbackMode === 'motion' &&
+        defaultIdleMotion &&
+        !previousBaseMotion &&
+        activeBaseMotion?.kind === 'idle' &&
+        activeBaseMotion.cacheKey === defaultIdleMotion.cacheKey &&
+        idleVariantPool.length > 0
+      ) {
+        idleVariantTimer -= dt
+        if (idleVariantTimer <= 0) {
+          const nonDefaultVariants = idleVariantPool.filter((motion) => motion.cacheKey !== defaultIdleMotion.cacheKey)
+          const variantCandidates = nonDefaultVariants.filter((motion) => motion.cacheKey !== lastIdleVariantCacheKey)
+          const pool = variantCandidates.length > 0 ? variantCandidates : nonDefaultVariants
+          const nextVariant = pool[Math.floor(Math.random() * pool.length)] || null
+
+          if (nextVariant) {
+            idleVariantTimer = Number.POSITIVE_INFINITY
+            requestMotion(nextVariant)
+          } else {
+            resetIdleVariantTimer()
+          }
+        }
+      }
       if (playbackMode !== 'motion') {
         applyCommand(dt)
       }
@@ -1176,6 +1241,7 @@ export default function useHologramViewer(canvasRef) {
     internalsRef.current = {
       loadFile: loadAvatarFromFile,
       setIdleAnimation,
+      setIdleVariantPool,
       playAnimationFile,
       playOverlayAnimationFile,
       setCommand: (nextCommand) => {
@@ -1244,6 +1310,10 @@ export default function useHologramViewer(canvasRef) {
     return internalsRef.current?.setIdleAnimation(file, label, options) ?? false
   }, [])
 
+  const setIdleVariantPool = useCallback((motions) => {
+    return internalsRef.current?.setIdleVariantPool(motions) ?? 0
+  }, [])
+
   const playAnimationFile = useCallback((file, label, options) => {
     return internalsRef.current?.playAnimationFile(file, label, options) ?? false
   }, [])
@@ -1267,6 +1337,7 @@ export default function useHologramViewer(canvasRef) {
   return {
     loadFile,
     setIdleAnimation,
+    setIdleVariantPool,
     playAnimationFile,
     playOverlayAnimationFile,
     setCommand,

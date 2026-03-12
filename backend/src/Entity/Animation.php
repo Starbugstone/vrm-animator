@@ -80,6 +80,11 @@ class Animation
     #[Groups(['animation:read', 'animation:write'])]
     private array $keywords = [];
 
+    /** @var list<string> */
+    #[ORM\Column(type: Types::JSON)]
+    #[Groups(['animation:read', 'animation:write'])]
+    private array $emotionTags = [];
+
     #[ORM\Column(length: 32)]
     #[Groups(['animation:read', 'animation:write'])]
     private string $kind = 'action';
@@ -192,6 +197,24 @@ class Animation
     public function setKeywords(array $keywords): static
     {
         $this->keywords = array_values(array_unique(array_filter(array_map('strval', $keywords))));
+        return $this;
+    }
+
+    /** @return list<string> */
+    public function getEmotionTags(): array
+    {
+        return $this->emotionTags;
+    }
+
+    /** @param list<string> $emotionTags */
+    public function setEmotionTags(array $emotionTags): static
+    {
+        $normalized = array_map(
+            static fn (mixed $value): string => strtolower(trim((string) $value)),
+            $emotionTags,
+        );
+        $this->emotionTags = array_values(array_unique(array_filter($normalized)));
+
         return $this;
     }
 

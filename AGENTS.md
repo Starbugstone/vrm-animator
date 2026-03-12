@@ -38,11 +38,8 @@ vrm-animator/
 │   └── (future: api/, components/, hooks/, etc.)
 ├── default_vrm/                  # Third-party example VRM avatars (.vrm, .glb)
 ├── default_vrma/                 # Third-party example VRMA motions (.vrma)
-├── vrm/                          # Project VRM avatars (.vrm, .glb)
-├── vrma/                         # Project VRMA body animations (.vrma)
 ├── expressions_vrma/             # Project facial and mouth VRMA overlays (.vrma)
 ├── idle/                         # Bundled idle clips (.vrma)
-├── waifu_hologram_webpage.jsx    # Main hologram UI (to be split into src/)
 ├── docker-compose.yml
 ├── package.json                  # Node (React, Vite, Three.js, @pixiv/three-vrm*)
 ├── vite.config.js
@@ -56,7 +53,7 @@ vrm-animator/
 
 - **Backend**: All persistent data, auth, and business rules. No UI. API-only.
 - **Frontend**: All UI and client-side state. Communicates with backend only via HTTP/JSON and JWT.
-- **Assets**: Example avatars/animations live in `default_vrm/` and `default_vrma/`; project asset libraries live in `vrm/`, `vrma/`, `expressions_vrma/`, and `idle/`; user-uploaded assets are stored and served by the backend.
+- **Assets**: Example avatars/animations live in `default_vrm/` and `default_vrma/`; shared overlays live in `expressions_vrma/` and `idle/`; user-uploaded avatars and animations are stored in backend-managed per-user directories and served only to the owning user.
 
 ---
 
@@ -112,7 +109,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
   - Ensure frontend has a proper login/register flow and stores/uses JWT for all API calls; no session dependency.
 
 - **Default avatars and animations**
-  - Backend exposes or references a **curated set of default avatars and animations** (e.g. from `default_vrm/`, `default_vrma/`, `vrm/`, `vrma/`, `idle/` or from a DB seed). Frontend can list “default” assets and use them without requiring uploads.
+  - Backend exposes or references a **curated set of default avatars and animations** (e.g. from `default_vrm/`, `default_vrma/`, `expressions_vrma/`, and `idle/` or from a DB seed). Frontend can list “default” assets and use them without requiring uploads.
   - Option: backend serves default asset list (and optionally files) so one source of truth.
 
 - **User-uploaded avatars and animations**
@@ -164,7 +161,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 
 - **Hologram module**
   - Pluggable **hologram module**: user can “generate” or view their avatar in **3D on desktop** and interact via **vocal commands** directly (same backend: STT → chat API → TTS + animation; frontend is a 3D hologram view instead of or in addition to the current 2D page).
-  - Keep the current viewer (`useHologramViewer`, `waifu_hologram_webpage.jsx`) and add an optional path or build that loads the “hologram” UI (e.g. fullscreen, different camera, dedicated controls for voice-only).
+  - Keep the current viewer path (`useHologramViewer`, `src/components/ViewerPage.jsx`) and add an optional build or route that loads a dedicated hologram UI (e.g. fullscreen, different camera, dedicated controls for voice-only).
 
 ---
 

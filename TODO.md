@@ -2,9 +2,13 @@
 
 ## Current Status
 
-- Updated: 2026-03-10
-- The auth, private asset library, avatar profile, and memory foundation work is implemented.
-- The next major milestone is backend-brokered LLM chat with streaming, provider credentials, conversation persistence, cue parsing, and the single memory tool.
+- Updated: 2026-03-11
+- The authenticated frontend now has two dedicated surfaces:
+  - `Viewer`: configured avatar selection, persona-aware chat, floating animation test controls, and the hologram canvas
+  - `Manage`: backend-driven asset, persona, memory, credential, and conversation administration
+- Shared example VRM and VRMA catalogs are now expected to be served by the backend API rather than bundled into the frontend runtime.
+- Shared default avatars and animations must remain globally accessible, while users can adopt them into their private library as editable personal copies.
+- The next major milestone is backend-brokered LLM streaming chat, frontend streaming playback, and the single memory tool.
 
 ## Implemented Foundation Checklist
 
@@ -21,10 +25,14 @@
 - [x] Memory revision history and revision-aware updates
 - [x] Frontend auth flow wired to backend
 - [x] Frontend avatar, animation, profile, and memory management wired to backend
+- [x] Dedicated management page for assets, personas, memory, LLM credentials, and chat history
+- [x] Dedicated viewer page with configured avatar selector, persona selector, chat box, and floating animation testing
+- [x] Shared example asset catalogs served by the backend API
+- [x] Shared default avatars and animations can be adopted into a user's personal library for customization
 - [x] Backend API tests for auth, uploads, ownership isolation, and memory
 - [x] Frontend tests for the current auth and API client integration surface
-- [ ] LLM provider credential storage and management
-- [ ] Conversations and conversation message persistence
+- [x] LLM provider credential storage and management
+- [x] Conversations and conversation message persistence
 - [ ] Streaming chat endpoint
 - [ ] Cue parsing and streaming event normalization
 - [ ] Frontend streaming chat UI
@@ -65,7 +73,7 @@
 ## Immediate Frontend-Only Cue Plan
 
 - Maintain two local catalogs:
-  - `vrma/catalog.json` for body actions
+  - `default_vrma/catalog.json` for shared default body actions
   - `expressions_vrma/catalog.json` for face and mouth overlays
 - Normalize emotion tags into a small shared vocabulary first:
   - `neutral`
@@ -389,6 +397,10 @@
   - avatar system prompt
   - provider selection
   - model selection
+- Frontend page structure:
+  - `Viewer` is the runtime screen and should stay focused on avatar selection, chat, and playback controls
+  - `Manage` is the admin screen and should own CRUD for uploaded assets, personas, memory, credentials, and backend conversation inspection
+  - do not collapse these back into one monolithic page
 - Add LLM settings UI for:
   - adding provider credentials
   - switching active provider
@@ -413,7 +425,7 @@
 - Add cue selection logic that consumes the local catalogs before backend metadata exists:
   - normalize the incoming tag
   - pick a weighted-random expression overlay from `expressions_vrma/catalog.json`
-  - pick a weighted-random body action from `vrma/catalog.json`
+  - pick a weighted-random body action from `default_vrma/catalog.json`
   - keep neutral speech fallbacks for tagless replies
 - Integrate the chat cue layer with `useHologramViewer`:
   - play validated animation tags
@@ -501,12 +513,12 @@
   - avatar persona editing
   - backend `memory.md` and revision history
   - frontend integration for the current authenticated workspace
-- [ ] Step 2: Add provider credential storage and provider metadata APIs
+- [x] Step 2: Add provider credential storage and provider metadata APIs
   - add `LlmCredential` persistence or equivalent secure settings storage
   - encrypt provider secrets at rest
   - expose provider metadata endpoints without ever returning raw secrets
   - add backend tests for ownership and masking behavior
-- [ ] Step 3: Add conversation persistence and backend chat orchestration
+- [x] Step 3: Add conversation persistence and backend chat orchestration
   - add `Conversation` and `ConversationMessage`
   - add `LlmProviderInterface` plus first provider adapters
   - add `PromptBuilder`
@@ -541,8 +553,8 @@
 - Phase 2: Backend chat orchestration
   - status: not started
 - Phase 3: Frontend chat and LLM settings UI
-  - status: partially complete because the auth-aware API layer, avatar persona editor, and memory editor already exist
-  - remaining: LLM settings UI, streaming chat UI, and cue-driven chat playback
+  - status: partially complete because the dedicated `Viewer` and `Manage` pages, avatar persona editor, memory editor, and LLM settings UI now exist
+  - remaining: streaming chat UI, cue-driven chat playback, and conversation streaming controls
 - Phase 4: Memory tool call
   - status: not started
 - Phase 5: Hardening

@@ -22,6 +22,7 @@ RUN a2enmod rewrite
 
 # Copy custom vhost
 COPY .docker/php/vhost.conf /etc/apache2/sites-available/000-default.conf
+COPY .docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
 # Set working directory
 WORKDIR /var/www/html
