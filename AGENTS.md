@@ -82,6 +82,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Modularity**: Break complex logic into small, cohesive, loosely coupled functions/modules.
 - **Dev Log Discipline**: `devlog.md` must be updated whenever meaningful implementation progress, roadmap changes, or architectural decisions happen.
 - **Environment files**: When a local-only `.env.local` value is added or changed, update the corresponding committed `.env` template with a dummy placeholder value in the same key. Never copy or leak real values from `.env.local` into a committed `.env` file.
+- **User-first product thinking**: The app must stay easy to use, explicit, and understandable to non-technical users. Do not assume the user already understands avatar tooling, LLM setup, or hologram concepts.
 
 ### 3.2 Backend (Symfony)
 
@@ -109,12 +110,14 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 ### Product Goal
 
 - The primary goal is to turn a 3D avatar connected to one or more LLMs into a believable conversational character that can chat naturally with the user.
+- The product is user-first: the core code and product should be usable by ordinary users without specialist technical knowledge.
 - The first interaction mode is text chat.
 - The next major evolution is full speech with TTS and STT.
 - The final hardware-oriented goal is to drive a physical desktop-sized hologram peripheral.
 - Priority order matters: first make the avatar responsive, lifelike, and personality-driven through strong memory and LLM integration; only after that should hologram hardware become a focus.
 - Launch readiness also requires a curated out-of-the-box experience: at least one launch-ready male avatar and one launch-ready female avatar must ship from the default asset set, ready to become usable as soon as LLM credentials are connected.
 - The product must stay accessible to non-technical users. Guided onboarding, setup assistance, and clear in-app explanations are roadmap requirements, not optional polish.
+- Power users may later buy or build their own hologram hardware, but that hardware path is an extension around the main product, not the definition of the main product.
 
 ### Phase 1: Auth, Default Content, and Persisted Avatars/Animations
 
@@ -181,6 +184,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Hologram module**
   - Pluggable **hologram module**: user can “generate” or view their avatar in **3D on desktop** and interact via **vocal commands** directly (same backend: STT → chat API → TTS + animation; frontend is a 3D hologram view instead of or in addition to the current 2D page).
   - Keep the current viewer path (`useHologramViewer`, `src/components/ViewerPage.jsx`) and add an optional build or route that loads a dedicated hologram UI (e.g. fullscreen, different camera, dedicated controls for voice-only).
+  - This hardware-oriented path should be treated as a power-user extension. The core shipped product remains the software experience and should stand on its own even for users who never buy or build a hologram unit.
 
 ### Cross-Cutting UX Requirement: Guided Setup
 
@@ -193,6 +197,10 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
   - keep setup steps explicit and sequential
   - reduce blank-state confusion
   - make the safe next action obvious on each screen
+- Every major screen should favor clarity over cleverness:
+  - use explicit labels
+  - avoid hidden required steps
+  - surface prerequisites before the user hits an error
 - This is a cross-cutting product requirement and should influence frontend UX, backend defaults, and documentation at every phase rather than being postponed as a final pass.
 
 ---
@@ -213,6 +221,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Animations** (JWT required): `GET/POST /api/animations`, `GET/PATCH/DELETE /api/animations/{id}`, `POST /api/animations/upload`, `GET /api/animations/{id}/file`.
 - **Personas and Memory**: `GET/POST /api/avatars/{id}/personas`, `PATCH/DELETE /api/avatar-personas/{id}`, `GET/PATCH /api/avatars/{id}/memory`, `GET /api/avatars/{id}/memory/revisions`.
 - **Chat**: `GET /api/avatars/{id}/conversations`, `GET /api/conversations/{id}`, `GET /api/conversations/{id}/messages`, `POST /api/avatars/{id}/chat`.
+  - `POST /api/avatars/{id}/chat` supports normal JSON replies and streamed SSE replies when `stream: true` is sent in the JSON body.
 - **LLM Config**: `GET /api/llm/providers`, `GET /api/llm/providers/openrouter/models`, `GET/POST /api/llm/credentials`, `PATCH/DELETE /api/llm/credentials/{id}`.
 - **Docs**: `GET /api/docs` (public).
 

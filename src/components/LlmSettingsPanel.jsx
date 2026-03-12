@@ -84,9 +84,9 @@ export default function LlmSettingsPanel({
     <section className="rounded-3xl border border-white/10 bg-white/5 p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.28em] text-white/45">LLM credentials</div>
+          <div className="text-xs uppercase tracking-[0.28em] text-white/45">AI connections</div>
           <div className="mt-1 text-sm text-white/60">
-            Save multiple named API connections per account, including multiple records for the same provider.
+            Add one API key, choose a default model, and keep the connection active. That is enough to start chatting.
           </div>
         </div>
         <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/60">
@@ -144,13 +144,17 @@ export default function LlmSettingsPanel({
         </div>
 
         <div className="space-y-4">
+          <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 px-3 py-3 text-sm text-cyan-100">
+            Your API key is stored on the backend. The app only needs one active connection for first-time setup.
+          </div>
+
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-2">
-              <div className="text-xs uppercase tracking-[0.24em] text-white/45">Credential name</div>
+              <div className="text-xs uppercase tracking-[0.24em] text-white/45">Connection name</div>
               <input
                 value={draft.name}
                 onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-                placeholder="Personal label"
+                placeholder="Example: Main OpenRouter key"
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
               />
             </label>
@@ -184,12 +188,12 @@ export default function LlmSettingsPanel({
 
             <label className="space-y-2">
               <div className="text-xs uppercase tracking-[0.24em] text-white/45">
-                {draft.id ? 'Replace API key' : 'API key'}
+                {draft.id ? 'Replace API key' : 'Provider API key'}
               </div>
               <input
                 value={draft.secret}
                 onChange={(event) => setDraft((current) => ({ ...current, secret: event.target.value }))}
-                placeholder={draft.id ? 'Leave blank to keep the current key' : 'Paste provider API key'}
+                placeholder={draft.id ? 'Leave blank to keep the current key' : 'Paste the API key from your provider account'}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
               />
             </label>
@@ -211,7 +215,7 @@ export default function LlmSettingsPanel({
             </div>
           ) : (
             <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/60">
-              This new record will be attached to your account as its own credential entry.
+              This connection will be saved to your account as its own reusable entry.
             </div>
           )}
 

@@ -48,8 +48,8 @@ export default function ChatAdminPanel({
   if (!avatar) {
     return (
       <section className="rounded-3xl border border-white/10 bg-white/5 p-4">
-        <div className="text-xs uppercase tracking-[0.28em] text-white/45">Chat control</div>
-        <div className="mt-3 text-sm text-white/60">Select one of your uploaded avatars to manage conversations.</div>
+        <div className="text-xs uppercase tracking-[0.28em] text-white/45">Conversation test</div>
+        <div className="mt-3 text-sm text-white/60">Pick one of your saved avatars first, then send a test message from here.</div>
       </section>
     )
   }
@@ -58,8 +58,8 @@ export default function ChatAdminPanel({
     <section className="rounded-3xl border border-white/10 bg-white/5 p-4 md:col-span-2 xl:col-span-1">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.28em] text-white/45">Chat control</div>
-          <div className="mt-1 text-sm text-white/60">Backend conversations and message history for {avatar.name}.</div>
+          <div className="text-xs uppercase tracking-[0.28em] text-white/45">Conversation test</div>
+          <div className="mt-1 text-sm text-white/60">Saved conversations and test messages for {avatar.name}.</div>
         </div>
         <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-white/60">
           {conversations.length} threads
@@ -111,7 +111,7 @@ export default function ChatAdminPanel({
               }}
               className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
             >
-              {credentialOptions.length === 0 ? <option value="">No active credentials</option> : null}
+              {credentialOptions.length === 0 ? <option value="">No active AI connections</option> : null}
               {credentialOptions.map((entry) => (
                 <option key={entry.id} value={entry.id}>
                   {entry.name} ({entry.provider})
@@ -121,7 +121,7 @@ export default function ChatAdminPanel({
             <input
               value={model}
               onChange={(event) => setModel(event.target.value)}
-              placeholder="Model id"
+              placeholder="Model id (optional)"
               className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
             />
           </div>
@@ -131,7 +131,7 @@ export default function ChatAdminPanel({
               <div className="rounded-2xl bg-black/30 px-3 py-2 text-sm text-white/60">Loading messages...</div>
             ) : null}
             {!loadingMessages && messages.length === 0 ? (
-              <div className="rounded-2xl bg-black/30 px-3 py-2 text-sm text-white/60">Start a new conversation by sending a message.</div>
+              <div className="rounded-2xl bg-black/30 px-3 py-2 text-sm text-white/60">Send a message below to start the first conversation.</div>
             ) : null}
             {messages.map((message) => (
               <div key={message.id} className={`rounded-2xl px-3 py-3 text-sm ${
@@ -157,7 +157,7 @@ export default function ChatAdminPanel({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             rows={4}
-            placeholder="Send a backend chat message"
+            placeholder="Type a test message for this avatar"
             className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300/40"
           />
 

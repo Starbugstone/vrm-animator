@@ -24,7 +24,9 @@ The repo currently includes:
 - avatar identity, persona, and memory editing
 - encrypted LLM credential storage
 - persisted conversations and parsed assistant cues
+- streamed chat events for live text and cue playback
 - a working avatar viewer with idle, action, and expression playback
+- browser speech synthesis for spoken avatar replies in the Viewer
 
 ## Requirements
 
@@ -90,6 +92,8 @@ User uploads are stored privately by the backend under per-user storage director
 - plays idle, action, and expression VRMA clips
 - shows the current configured persona
 - sends chat messages through the backend avatar chat pipeline
+- streams assistant text and cue events back into the viewer for live movement and emotion playback
+- uses browser speech synthesis to speak completed replies
 
 ### Manage
 
@@ -150,6 +154,8 @@ User uploads are stored privately by the backend under per-user storage director
 - `GET /api/conversations/{id}`
 - `GET /api/conversations/{id}/messages`
 - `POST /api/avatars/{id}/chat`
+  - JSON mode by default
+  - SSE mode when the request body includes `"stream": true`
 
 ### LLM configuration
 

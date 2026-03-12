@@ -337,9 +337,20 @@ export default function useHologramViewer(canvasRef) {
       baseTransitionBlendElapsed = 0
     }
 
-    const stopOverlayMotion = () => {
+    const stopOverlayMotion = ({ immediate = false } = {}) => {
       overlayMotionRequestVersion += 1
       if (!activeOverlayMotion) return
+      if (!immediate && activeOverlayMotion.action) {
+        const fadingMotion = activeOverlayMotion
+        activeOverlayMotion = null
+        fadingMotion.action.fadeOut(OVERLAY_FADE_SECONDS)
+        window.setTimeout(() => {
+          stopMotionAction(fadingMotion)
+          updateMotionStatus()
+        }, Math.ceil(OVERLAY_FADE_SECONDS * 1000))
+        return
+      }
+
       stopMotionAction(activeOverlayMotion)
       activeOverlayMotion = null
     }
@@ -348,7 +359,7 @@ export default function useHologramViewer(canvasRef) {
       const finishedAction = event.action
 
       if (activeOverlayMotion?.action === finishedAction) {
-        stopOverlayMotion()
+        stopOverlayMotion({ immediate: true })
         updateMotionStatus()
       }
     }
@@ -357,7 +368,7 @@ export default function useHologramViewer(canvasRef) {
       playbackMode = 'command'
       baseMotionRequestVersion += 1
       finalizeBaseTransition()
-      stopOverlayMotion()
+      stopOverlayMotion({ immediate: true })
       idleVariantTimer = Number.POSITIVE_INFINITY
 
       if (activeBaseMotion) {
@@ -530,7 +541,7 @@ export default function useHologramViewer(canvasRef) {
       }
 
       if (activeOverlayMotion) {
-        stopMotionAction(activeOverlayMotion)
+        stopOverlayMotion({ immediate: true })
       }
 
       const nextAction = currentMixer.clipAction(motion.clip)
@@ -1244,6 +1255,7 @@ export default function useHologramViewer(canvasRef) {
       setIdleVariantPool,
       playAnimationFile,
       playOverlayAnimationFile,
+      stopOverlayAnimation: (options = {}) => stopOverlayMotion(options),
       setCommand: (nextCommand) => {
         stopCurrentAnimation({ resetPose: true })
         playbackMode = 'command'
@@ -1322,6 +1334,10 @@ export default function useHologramViewer(canvasRef) {
     return internalsRef.current?.playOverlayAnimationFile(file, label, options) ?? false
   }, [])
 
+  const stopOverlayAnimation = useCallback((options) => {
+    return internalsRef.current?.stopOverlayAnimation?.(options) ?? false
+  }, [])
+
   const setCommand = useCallback((command) => {
     internalsRef.current?.setCommand(command)
   }, [])
@@ -1340,6 +1356,7 @@ export default function useHologramViewer(canvasRef) {
     setIdleVariantPool,
     playAnimationFile,
     playOverlayAnimationFile,
+    stopOverlayAnimation,
     setCommand,
     setFramingValue,
     setViewerOption,

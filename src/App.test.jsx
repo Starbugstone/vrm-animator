@@ -21,6 +21,7 @@ describe('App', () => {
     render(<App />)
 
     expect(screen.getByText('Sign in')).toBeInTheDocument()
-    expect(screen.getByText(/manage your private avatars/i)).toBeInTheDocument()
+    expect(screen.getByText(/guided setup/i)).toBeInTheDocument()
+    expect(screen.getByText(/pick one of the starter avatars/i)).toBeInTheDocument()
   })
 })

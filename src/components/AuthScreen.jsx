@@ -95,8 +95,15 @@ export default function AuthScreen({ onLogin, onRegister, onGoogleLogin, busy, e
         <div className="text-xs uppercase tracking-[0.3em] text-cyan-300/80">VRM Animator</div>
         <h1 className="mt-3 text-3xl font-semibold">{mode === 'login' ? 'Sign in' : 'Create account'}</h1>
         <p className="mt-3 text-sm leading-6 text-white/65">
-          Use email/password or Google, then manage your private avatars, animations, and avatar memory.
+          Use email/password or Google, then follow the guided setup to choose an avatar, connect an AI provider, and start chatting.
         </p>
+
+        <div className="mt-5 grid gap-2 rounded-3xl border border-white/10 bg-black/20 p-4 text-sm text-white/68">
+          <div className="text-xs uppercase tracking-[0.24em] text-white/40">What happens next</div>
+          <div>1. Pick one of the starter avatars or upload your own.</div>
+          <div>2. Fill in the avatar profile and connect one AI key.</div>
+          <div>3. Open the Viewer and send the first message.</div>
+        </div>
 
         <div className="mt-6 flex gap-2 rounded-2xl border border-white/10 bg-black/20 p-1">
           {['login', 'register'].map((entry) => (

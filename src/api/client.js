@@ -112,6 +112,40 @@ export async function apiRequest(path, options = {}) {
   return data
 }
 
+export async function apiStreamRequest(path, options = {}) {
+  const { token, headers = {}, json, body, skipAuthRefresh = false, ...rest } = options
+
+  const requestHeaders = new Headers(headers)
+  if (!requestHeaders.has('Accept')) {
+    requestHeaders.set('Accept', 'text/event-stream')
+  }
+
+  let requestBody = body
+  if (json !== undefined) {
+    requestHeaders.set('Content-Type', 'application/json')
+    requestBody = JSON.stringify(json)
+  }
+
+  const response = await fetchWithAuthRetry(
+    path,
+    {
+      ...rest,
+      headers: requestHeaders,
+      body: requestBody,
+    },
+    { token, skipAuthRefresh },
+  )
+
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || ''
+    const isJson = contentType.includes('application/json') || contentType.includes('application/ld+json')
+    const data = isJson ? await response.json() : await response.text()
+    throw buildApiError(path, response, data)
+  }
+
+  return response
+}
+
 export async function downloadFile(path, token, fallbackName) {
   const response = await fetchWithAuthRetry(
     path,

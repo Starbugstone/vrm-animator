@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CameraPopover from '../CameraPopover.jsx'
 import useHologramViewer from '../useHologramViewer.js'
 import AnimationPopover from './AnimationPopover.jsx'
+import SetupGuideCard from './SetupGuideCard.jsx'
 import {
   assetToFile,
   createPersistedAnimationAsset,
@@ -13,6 +14,201 @@ const VIEWER_OPTION_LABELS = {
   lookAtCamera: 'Eyes follow camera',
 }
 
+const CANONICAL_EMOTIONS = new Set([
+  'neutral',
+  'happy',
+  'sad',
+  'angry',
+  'playful',
+  'shouting',
+  'sleepy',
+  'surprised',
+  'thinking',
+  'calm',
+])
+
+const SPEECH_LANGUAGE_FALLBACK = 'en-US'
+const SPEECH_OVERLAY_RELEASE_MS = 220
+const SPEECH_BOUNDARY_RELEASE_MS = 180
+
+const LANGUAGE_PROFILES = [
+  {
+    code: 'en',
+    locale: 'en-US',
+    words: ['the', 'and', 'you', 'your', 'with', 'this', 'that', 'what', 'have', 'are', 'can', 'please'],
+    chars: [],
+  },
+  {
+    code: 'fr',
+    locale: 'fr-FR',
+    words: ['bonjour', 'merci', 'avec', 'pour', 'vous', 'nous', 'dans', 'est', 'une', 'des', 'que', 'qui'],
+    chars: ['é', 'è', 'ê', 'à', 'ç', 'ù', 'ô', 'œ'],
+  },
+  {
+    code: 'es',
+    locale: 'es-ES',
+    words: ['hola', 'gracias', 'para', 'con', 'como', 'está', 'estoy', 'una', 'que', 'por', 'tengo', 'quiero'],
+    chars: ['ñ', 'á', 'í', 'ó', 'ú', '¿', '¡'],
+  },
+  {
+    code: 'de',
+    locale: 'de-DE',
+    words: ['hallo', 'danke', 'und', 'mit', 'nicht', 'ich', 'eine', 'der', 'die', 'das', 'ist', 'bitte'],
+    chars: ['ä', 'ö', 'ü', 'ß'],
+  },
+  {
+    code: 'it',
+    locale: 'it-IT',
+    words: ['ciao', 'grazie', 'come', 'per', 'con', 'sono', 'una', 'che', 'non', 'vorrei', 'voglio', 'della'],
+    chars: ['à', 'è', 'ì', 'ò', 'ù'],
+  },
+]
+
+function normalizeToken(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+function detectLanguageLocale(...samples) {
+  const text = samples
+    .map((sample) => String(sample || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ')
+
+  if (!text) {
+    return SPEECH_LANGUAGE_FALLBACK
+  }
+
+  const scores = LANGUAGE_PROFILES.map((profile) => {
+    let score = 0
+
+    for (const word of profile.words) {
+      const pattern = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'giu')
+      const matches = text.match(pattern)
+      if (matches) {
+        score += matches.length * 2
+      }
+    }
+
+    for (const char of profile.chars) {
+      const matches = text.split(char).length - 1
+      if (matches > 0) {
+        score += matches * 3
+      }
+    }
+
+    return {
+      locale: profile.locale,
+      score,
+    }
+  })
+
+  scores.sort((left, right) => right.score - left.score)
+
+  return scores[0]?.score > 0 ? scores[0].locale : SPEECH_LANGUAGE_FALLBACK
+}
+
+function pickSpeechVoice(speechSynthesis, locale) {
+  const voices = speechSynthesis?.getVoices?.() || []
+  if (voices.length === 0) {
+    return null
+  }
+
+  const normalizedLocale = String(locale || SPEECH_LANGUAGE_FALLBACK).toLowerCase()
+  const languageCode = normalizedLocale.split('-')[0]
+
+  return (
+    voices.find((voice) => String(voice.lang || '').toLowerCase() === normalizedLocale) ||
+    voices.find((voice) => String(voice.lang || '').toLowerCase().startsWith(`${languageCode}-`)) ||
+    voices.find((voice) => String(voice.lang || '').toLowerCase() === languageCode) ||
+    voices.find((voice) => voice.default) ||
+    voices[0] ||
+    null
+  )
+}
+
+function estimateSpeechDurationMs(text, rate = 1) {
+  const wordCount = String(text || '').trim().split(/\s+/).filter(Boolean).length
+  if (wordCount === 0) {
+    return 0
+  }
+
+  const wordsPerMinute = 165 * Math.max(rate, 0.6)
+  const minutes = wordCount / wordsPerMinute
+
+  return Math.max(1800, Math.ceil(minutes * 60_000) + 1200)
+}
+
+function collectAssetTags(asset) {
+  const tags = []
+
+  if (Array.isArray(asset?.emotionTags)) {
+    tags.push(...asset.emotionTags)
+  }
+
+  if (Array.isArray(asset?.keywords)) {
+    tags.push(...asset.keywords)
+  }
+
+  if (Array.isArray(asset?.tags)) {
+    tags.push(...asset.tags)
+  }
+
+  return Array.from(new Set(tags.map((entry) => String(entry).trim().toLowerCase()).filter(Boolean)))
+}
+
+function findMovementAssetByTag(items, tag) {
+  const normalizedTag = normalizeToken(tag)
+  if (!normalizedTag) return null
+
+  return items.find((item) => {
+    const candidates = [
+      item.label,
+      item.name,
+      ...(Array.isArray(item.keywords) ? item.keywords : []),
+    ]
+
+    return candidates.some((entry) => normalizeToken(entry) === normalizedTag)
+  }) || null
+}
+
+function scoreExpressionAssetForEmotion(asset, emotion, { preferSpeech = false, allowSpeechFallback = false } = {}) {
+  const tags = collectAssetTags(asset)
+  const hasSpeechTag = tags.includes('speech') || tags.includes('fallback')
+  let score = 0
+
+  if (tags.includes(emotion)) {
+    score += 8
+  }
+
+  if (preferSpeech && hasSpeechTag) {
+    score += 4
+  }
+
+  if (!preferSpeech && !hasSpeechTag) {
+    score += 2
+  }
+
+  if (!preferSpeech && hasSpeechTag && !allowSpeechFallback) {
+    return 0
+  }
+
+  if (asset.weight) {
+    score += Number(asset.weight) * 0.2
+  }
+
+  return score
+}
+
+function pickExpressionAsset(items, emotion, options = {}) {
+  const normalizedEmotion = CANONICAL_EMOTIONS.has(emotion) ? emotion : 'neutral'
+  const ranked = items
+    .map((item) => ({ item, score: scoreExpressionAssetForEmotion(item, normalizedEmotion, options) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score)
+
+  return ranked[0]?.item || null
+}
+
 function normalizeSharedAsset(asset, fallbackType) {
   return {
     ...asset,
@@ -22,7 +218,7 @@ function normalizeSharedAsset(asset, fallbackType) {
   }
 }
 
-export default function ViewerPage({ workspace }) {
+export default function ViewerPage({ workspace, onNavigatePage }) {
   const {
     avatars,
     selectedAvatarId,
@@ -36,7 +232,7 @@ export default function ViewerPage({ workspace }) {
     ensureConversations,
     ensureConversationMessages,
     setSelectedAvatarId,
-    sendChatMessage,
+    streamChatMessage,
   } = workspace
 
   const canvasRef = useRef(null)
@@ -46,6 +242,7 @@ export default function ViewerPage({ workspace }) {
     setIdleVariantPool,
     playAnimationFile,
     playOverlayAnimationFile,
+    stopOverlayAnimation,
     setFramingValue,
     setViewerOption,
     viewerOptions,
@@ -64,7 +261,14 @@ export default function ViewerPage({ workspace }) {
   const [notice, setNotice] = useState('')
   const [isChatBusy, setIsChatBusy] = useState(false)
   const [loadedAvatarName, setLoadedAvatarName] = useState('No avatar loaded')
+  const [pendingMessages, setPendingMessages] = useState([])
   const lastSyncedAvatarIdRef = useRef(selectedAvatarId)
+  const activeEmotionRef = useRef('neutral')
+  const speechSynthesisRef = useRef(typeof window !== 'undefined' ? window.speechSynthesis || null : null)
+  const speechSessionIdRef = useRef(0)
+  const speechStopTimeoutRef = useRef(null)
+  const speechMonitorIntervalRef = useRef(null)
+  const lastSpeechActivityAtRef = useRef(0)
 
   const personalAvatarItems = useMemo(
     () => avatars.map((entry) => ({ ...createPersistedAvatarAsset(entry, workspace.token), scope: 'personal' })),
@@ -156,10 +360,29 @@ export default function ViewerPage({ workspace }) {
   const selectedExpression = useMemo(() => expressionItems.find((entry) => entry.id === selectedExpressionId) || expressionItems[0] || null, [expressionItems, selectedExpressionId])
   const conversations = selectedAvatar ? conversationsByAvatar[selectedAvatar.id] || [] : []
   const messages = activeConversationId ? messagesByConversation[activeConversationId] || [] : []
+  const liveMessages = useMemo(
+    () => (pendingMessages.length > 0 ? [...messages, ...pendingMessages] : messages),
+    [messages, pendingMessages],
+  )
+  const hasConnectedAvatar = Boolean(selectedAvatar)
+  const hasConnectedLlm = Boolean(effectivePersona?.llmCredentialId)
+  const hasStartedChat = liveMessages.length > 0 || conversations.length > 0
 
   useEffect(() => {
     if (!selectedAvatar || !workspace.token) {
       setActiveConversationId(null)
+      setPendingMessages([])
+      activeEmotionRef.current = 'neutral'
+      if (speechStopTimeoutRef.current) {
+        window.clearTimeout(speechStopTimeoutRef.current)
+        speechStopTimeoutRef.current = null
+      }
+      if (speechMonitorIntervalRef.current) {
+        window.clearInterval(speechMonitorIntervalRef.current)
+        speechMonitorIntervalRef.current = null
+      }
+      speechSynthesisRef.current?.cancel?.()
+      stopOverlayAnimation({ immediate: false })
       return
     }
 
@@ -191,7 +414,7 @@ export default function ViewerPage({ workspace }) {
     return () => {
       cancelled = true
     }
-  }, [ensureConversationMessages, ensureConversations, ensurePersonas, selectedAvatar, workspace.token])
+  }, [ensureConversationMessages, ensureConversations, ensurePersonas, selectedAvatar, stopOverlayAnimation, workspace.token])
 
   useEffect(() => {
     if (idleItems.length === 0) {
@@ -291,6 +514,210 @@ export default function ViewerPage({ workspace }) {
     }
   }, [idleItems, selectedIdle, setIdleVariantPool])
 
+  useEffect(() => {
+    const speechSynthesis = speechSynthesisRef.current
+    if (!speechSynthesis?.getVoices) {
+      return undefined
+    }
+
+    const primeVoices = () => {
+      speechSynthesis.getVoices()
+    }
+
+    primeVoices()
+    if ('onvoiceschanged' in speechSynthesis) {
+      speechSynthesis.addEventListener?.('voiceschanged', primeVoices)
+    }
+
+    return () => {
+      if (speechStopTimeoutRef.current) {
+        window.clearTimeout(speechStopTimeoutRef.current)
+        speechStopTimeoutRef.current = null
+      }
+      if (speechMonitorIntervalRef.current) {
+        window.clearInterval(speechMonitorIntervalRef.current)
+        speechMonitorIntervalRef.current = null
+      }
+      speechSynthesis.removeEventListener?.('voiceschanged', primeVoices)
+      speechSynthesisRef.current?.cancel?.()
+      stopOverlayAnimation({ immediate: false })
+    }
+  }, [stopOverlayAnimation])
+
+  const playMovementCue = useCallback(async (movementTag) => {
+    const asset = findMovementAssetByTag([...actionItems, ...idleItems], movementTag)
+    if (!asset) return
+
+    const file = await assetToFile(asset)
+    if (!file) return
+
+    playAnimationFile(file, asset.label, {
+      cacheKey: asset.id,
+      kind: asset.kind || 'action',
+    })
+  }, [actionItems, idleItems, playAnimationFile])
+
+  const playEmotionCue = useCallback(async (emotion, options = {}) => {
+    const asset = pickExpressionAsset(expressionItems, emotion, options)
+    if (!asset) {
+      if (options.stopOnMiss) {
+        stopOverlayAnimation()
+      }
+      return
+    }
+
+    const file = await assetToFile(asset)
+    if (!file) return
+
+    playOverlayAnimationFile(file, asset.label, {
+      cacheKey: `${asset.id}:${options.preferSpeech ? 'speech' : 'cue'}`,
+      expressionOnly: true,
+      loop: Boolean(options.loop),
+    })
+  }, [expressionItems, playOverlayAnimationFile, stopOverlayAnimation])
+
+  const speakAssistantReply = useCallback(async (text, emotion, languageSamples = []) => {
+    const speechSynthesis = speechSynthesisRef.current
+    const cleanedText = String(text || '').trim()
+    if (!speechSynthesis || !cleanedText || typeof window === 'undefined' || !('SpeechSynthesisUtterance' in window)) {
+      return
+    }
+
+    if (speechStopTimeoutRef.current) {
+      window.clearTimeout(speechStopTimeoutRef.current)
+      speechStopTimeoutRef.current = null
+    }
+    if (speechMonitorIntervalRef.current) {
+      window.clearInterval(speechMonitorIntervalRef.current)
+      speechMonitorIntervalRef.current = null
+    }
+
+    speechSessionIdRef.current += 1
+    const sessionId = speechSessionIdRef.current
+    lastSpeechActivityAtRef.current = 0
+    stopOverlayAnimation({ immediate: true })
+    speechSynthesis.cancel()
+    const utterance = new window.SpeechSynthesisUtterance(cleanedText)
+    const locale = detectLanguageLocale(cleanedText, ...languageSamples)
+    const voice = pickSpeechVoice(speechSynthesis, locale)
+
+    utterance.lang = locale
+    if (voice) {
+      utterance.voice = voice
+      utterance.lang = voice.lang || locale
+    }
+
+    utterance.rate = emotion === 'sleepy' ? 0.92 : emotion === 'shouting' ? 1.08 : 1
+    utterance.pitch = emotion === 'playful' ? 1.18 : emotion === 'sad' ? 0.92 : 1
+
+    const stopSpeechOverlayNow = () => {
+      if (sessionId !== speechSessionIdRef.current) {
+        return
+      }
+
+      if (speechStopTimeoutRef.current) {
+        window.clearTimeout(speechStopTimeoutRef.current)
+        speechStopTimeoutRef.current = null
+      }
+      if (speechMonitorIntervalRef.current) {
+        window.clearInterval(speechMonitorIntervalRef.current)
+        speechMonitorIntervalRef.current = null
+      }
+
+      stopOverlayAnimation({ immediate: false })
+    }
+
+    const scheduleSpeechOverlayStop = (delayMs = SPEECH_OVERLAY_RELEASE_MS) => {
+      if (sessionId !== speechSessionIdRef.current) {
+        return
+      }
+
+      if (speechStopTimeoutRef.current) {
+        window.clearTimeout(speechStopTimeoutRef.current)
+      }
+
+      speechStopTimeoutRef.current = window.setTimeout(
+        stopSpeechOverlayNow,
+        Math.max(80, delayMs),
+      )
+    }
+
+    const markSpeechActivity = () => {
+      lastSpeechActivityAtRef.current = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    }
+
+    utterance.onstart = () => {
+      if (sessionId !== speechSessionIdRef.current) {
+        return
+      }
+
+      markSpeechActivity()
+      playEmotionCue(emotion || activeEmotionRef.current || 'neutral', { preferSpeech: true, loop: true })
+      speechStopTimeoutRef.current = window.setTimeout(
+        stopSpeechOverlayNow,
+        estimateSpeechDurationMs(cleanedText, utterance.rate),
+      )
+      speechMonitorIntervalRef.current = window.setInterval(() => {
+        if (sessionId !== speechSessionIdRef.current) {
+          return
+        }
+
+        const stillSpeaking = speechSynthesis.speaking || speechSynthesis.pending || speechSynthesis.paused
+        if (!stillSpeaking) {
+          const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+          const elapsedSinceBoundary = Math.max(0, now - lastSpeechActivityAtRef.current)
+          const releaseDelay = lastSpeechActivityAtRef.current > 0
+            ? Math.max(80, SPEECH_BOUNDARY_RELEASE_MS - elapsedSinceBoundary)
+            : SPEECH_OVERLAY_RELEASE_MS
+          scheduleSpeechOverlayStop(releaseDelay)
+        }
+      }, 120)
+    }
+    utterance.onboundary = () => {
+      if (sessionId !== speechSessionIdRef.current) {
+        return
+      }
+
+      markSpeechActivity()
+
+      if (speechStopTimeoutRef.current) {
+        window.clearTimeout(speechStopTimeoutRef.current)
+        speechStopTimeoutRef.current = null
+      }
+    }
+    utterance.onend = () => {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const elapsedSinceBoundary = Math.max(0, now - lastSpeechActivityAtRef.current)
+      const releaseDelay = lastSpeechActivityAtRef.current > 0
+        ? Math.max(80, SPEECH_BOUNDARY_RELEASE_MS - elapsedSinceBoundary)
+        : SPEECH_OVERLAY_RELEASE_MS
+      scheduleSpeechOverlayStop(releaseDelay)
+    }
+    utterance.onpause = () => {
+      scheduleSpeechOverlayStop()
+    }
+    utterance.onresume = () => {
+      if (sessionId !== speechSessionIdRef.current) {
+        return
+      }
+
+      if (speechStopTimeoutRef.current) {
+        window.clearTimeout(speechStopTimeoutRef.current)
+        speechStopTimeoutRef.current = null
+      }
+    }
+    utterance.onerror = () => {
+      scheduleSpeechOverlayStop()
+    }
+    speechSynthesis.speak(utterance)
+  }, [playEmotionCue, stopOverlayAnimation])
+
+  const appendPendingAssistantData = useCallback((updater) => {
+    setPendingMessages((current) => current.map((message) => (
+      message.role !== 'assistant' ? message : updater(message)
+    )))
+  }, [])
+
   const handlePlayAction = useCallback(async () => {
     if (!selectedAction) return
     const file = await assetToFile(selectedAction)
@@ -308,27 +735,155 @@ export default function ViewerPage({ workspace }) {
   const handleSendMessage = useCallback(async () => {
     if (!selectedAvatar || !draftMessage.trim()) return
 
+    const outgoingMessage = draftMessage.trim()
+    const tempBaseId = Date.now()
+
     setIsChatBusy(true)
     setNotice('')
+    setDraftMessage('')
+    setPendingMessages([
+      {
+        id: `temp-user-${tempBaseId}`,
+        role: 'user',
+        content: outgoingMessage,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: `temp-assistant-${tempBaseId}`,
+        role: 'assistant',
+        content: '',
+        emotionTags: [],
+        animationTags: [],
+        createdAt: new Date().toISOString(),
+      },
+    ])
+    speechSynthesisRef.current?.cancel?.()
 
     try {
-      const response = await sendChatMessage(selectedAvatar.id, {
-        message: draftMessage.trim(),
+      const response = await streamChatMessage(selectedAvatar.id, {
+        message: outgoingMessage,
         conversationId: activeConversationId || undefined,
         personaId: effectivePersona?.id || undefined,
+      }, {
+        onConversation: (event) => {
+          if (event?.conversation?.id) {
+            setActiveConversationId(event.conversation.id)
+          }
+        },
+        onTextDelta: (event) => {
+          const delta = event?.delta || ''
+          appendPendingAssistantData((message) => ({
+            ...message,
+            content: `${message.content || ''}${delta}`,
+          }))
+        },
+        onCue: (event) => {
+          const cueType = event?.cueType
+          const value = event?.value
+
+          if (!value) return
+
+          if (cueType === 'emotion') {
+            activeEmotionRef.current = value
+            appendPendingAssistantData((message) => ({
+              ...message,
+              emotionTags: Array.from(new Set([...(message.emotionTags || []), value])),
+            }))
+            playEmotionCue(value, { stopOnMiss: true })
+            return
+          }
+
+          if (cueType === 'animation') {
+            appendPendingAssistantData((message) => ({
+              ...message,
+              animationTags: Array.from(new Set([...(message.animationTags || []), value])),
+            }))
+            playMovementCue(value)
+          }
+        },
+        onMemory: (event) => {
+          if (event?.entry) {
+            setNotice(`Memory updated: ${event.entry}`)
+          }
+        },
       })
 
+      setPendingMessages([])
       setActiveConversationId(response.conversation.id)
-      setDraftMessage('')
       setNotice(`Reply received via ${response.conversation.provider}.`)
+      await speakAssistantReply(
+        response.assistantMessage?.content || '',
+        response.assistantMessage?.emotionTags?.[0] || activeEmotionRef.current || 'neutral',
+        [outgoingMessage],
+      )
     } catch (error) {
+      setPendingMessages([])
+      setDraftMessage(outgoingMessage)
       setNotice(error.message || 'Chat failed.')
     } finally {
       setIsChatBusy(false)
     }
-  }, [activeConversationId, draftMessage, effectivePersona, selectedAvatar, sendChatMessage])
+  }, [
+    activeConversationId,
+    appendPendingAssistantData,
+    draftMessage,
+    effectivePersona,
+    playEmotionCue,
+    playMovementCue,
+    selectedAvatar,
+    speakAssistantReply,
+    streamChatMessage,
+  ])
 
   const chatDisabled = !selectedAvatar || !effectivePersona || !effectivePersona.llmCredentialId
+  const viewerSetupSteps = useMemo(() => [
+    {
+      id: 'pick-avatar',
+      title: 'Load an avatar into the viewer',
+      detail: selectedAvatarAsset
+        ? `${selectedAvatarAsset.label} is selected and ready for preview.`
+        : 'Choose an avatar from the list so it can load into the scene.',
+      status: selectedAvatarAsset ? 'done' : 'current',
+    },
+    {
+      id: 'save-avatar',
+      title: 'Use a personal avatar for chat',
+      detail: hasConnectedAvatar
+        ? `${selectedAvatar?.name || 'This avatar'} is already in your personal library.`
+        : 'Default avatars are preview-only here. Open Manage to add one to your library before chatting.',
+      status: hasConnectedAvatar ? 'done' : !selectedAvatarAsset ? 'todo' : 'current',
+      actionLabel: hasConnectedAvatar ? null : 'Open Manage',
+      onAction: hasConnectedAvatar ? null : () => onNavigatePage('manage'),
+    },
+    {
+      id: 'connect-ai',
+      title: 'Connect one AI provider',
+      detail: hasConnectedLlm
+        ? 'The selected avatar already has an active AI connection.'
+        : 'Open Manage and attach one active AI connection to this avatar.',
+      status: hasConnectedLlm ? 'done' : hasConnectedAvatar ? 'current' : 'todo',
+      actionLabel: hasConnectedLlm ? null : 'Open Manage',
+      onAction: hasConnectedLlm ? null : () => onNavigatePage('manage'),
+    },
+    {
+      id: 'first-chat',
+      title: 'Send the first message',
+      detail: hasStartedChat
+        ? 'Conversation history is already available for this avatar.'
+        : chatDisabled
+          ? 'Finish the setup steps above, then come back and start chatting here.'
+          : 'Everything is ready. Type a short message and send it.',
+      status: hasStartedChat ? 'done' : chatDisabled ? 'todo' : 'current',
+    },
+  ], [
+    chatDisabled,
+    hasConnectedAvatar,
+    hasConnectedLlm,
+    hasStartedChat,
+    onNavigatePage,
+    selectedAvatar,
+    selectedAvatarAsset,
+  ])
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#162c4f_0%,_#08111d_38%,_#03070d_100%)] text-white">
@@ -338,9 +893,17 @@ export default function ViewerPage({ workspace }) {
             <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Viewer</div>
             <div className="mt-2 text-3xl font-semibold tracking-tight">Avatar runtime</div>
             <div className="mt-3 text-sm leading-6 text-white/62">
-              Choose a configured avatar and chat through the backend LLM orchestration already in place.
+              Preview the avatar, test animations, and talk to it once setup is complete.
             </div>
           </section>
+
+          <SetupGuideCard
+            eyebrow="Before you chat"
+            title="Quick viewer checklist"
+            description="The Viewer should feel simple: load an avatar, confirm the setup is complete, then send the first message."
+            steps={viewerSetupSteps}
+            compact
+          />
 
           <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.85)] p-4">
             <div className="text-xs uppercase tracking-[0.28em] text-white/45">Configured avatar</div>
@@ -371,7 +934,7 @@ export default function ViewerPage({ workspace }) {
                 {effectivePersona?.name || selectedAvatar?.name || 'No identity configured'}
               </div>
               <div className="mt-1 text-xs text-white/55">
-                {effectivePersona?.llmProvider ? `LLM: ${effectivePersona.llmProvider}` : 'No LLM attached'}
+                {effectivePersona?.llmProvider ? `AI: ${effectivePersona.llmProvider}` : 'No AI attached'}
               </div>
             </div>
           </section>
@@ -386,11 +949,11 @@ export default function ViewerPage({ workspace }) {
             </div>
             <div className="mt-4 flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-white/65">
-                {effectivePersona?.llmProvider ? `LLM: ${effectivePersona.llmProvider}` : selectedAvatar ? 'No LLM attached' : 'Default preview avatar'}
+                {effectivePersona?.llmProvider ? `AI: ${effectivePersona.llmProvider}` : selectedAvatar ? 'No AI attached' : 'Default preview avatar'}
               </span>
               {!selectedAvatar ? (
                 <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-amber-100">
-                  Add this default to your library in Manage to customize and chat
+                  Add this default to your library in Manage before chatting
                 </span>
               ) : null}
               {(selectedAvatar?.personality || selectedAvatarAsset?.personality) ? (
@@ -408,16 +971,16 @@ export default function ViewerPage({ workspace }) {
             </div>
 
             <div className="mt-4 max-h-[320px] space-y-2 overflow-y-auto rounded-3xl border border-white/10 bg-black/25 p-3">
-              {messages.length === 0 ? (
+              {liveMessages.length === 0 ? (
                 <div className="rounded-2xl bg-black/30 px-3 py-3 text-sm text-white/60">
                   {chatDisabled
                     ? !selectedAvatar
-                      ? 'Default avatars are preview-only until you add them to your personal library in Manage.'
-                      : 'Attach an LLM to this avatar in Manage before starting chat.'
+                      ? 'Default avatars are preview-only here. Open Manage to add one to your library first.'
+                      : 'Open Manage and attach one AI connection before starting chat.'
                     : 'Start a conversation with the selected avatar.'}
                 </div>
               ) : null}
-              {messages.map((message) => (
+              {liveMessages.map((message) => (
                 <div
                   key={message.id}
                   className={`rounded-2xl px-3 py-3 text-sm ${
@@ -426,6 +989,13 @@ export default function ViewerPage({ workspace }) {
                 >
                   <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">{message.role}</div>
                   <div className="mt-2 whitespace-pre-wrap leading-6">{message.content}</div>
+                  {message.emotionTags?.length > 0 || message.animationTags?.length > 0 ? (
+                    <div className="mt-2 text-[11px] text-white/45">
+                      {[message.emotionTags?.length ? `emotion: ${message.emotionTags.join(', ')}` : null, message.animationTags?.length ? `movement: ${message.animationTags.join(', ')}` : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -435,7 +1005,7 @@ export default function ViewerPage({ workspace }) {
               onChange={(event) => setDraftMessage(event.target.value)}
               rows={5}
               disabled={chatDisabled}
-              placeholder={chatDisabled ? (!selectedAvatar ? 'Add this default avatar to your library in Manage first.' : 'Configure the avatar identity + LLM in Manage first.') : 'Type a message to the selected avatar'}
+              placeholder={chatDisabled ? (!selectedAvatar ? 'Open Manage and save this avatar to your library first.' : 'Open Manage and connect one AI provider first.') : 'Type a message to the selected avatar'}
               className="mt-4 w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:border-cyan-300/40 disabled:cursor-not-allowed disabled:opacity-50"
             />
             <button

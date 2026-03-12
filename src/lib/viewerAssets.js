@@ -24,6 +24,8 @@ export function createPersistedAnimationAsset(record, authToken) {
     label: record.name,
     source: 'user',
     authToken,
+    description: record.description || '',
+    keywords: Array.isArray(record.keywords) ? record.keywords : [],
     emotionTags: Array.isArray(record.emotionTags) ? record.emotionTags : [],
   }
 }

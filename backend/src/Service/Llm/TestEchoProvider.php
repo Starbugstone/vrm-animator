@@ -24,9 +24,15 @@ final class TestEchoProvider implements LlmProviderInterface
             }
         }
 
+        $memoryTag = '';
+        if (preg_match('/remember\s+that\s+(.+)$/i', $lastUserMessage, $matches) === 1) {
+          $memoryTag = ' {memory:'.$matches[1].'}';
+        }
+
         $text = sprintf(
-            'Echo: %s {emotion:happy} {anim:greeting}',
-            $lastUserMessage !== '' ? $lastUserMessage : 'Hello'
+            'Echo: %s {emotion:happy} {anim:greeting}%s',
+            $lastUserMessage !== '' ? $lastUserMessage : 'Hello',
+            $memoryTag,
         );
 
         return new LlmCompletionResponse(

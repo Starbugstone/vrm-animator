@@ -9,7 +9,6 @@ use App\Entity\ConversationMessage;
 use App\Entity\LlmCredential;
 use App\Entity\User;
 use App\Repository\AvatarPersonaRepository;
-use App\Repository\AnimationRepository;
 use App\Repository\ConversationMessageRepository;
 use App\Repository\ConversationRepository;
 use App\Repository\LlmCredentialRepository;
@@ -31,7 +30,7 @@ class AvatarChatService
         private LlmProviderCatalog $providerCatalog,
         private LlmProviderResolver $providerResolver,
         private AvatarMemoryService $avatarMemoryService,
-        private AnimationRepository $animationRepository,
+        private CueAssetCatalog $cueAssetCatalog,
         private PromptBuilder $promptBuilder,
         private CueParser $cueParser,
     ) {
@@ -60,7 +59,7 @@ class AvatarChatService
         $model = $this->resolveModel($credential, $provider, $requestedModel, $conversation);
 
         $memory = $this->avatarMemoryService->getOrCreateMemory($avatar);
-        $animations = $this->animationRepository->findAvailableForAvatar($user, $avatar);
+        $assets = $this->cueAssetCatalog->listForAvatar($user, $avatar);
         $recentMessages = $conversation !== null
             ? $this->conversationMessageRepository->findRecentForConversation($conversation, $includeRecentMessages)
             : [];
@@ -69,7 +68,7 @@ class AvatarChatService
             $avatar,
             $persona,
             $memory->getMarkdownContent(),
-            $animations,
+            $assets,
             $recentMessages,
             $trimmedMessage,
         );
@@ -91,7 +90,7 @@ class AvatarChatService
             );
         }
 
-        $parsedAssistant = $this->cueParser->parse($completion->content, $animations);
+        $parsedAssistant = $this->cueParser->parse($completion->content, $assets);
         $conversation ??= (new Conversation())
             ->setOwner($user)
             ->setAvatar($avatar)
@@ -126,7 +125,17 @@ class AvatarChatService
         $this->entityManager->persist($assistantMessage);
         $this->entityManager->flush();
 
-        return new ChatTurnResult($conversation, $userMessage, $assistantMessage);
+        if ($parsedAssistant['memoryEntries'] !== []) {
+            $this->avatarMemoryService->appendRelationshipMemory($avatar, $parsedAssistant['memoryEntries'], 'assistant');
+        }
+
+        return new ChatTurnResult(
+            $conversation,
+            $userMessage,
+            $assistantMessage,
+            $parsedAssistant['timeline'],
+            $parsedAssistant['memoryEntries'],
+        );
     }
 
     private function resolveConversation(User $user, Avatar $avatar, ?int $conversationId): ?Conversation

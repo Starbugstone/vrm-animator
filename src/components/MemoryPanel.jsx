@@ -11,7 +11,9 @@ export default function MemoryPanel({ memory, revisions, busy, onSave }) {
     return (
       <section className="rounded-3xl border border-white/10 bg-white/5 p-4">
         <div className="text-xs uppercase tracking-[0.28em] text-white/45">Memory</div>
-        <div className="mt-3 text-sm text-white/60">Select one of your uploaded avatars to load and edit its memory.</div>
+        <div className="mt-3 text-sm text-white/60">
+          Select an avatar first, then save a few notes it should remember about the user or the relationship.
+        </div>
       </section>
     )
   }
@@ -22,7 +24,7 @@ export default function MemoryPanel({ memory, revisions, busy, onSave }) {
         <div>
           <div className="text-xs uppercase tracking-[0.28em] text-white/45">Memory</div>
           <div className="mt-1 text-sm text-white/60">
-            Revision {memory.revision} | Last updated by {memory.lastUpdatedBy}
+            Save facts the avatar should remember between chats. Revision {memory.revision} | Last updated by {memory.lastUpdatedBy}
           </div>
         </div>
         <button
@@ -39,6 +41,7 @@ export default function MemoryPanel({ memory, revisions, busy, onSave }) {
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         rows={14}
+        placeholder="- The user likes short answers.\n- The avatar should greet them warmly.\n- They talked about games yesterday."
         className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300/40"
       />
 

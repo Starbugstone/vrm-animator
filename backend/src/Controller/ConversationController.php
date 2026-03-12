@@ -10,11 +10,13 @@ use App\Repository\ConversationMessageRepository;
 use App\Repository\ConversationRepository;
 use App\Service\Llm\AvatarChatException;
 use App\Service\Llm\AvatarChatService;
+use App\Service\Llm\ChatTurnResult;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\Routing\Attribute\Route;
 
 class ConversationController extends AbstractController
@@ -74,7 +76,7 @@ class ConversationController extends AbstractController
         EntityManagerInterface $entityManager,
         AvatarChatService $avatarChatService,
         ConversationMessageRepository $conversationMessageRepository,
-    ): JsonResponse {
+    ): Response {
         $avatar = $this->findOwnedAvatar($id, $entityManager);
         $payload = json_decode($request->getContent(), true);
 
@@ -93,6 +95,7 @@ class ConversationController extends AbstractController
             : null;
         $provider = is_string($payload['provider'] ?? null) ? trim($payload['provider']) : null;
         $model = is_string($payload['model'] ?? null) ? trim($payload['model']) : null;
+        $stream = is_bool($payload['stream'] ?? null) ? $payload['stream'] : false;
         $includeRecentMessages = is_int($payload['includeRecentMessages'] ?? null)
             ? max(1, min(50, $payload['includeRecentMessages']))
             : 12;
@@ -110,17 +113,82 @@ class ConversationController extends AbstractController
                 $includeRecentMessages,
             );
         } catch (AvatarChatException $exception) {
-            return $this->json(
-                ['message' => $exception->getMessage()],
-                $exception->getStatusCode(),
-            );
+            if ($stream) {
+                return $this->streamError($exception->getMessage(), $exception->getStatusCode());
+            }
+
+            return $this->json(['message' => $exception->getMessage()], $exception->getStatusCode());
+        }
+
+        if ($stream) {
+            return $this->streamChatResult($result, $conversationMessageRepository);
         }
 
         return $this->json([
             'conversation' => $this->serializeConversation($result->conversation, $conversationMessageRepository),
             'userMessage' => $this->serializeMessage($result->userMessage),
             'assistantMessage' => $this->serializeMessage($result->assistantMessage),
+            'assistantTimeline' => $result->assistantTimeline,
+            'assistantMemoryEntries' => $result->assistantMemoryEntries,
         ], Response::HTTP_OK);
+    }
+
+    private function streamChatResult(
+        ChatTurnResult $result,
+        ConversationMessageRepository $conversationMessageRepository,
+    ): StreamedResponse {
+        $response = new StreamedResponse(function () use ($result, $conversationMessageRepository): void {
+            $this->emitSseEvent('conversation', [
+                'conversation' => $this->serializeConversation($result->conversation, $conversationMessageRepository),
+                'userMessage' => $this->serializeMessage($result->userMessage),
+            ]);
+
+            foreach ($result->assistantTimeline as $event) {
+                if (($event['type'] ?? '') === 'text') {
+                    foreach ($this->chunkTextForStreaming((string) ($event['value'] ?? '')) as $chunk) {
+                        $this->emitSseEvent('text.delta', ['delta' => $chunk]);
+                    }
+
+                    continue;
+                }
+
+                if (($event['type'] ?? '') === 'memory') {
+                    $this->emitSseEvent('memory', ['entry' => (string) ($event['value'] ?? '')]);
+                    continue;
+                }
+
+                $this->emitSseEvent('cue', [
+                    'cueType' => (string) ($event['type'] ?? ''),
+                    'value' => (string) ($event['value'] ?? ''),
+                ]);
+            }
+
+            $this->emitSseEvent('message.complete', [
+                'conversation' => $this->serializeConversation($result->conversation, $conversationMessageRepository),
+                'userMessage' => $this->serializeMessage($result->userMessage),
+                'assistantMessage' => $this->serializeMessage($result->assistantMessage),
+                'assistantTimeline' => $result->assistantTimeline,
+                'assistantMemoryEntries' => $result->assistantMemoryEntries,
+            ]);
+        });
+
+        $response->headers->set('Content-Type', 'text/event-stream');
+        $response->headers->set('Cache-Control', 'no-cache');
+        $response->headers->set('X-Accel-Buffering', 'no');
+
+        return $response;
+    }
+
+    private function streamError(string $message, int $statusCode): StreamedResponse
+    {
+        $response = new StreamedResponse(function () use ($message): void {
+            $this->emitSseEvent('error', ['message' => $message]);
+        }, $statusCode);
+
+        $response->headers->set('Content-Type', 'text/event-stream');
+        $response->headers->set('Cache-Control', 'no-cache');
+
+        return $response;
     }
 
     private function findOwnedAvatar(int $id, EntityManagerInterface $entityManager): Avatar
@@ -199,6 +267,33 @@ class ConversationController extends AbstractController
             'animationTags' => $message->getParsedAnimationTags(),
             'createdAt' => $message->getCreatedAt()?->format(DATE_ATOM) ?? '',
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function chunkTextForStreaming(string $text): array
+    {
+        $matchResult = preg_match_all('/\S+\s*|\s+/u', $text, $matches);
+        $parts = $matchResult !== false ? $matches[0] : [$text];
+        $chunks = array_values(array_filter(array_map('strval', $parts), static fn (string $value): bool => $value !== ''));
+
+        return $chunks !== [] ? $chunks : [$text];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function emitSseEvent(string $event, array $payload): void
+    {
+        echo 'event: '.$event."\n";
+        echo 'data: '.json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\n\n";
+
+        if (function_exists('ob_flush')) {
+            @ob_flush();
+        }
+
+        flush();
     }
 
     private function getCurrentUser(): User

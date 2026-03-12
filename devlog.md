@@ -8,6 +8,8 @@ It is based on the repository history, the current codebase, the existing roadma
 
 The real goal of VRM Animator is to transform a 3D avatar, attached to one or more LLMs, into a believable conversational character that can chat with a user naturally.
 
+The product direction also needs to stay user-first. The core software product should be easy to use, explicit, and understandable to ordinary users rather than designed only for technical hobbyists.
+
 The intended progression is:
 
 1. Start with text-based discussion.
@@ -18,6 +20,7 @@ The intended progression is:
 This means the primary product goal is not just "a viewer with chat." It is a personality-driven avatar system where the 3D character feels alive, remembers the user, reacts appropriately, and can be powered by one or multiple LLMs depending on the experience being built.
 
 The hologram hardware path is a final destination, not the immediate milestone. Before hardware matters, the avatar itself needs to become convincing.
+Power users may eventually buy or build their own hologram units, but the core code and product being shipped should stand on their own without requiring that hardware path.
 
 Launch also needs a practical starter experience, not just a flexible system. The product should ship with two curated default avatars, one male-presenting and one female-presenting, that are ready to use as soon as the user connects valid LLM credentials.
 
@@ -151,6 +154,37 @@ The frontend is no longer a single experimental page. It now has two dedicated a
 
 This is the current application shape and the correct foundation for the next stages.
 
+### 10. The first guided setup pass was added
+
+Because the project is now explicitly targeting non-technical users as well, the frontend received a first UX pass focused on guidance rather than new backend capability.
+
+That pass added:
+
+- clearer first-use language on the auth screen
+- setup checklist guidance in both `Manage` and `Viewer`
+- less technical labels around profile editing, AI connection, memory, and conversation testing
+- a stronger "what should I do next?" flow between setup and chat
+
+This is not the final onboarding system yet, but it moves the app closer to a launch shape where a new user is guided instead of expected to infer the workflow.
+
+### 11. Streamed chat playback and prompt rules were connected to the viewer
+
+The next implementation pass closed the gap between "saved chat" and "live avatar reaction."
+
+That pass added:
+
+- a reusable backend rules file in `backend/prompts/chat_rules.md`
+- backend prompt construction that now includes available emotion tags plus movement tags sourced from both user-owned and shared default animations
+- normalized cue parsing for `{emotion:...}`, `{anim:...}`, and `{memory:...}` tags
+- backend SSE chat streaming from `/api/avatars/{id}/chat` when `stream: true`
+- viewer-side streamed text playback instead of waiting for a single final reply
+- viewer-side movement playback from streamed movement cues
+- viewer-side expression overlay playback from streamed emotion cues
+- browser speech synthesis so replies can be spoken aloud without waiting for a future full TTS service
+- memory appends driven from restricted inline memory tags, persisted through the existing avatar memory revision system
+
+This matters because the avatar can now feel active during a reply instead of only after the full assistant message has already been saved.
+
 ## Current State On 2026-03-12
 
 The project currently has:
@@ -166,7 +200,9 @@ The project currently has:
 - memory editing with revision history
 - LLM provider and credential management
 - saved conversations and messages
+- streamed chat events for live viewer playback
 - a working viewer with avatar loading, idle playback, action playback, and expression overlays
+- viewer-side spoken replies through browser speech synthesis
 - a dedicated management UI
 
 The biggest thing still missing is not the foundation. The biggest missing piece is the character layer: making the avatar feel responsive, lifelike, and personality-driven through better memory, stronger LLM orchestration, better cue handling, and eventually voice.
@@ -179,7 +215,9 @@ The conclusion:
 
 - `devlog.md`, `README.md`, and `AGENTS.md` already reflect the real application stage reasonably well
 - `TODO.md` had drifted and still listed many already-completed backend and frontend foundations as if they were pending
-- the real open roadmap gaps are still streaming chat, backend-executed memory tool updates, cue hardening, and character-quality work
+- streaming now exists through a backend SSE layer, but upstream provider-native token streaming is still not implemented
+- memory updates now work through a restricted inline bridge, but a stricter formal tool-call path is still a likely future refinement
+- the real open roadmap gaps are now provider-native streaming, cue hardening, stronger backend authority over final playback selection, and character-quality work
 - the main maintenance pressure is now in oversized frontend surfaces and bundle hygiene rather than missing CRUD foundations
 
 This means the project has reached the point where roadmap cleanup matters: planning documents should focus on the remaining orchestration and character work, while implementation cleanup should keep the current UI and viewer code from turning into large hard-to-change surfaces
@@ -199,22 +237,22 @@ That means memory, LLM integration, cue quality, and personality consistency com
 
 ### Near-term priorities
 
-1. Finish backend-brokered streaming chat.
-2. Normalize streaming cue events so the frontend can react while text is still arriving.
-3. Move animation selection fully onto backend-authoritative metadata instead of relying on frontend-only scaffolding.
-4. Tighten prompt assembly and cue validation so only allowed emotions and animations are used.
-5. Connect the current chat flow more directly to visible avatar reactions in the viewer.
-6. Improve personality consistency so the avatar feels like a character, not just a text endpoint with a model attached.
-7. Curate two launch-ready starter avatars from the shared default set, one male-presenting and one female-presenting, with polished identity defaults.
-8. Make those starter avatars usable immediately after credential setup, without hidden configuration steps.
+1. Improve the current SSE event contract and move from backend chunked playback to provider-native upstream token streaming.
+2. Move animation selection fully onto backend-authoritative metadata instead of relying on frontend-side asset matching for final playback.
+3. Tighten prompt assembly and cue validation so only allowed emotions and animations are used.
+4. Continue improving live viewer reactions so speech, emotion overlays, and body motion feel more tightly synchronized.
+5. Improve personality consistency so the avatar feels like a character, not just a text endpoint with a model attached.
+6. Curate two launch-ready starter avatars from the shared default set, one male-presenting and one female-presenting, with polished identity defaults.
+7. Make those starter avatars usable immediately after credential setup, without hidden configuration steps.
 
 ### Memory and tool-call priorities
 
 1. Keep the single allowed tool model: memory update only.
 2. Let the LLM request memory updates through a tightly scoped backend action.
-3. Always inject the authoritative stored memory into prompt context.
-4. Preserve revisioning and auditability for all memory changes.
-5. Use memory to reinforce the illusion of relationship continuity between the user and the avatar.
+3. The current implementation uses restricted inline `{memory:...}` tags as the temporary bridge.
+4. Always inject the authoritative stored memory into prompt context.
+5. Preserve revisioning and auditability for all memory changes.
+6. Use memory to reinforce the illusion of relationship continuity between the user and the avatar.
 
 ### Personality and behavior priorities
 
@@ -238,6 +276,7 @@ That means memory, LLM integration, cue quality, and personality consistency com
 4. Improve the Manage page so avatar setup flows in a clearer order: asset -> identity -> memory -> LLM -> chat.
 5. Add a guided tour or onboarding flow for non-technical users so the app explains each setup step in plain language.
 6. Reduce blank-state and configuration confusion by making the next required action obvious on every setup screen.
+7. Keep the product understandable for ordinary users even if they never touch the future hologram hardware path.
 
 ### Longer-term goals
 
@@ -294,8 +333,8 @@ If this idea becomes real, the safest approach would be to treat OpenClaw as ano
 
 ## Known Gaps Between Vision And Current State
 
-- Chat is persisted, but full streaming playback is still not finished.
-- Cue parsing exists, but the live streaming event contract is not the final one yet.
+- Chat is persisted and live viewer streaming now exists, but upstream provider-native streaming is still not finished.
+- Cue parsing exists and now drives live viewer playback, but the streaming event contract is not the final one yet.
 - Some animation-tag logic still exists in local catalog scaffolding and needs to become fully backend-authoritative.
 - Voice features are still future work.
 - The avatar still needs stronger personality consistency and memory-driven behavior to feel convincingly alive.

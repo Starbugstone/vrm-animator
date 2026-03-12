@@ -15,6 +15,7 @@ import {
   listAvatarConversations,
   listConversationMessages,
   sendAvatarChatMessage,
+  streamAvatarChatMessage,
 } from '../api/chat.js'
 import {
   downloadSharedAssetFile,
@@ -416,6 +417,42 @@ export default function useWorkspace(token) {
     return response
   }, [token])
 
+  const streamChatMessage = useCallback(async (avatarId, payload, handlers = {}) => {
+    let latestConversation = null
+
+    const completion = await streamAvatarChatMessage(token, avatarId, payload, {
+      ...handlers,
+      onConversation: (event) => {
+        latestConversation = event?.conversation || null
+        handlers.onConversation?.(event)
+      },
+      onComplete: (event) => {
+        const conversation = event?.conversation
+        const assistantMessage = event?.assistantMessage
+        const userMessage = event?.userMessage || null
+
+        if (conversation && userMessage && assistantMessage) {
+          setConversationsByAvatar((current) => ({
+            ...current,
+            [avatarId]: upsertById(current[avatarId] || [], conversation),
+          }))
+          setMessagesByConversation((current) => ({
+            ...current,
+            [conversation.id]: [...(current[conversation.id] || []), userMessage, assistantMessage],
+          }))
+        }
+
+        handlers.onComplete?.(event)
+      },
+    })
+
+    if (completion?.conversation) {
+      latestConversation = completion.conversation
+    }
+
+    return completion || { conversation: latestConversation }
+  }, [token])
+
   const sharedAnimationGroups = useMemo(() => ({
     idle: sharedAnimations.filter((entry) => entry.kind === 'idle'),
     action: sharedAnimations.filter((entry) => entry.kind === 'action'),
@@ -458,5 +495,6 @@ export default function useWorkspace(token) {
     saveCredential,
     removeCredential,
     sendChatMessage,
+    streamChatMessage,
   }
 }

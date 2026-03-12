@@ -2,12 +2,14 @@
 
 namespace App\Tests\Unit;
 
-use App\Entity\Animation;
 use App\Entity\Avatar;
 use App\Entity\Conversation;
 use App\Entity\ConversationMessage;
+use App\Service\Llm\CueAsset;
 use App\Service\Llm\PromptBuilder;
+use App\Service\Llm\PromptRulesProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpKernel\KernelInterface;
 
 class PromptBuilderTest extends TestCase
 {
@@ -20,11 +22,16 @@ class PromptBuilderTest extends TestCase
             ->setPersonality('Patient and curious.')
             ->setSystemPrompt('Keep the tone steady.');
 
-        $animation = (new Animation())
-            ->setName('Greeting')
-            ->setFilename('greeting.vrma')
-            ->setDescription('Warm greeting')
-            ->setKeywords(['hello']);
+        $animation = new CueAsset(
+            'user:1',
+            'Greeting',
+            'Greeting',
+            'action',
+            'Warm greeting',
+            ['hello'],
+            ['happy'],
+            'user',
+        );
 
         $conversation = new Conversation();
         $historyMessage = (new ConversationMessage())
@@ -33,7 +40,10 @@ class PromptBuilderTest extends TestCase
             ->setContent('Previous visible reply')
             ->setRawProviderContent('Previous visible reply {emotion:calm}');
 
-        $builder = new PromptBuilder();
+        $kernel = $this->createMock(KernelInterface::class);
+        $kernel->method('getProjectDir')->willReturn('/var/www/html');
+
+        $builder = new PromptBuilder(new PromptRulesProvider($kernel));
         $messages = $builder->buildMessages(
             $avatar,
             null,

@@ -22,8 +22,10 @@ This baseline has been verified against the current repository. The next phase s
 - Keep the backend authoritative for LLM orchestration, ownership, and persistence.
 - Keep `devlog.md` and `AGENTS.md` aligned with any roadmap changes.
 - Prefer smaller, separable modules over growing large mixed-responsibility components.
+- Stay user-first: the app should be explicit, easy to use, and understandable even for people who are not technical.
 - Keep launch readiness in scope: the product must ship with one ready-to-go male avatar and one ready-to-go female avatar sourced from the default library.
 - Treat guided onboarding for non-technical users as a core requirement throughout implementation, not as optional polish.
+- Treat hologram hardware as an optional power-user extension; the core shipped software product must remain complete and useful on its own.
 
 ## Next Priorities
 
@@ -37,15 +39,15 @@ This baseline has been verified against the current repository. The next phase s
 
 ### 2. LLM orchestration
 
-- add backend-brokered streaming chat
-- normalize streaming events for text plus animation cues
+- improve provider-native upstream streaming instead of backend chunking after completion
+- harden the streamed event contract for text, cue, memory, and completion events
 - tighten cue validation against allowed avatar animation metadata
 - harden retries, timeouts, and provider failure handling
 - make the starter avatars usable immediately once credentials are connected, without extra hidden setup
 
 ### 3. Memory tool
 
-- implement the single allowed LLM tool for memory updates
+- move from inline memory tags to a stricter backend-only tool contract if provider support is reliable
 - keep updates scoped strictly to the authenticated user and selected avatar
 - preserve revision history and auditability
 
@@ -59,6 +61,8 @@ This baseline has been verified against the current repository. The next phase s
 - improve UX without weakening backend authority
 - add a guided tour / setup flow that walks non-technical users through avatar selection, identity setup, LLM setup, and first chat
 - keep every setup surface biased toward plain language, clear sequencing, and obvious next actions
+- surface prerequisites early so users are told what is needed before they hit blocked states
+- make the core software experience feel complete even without any hologram hardware
 
 ### 5. Voice and hologram path
 
@@ -82,6 +86,11 @@ Before closing a feature set, the minimum checks should be:
 - `npm test`
 - `npm run build`
 - `docker compose exec -T php php bin/phpunit`
+- Latest verified implementation window:
+  - backend prompt rules now come from `backend/prompts/chat_rules.md`
+  - `/api/avatars/{id}/chat` now supports streamed SSE playback when `stream: true`
+  - viewer-side chat now consumes streamed text and cue events, plays movement and facial overlays, and uses browser speech synthesis for spoken replies
+  - assistant replies may append long-term memory entries through the restricted inline `{memory:...}` bridge, persisted through the existing avatar memory revision flow
 - Encryption requirements:
   - provider secrets must be encrypted at rest
   - never serialize raw secrets back to the frontend

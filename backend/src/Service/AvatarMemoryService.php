@@ -66,6 +66,42 @@ class AvatarMemoryService
     }
 
     /**
+     * @param list<string> $entries
+     */
+    public function appendRelationshipMemory(Avatar $avatar, array $entries, string $source = 'assistant'): AvatarMemory
+    {
+        $memory = $this->getOrCreateMemory($avatar, $source);
+        $normalizedEntries = [];
+
+        foreach ($entries as $entry) {
+            $normalized = trim((string) $entry);
+            $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+            if ($normalized === '') {
+                continue;
+            }
+
+            $normalizedEntries[] = $normalized;
+        }
+
+        $normalizedEntries = array_values(array_unique($normalizedEntries));
+        if ($normalizedEntries === []) {
+            return $memory;
+        }
+
+        $updatedMarkdown = $this->appendBulletsToSection(
+            $memory->getMarkdownContent(),
+            'Relationship Memory',
+            $normalizedEntries,
+        );
+
+        if ($updatedMarkdown === $memory->getMarkdownContent()) {
+            return $memory;
+        }
+
+        return $this->saveMemory($memory, $updatedMarkdown, $source);
+    }
+
+    /**
      * @return list<AvatarMemoryRevision>
      */
     public function listRevisions(AvatarMemory $memory): array
@@ -145,6 +181,45 @@ class AvatarMemoryService
         if (preg_match($pattern, $markdown) !== 1) {
             return rtrim($markdown)."\n\n".$replacement;
         }
+
+        return preg_replace($pattern, $replacement, $markdown) ?? $markdown;
+    }
+
+    /**
+     * @param list<string> $entries
+     */
+    private function appendBulletsToSection(string $markdown, string $sectionTitle, array $entries): string
+    {
+        $pattern = sprintf('/(## %s\n)(.*?)(?=\n## |\z)/s', preg_quote($sectionTitle, '/'));
+        if (preg_match($pattern, $markdown, $matches) !== 1) {
+            $body = implode("\n", array_map(static fn (string $entry): string => '- '.$entry, $entries));
+
+            return rtrim($markdown)."\n\n## ".$sectionTitle."\n".$body;
+        }
+
+        $prefix = $matches[1];
+        $body = trim((string) ($matches[2] ?? ''));
+        $existingLines = $body !== '' ? preg_split('/\R/', $body) ?: [] : [];
+        $existingLookup = [];
+
+        foreach ($existingLines as $line) {
+            $normalized = strtolower(trim(preg_replace('/^- /', '', (string) $line) ?? (string) $line));
+            if ($normalized !== '') {
+                $existingLookup[$normalized] = true;
+            }
+        }
+
+        foreach ($entries as $entry) {
+            $normalizedEntry = strtolower(trim($entry));
+            if ($normalizedEntry === '' || array_key_exists($normalizedEntry, $existingLookup)) {
+                continue;
+            }
+
+            $existingLines[] = '- '.$entry;
+            $existingLookup[$normalizedEntry] = true;
+        }
+
+        $replacement = $prefix.trim(implode("\n", $existingLines));
 
         return preg_replace($pattern, $replacement, $markdown) ?? $markdown;
     }

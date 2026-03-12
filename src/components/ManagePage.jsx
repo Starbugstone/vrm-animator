@@ -5,46 +5,47 @@ import AvatarPreviewCard from './AvatarPreviewCard.jsx'
 import ChatAdminPanel from './ChatAdminPanel.jsx'
 import LlmSettingsPanel from './LlmSettingsPanel.jsx'
 import MemoryPanel from './MemoryPanel.jsx'
+import SetupGuideCard from './SetupGuideCard.jsx'
 import { createPersistedAvatarAsset } from '../lib/viewerAssets.js'
 
 const SECTIONS = [
-  { id: 'avatar-edit', label: 'Avatar Edit' },
-  { id: 'vrm-library', label: 'VRM Uploads' },
-  { id: 'vrma-library', label: 'VRMA Uploads' },
-  { id: 'llm-config', label: 'LLM Config' },
-  { id: 'chat', label: 'Chat' },
+  { id: 'avatar-edit', label: 'Profile' },
+  { id: 'vrm-library', label: 'Avatar Library' },
+  { id: 'vrma-library', label: 'Animation Library' },
+  { id: 'llm-config', label: 'AI Connection' },
+  { id: 'chat', label: 'Conversation Test' },
 ]
 
 const SECTION_COPY = {
   'avatar-edit': {
-    eyebrow: 'Avatar editing',
+    eyebrow: 'Avatar profile',
     title: 'Identity and memory',
     description:
-      'Full CRUD for the selected avatar record. Edit its name, backstory, personality, system prompt, linked LLM, and attached memory in one place.',
+      'Name the avatar, describe its personality, add memory, and choose the AI connection it should use.',
   },
   'vrm-library': {
-    eyebrow: 'VRM uploads',
-    title: 'Create avatars',
+    eyebrow: 'Avatar library',
+    title: 'Choose or create an avatar',
     description:
-      'Build a personal avatar from shared presets or upload your own VRM or GLB. New records land in your private avatar library and become available in the viewer.',
+      'Start with a shared starter avatar or upload your own VRM or GLB file. Saved avatars become available everywhere in the app.',
   },
   'vrma-library': {
-    eyebrow: 'VRMA uploads',
+    eyebrow: 'Animation library',
     title: 'Animation library',
     description:
-      'Upload, edit, and delete your private VRMA library. Every personal avatar can use the animations stored here.',
+      'Upload and organize extra VRMA animations. This is optional for first-time setup.',
   },
   'llm-config': {
-    eyebrow: 'LLM configuration',
-    title: 'Provider credentials',
+    eyebrow: 'AI connection',
+    title: 'Connect an AI provider',
     description:
-      'Manage your named OpenRouter, MiniMax, and GLM credentials with full CRUD and model selection from the backend catalog.',
+      'Add one working API key, choose a default model, and keep it active so the avatar can reply.',
   },
   chat: {
-    eyebrow: 'Chat orchestration',
-    title: 'Conversation review',
+    eyebrow: 'Conversation test',
+    title: 'Test a conversation',
     description:
-      'Inspect saved conversations and send messages through the backend chat pipeline using the avatar currently selected in your workspace.',
+      'Review saved conversations and send a test message before moving back to the Viewer.',
   },
 }
 
@@ -510,7 +511,7 @@ function EffectiveAvatarPersona({ avatar, persona }) {
   )
 }
 
-export default function ManagePage({ user, workspace }) {
+export default function ManagePage({ user, workspace, onNavigatePage }) {
   const {
     avatars,
     selectedAvatarId,
@@ -595,6 +596,10 @@ export default function ManagePage({ user, workspace }) {
   const memoryRevisions = selectedAvatar ? memoryRevisionsByAvatar[selectedAvatar.id] || [] : []
   const conversations = selectedAvatar ? conversationsByAvatar[selectedAvatar.id] || [] : []
   const chatMessages = activeConversationId ? messagesByConversation[activeConversationId] || [] : []
+  const hasAvatarLibrary = avatars.length > 0
+  const hasPersonality = Boolean(selectedAvatar && ((selectedAvatar.name || '').trim() && ((selectedAvatar.personality || '').trim() || (selectedAvatar.backstory || '').trim())))
+  const hasMemoryNotes = Boolean(memory?.markdownContent?.trim())
+  const hasActiveCredential = Boolean(effectivePersona?.llmCredentialId)
 
   const selectedSharedPreset = useMemo(
     () => sharedAvatarPresets.find((entry) => entry.id === customAvatarDraft.sharedAvatarId) || null,
@@ -645,6 +650,67 @@ export default function ManagePage({ user, workspace }) {
     }
   }, [ensureConversationMessages, ensureConversations, ensureMemory, ensurePersonas, selectedAvatar])
 
+  const setupSteps = useMemo(() => [
+    {
+      id: 'avatar',
+      title: 'Pick a starter avatar or upload your own',
+      detail: hasAvatarLibrary
+        ? `${avatars.length} avatar${avatars.length > 1 ? 's are' : ' is'} ready in your personal library.`
+        : 'Begin with a shared starter avatar for the fastest path, or upload a VRM/GLB file if you already have one.',
+      status: hasAvatarLibrary ? 'done' : activeSection === 'vrm-library' ? 'current' : 'todo',
+      actionLabel: activeSection === 'vrm-library' ? null : 'Open Avatar Library',
+      onAction: activeSection === 'vrm-library' ? null : () => setActiveSection('vrm-library'),
+    },
+    {
+      id: 'identity',
+      title: 'Give the avatar a clear profile',
+      detail: selectedAvatar
+        ? hasPersonality
+          ? `${selectedAvatar.name} has a saved profile. You can refine it any time.`
+          : 'Add a name plus a short backstory or personality so the avatar feels intentional.'
+        : 'Choose an avatar first, then fill in the profile and memory on the Profile screen.',
+      status: hasPersonality ? 'done' : activeSection === 'avatar-edit' ? 'current' : 'todo',
+      actionLabel: activeSection === 'avatar-edit' ? null : 'Open Profile',
+      onAction: activeSection === 'avatar-edit' ? null : () => setActiveSection('avatar-edit'),
+    },
+    {
+      id: 'llm',
+      title: 'Connect one AI provider',
+      detail: hasActiveCredential
+        ? 'This avatar already has an active AI connection and is ready to talk.'
+        : 'Paste one provider API key and keep that connection active. You only need one working setup to start.',
+      status: hasActiveCredential ? 'done' : activeSection === 'llm-config' ? 'current' : 'todo',
+      actionLabel: activeSection === 'llm-config' ? null : 'Open AI Connection',
+      onAction: activeSection === 'llm-config' ? null : () => setActiveSection('llm-config'),
+    },
+    {
+      id: 'chat',
+      title: 'Start the first conversation',
+      detail: conversations.length > 0
+        ? 'This avatar already has saved conversations. You can continue here or move to the Viewer.'
+        : hasMemoryNotes
+          ? 'The setup is close. Test one message here or jump to the Viewer for the full experience.'
+          : 'Optional: add a few memory notes first, then send the first message in Viewer.',
+      status: conversations.length > 0 ? 'done' : activeSection === 'chat' ? 'current' : 'todo',
+      actionLabel: conversations.length > 0 ? 'Open Viewer' : activeSection === 'chat' ? 'Open Viewer' : 'Open Conversation Test',
+      onAction: conversations.length > 0
+        ? () => onNavigatePage('viewer')
+        : activeSection === 'chat'
+          ? () => onNavigatePage('viewer')
+          : () => setActiveSection('chat'),
+    },
+  ], [
+    activeSection,
+    avatars.length,
+    conversations.length,
+    hasActiveCredential,
+    hasAvatarLibrary,
+    hasMemoryNotes,
+    hasPersonality,
+    onNavigatePage,
+    selectedAvatar,
+  ])
+
   async function runAction(key, action, successMessage) {
     setBusyKey(key)
     setNotice('')
@@ -667,10 +733,10 @@ export default function ManagePage({ user, workspace }) {
         <aside className="hidden w-[260px] shrink-0 lg:block">
           <div className="sticky top-6 space-y-4">
             <section className="rounded-[32px] border border-white/10 bg-[rgba(6,10,20,0.82)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
-              <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Management</div>
-              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">Avatar Admin</div>
+              <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Setup</div>
+              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">Avatar setup</div>
               <div className="mt-3 text-sm leading-6 text-white/62">
-                Separate admin pages for avatar editing, VRM creation and uploads, VRMA uploads, and LLM configuration.
+                Follow the steps in order: choose an avatar, fill in the profile, connect one AI provider, then test the first conversation.
               </div>
             </section>
 
@@ -716,7 +782,7 @@ export default function ManagePage({ user, workspace }) {
                 <div className="mt-2 text-sm text-white/58">
                   {effectivePersona?.llmProvider
                     ? `Connected to ${effectivePersona.llmProvider}`
-                    : 'No LLM linked yet'}
+                    : 'No AI connected yet'}
                 </div>
               </div>
             </div>
@@ -725,6 +791,12 @@ export default function ManagePage({ user, workspace }) {
             {error ? <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
             {notice ? <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-100">{notice}</div> : null}
           </header>
+
+          <SetupGuideCard
+            title="Start here if you want the fastest path"
+            description="This checklist is aimed at first-time, non-technical setup. It points to the next step instead of expecting you to already know the workflow."
+            steps={setupSteps}
+          />
 
           <div className="grid gap-4 lg:hidden">
             {SECTIONS.map((section) => (
