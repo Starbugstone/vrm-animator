@@ -113,6 +113,8 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - The next major evolution is full speech with TTS and STT.
 - The final hardware-oriented goal is to drive a physical desktop-sized hologram peripheral.
 - Priority order matters: first make the avatar responsive, lifelike, and personality-driven through strong memory and LLM integration; only after that should hologram hardware become a focus.
+- Launch readiness also requires a curated out-of-the-box experience: at least one launch-ready male avatar and one launch-ready female avatar must ship from the default asset set, ready to become usable as soon as LLM credentials are connected.
+- The product must stay accessible to non-technical users. Guided onboarding, setup assistance, and clear in-app explanations are roadmap requirements, not optional polish.
 
 ### Phase 1: Auth, Default Content, and Persisted Avatars/Animations
 
@@ -123,6 +125,10 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Default avatars and animations**
   - Backend exposes or references a **curated set of default avatars and animations** (e.g. from `default_vrm/`, `default_vrma/`, `expressions_vrma/`, and `idle/` or from a DB seed). Frontend can list “default” assets and use them without requiring uploads.
   - Option: backend serves default asset list (and optionally files) so one source of truth.
+  - For launch, curate at least two ready-to-go starter avatars from that default set:
+    - one male-presenting avatar
+    - one female-presenting avatar
+  - Those launch avatars should come with polished identity defaults and a predictable setup path so the user is not forced to build a character from scratch before first use.
 
 - **User-uploaded avatars and animations**
   - User can upload personal `.vrm`/`.glb` (avatars) and `.vrma` (animations).
@@ -138,6 +144,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Avatar wired to an LLM**
   - Integrate with **OpenRouter, MiniMax, and GLM** first; design so other LLM providers can be added (adapter/strategy pattern).
   - Backend: LLM adapter layer, configurable per user or per avatar (e.g. API keys via env or user settings). No API keys in frontend.
+  - The launch-ready starter avatars must be compatible with this flow so that once a user plugs in valid credentials, they can immediately chat with either starter avatar.
 
 - **Text-based conversation**
   - All communication between user and avatar is **text-based** at first: user sends message → backend sends to LLM with context → response returned to frontend; avatar can be shown as “speaking” the reply (e.g. in a chat bubble).
@@ -174,6 +181,19 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Hologram module**
   - Pluggable **hologram module**: user can “generate” or view their avatar in **3D on desktop** and interact via **vocal commands** directly (same backend: STT → chat API → TTS + animation; frontend is a 3D hologram view instead of or in addition to the current 2D page).
   - Keep the current viewer path (`useHologramViewer`, `src/components/ViewerPage.jsx`) and add an optional build or route that loads a dedicated hologram UI (e.g. fullscreen, different camera, dedicated controls for voice-only).
+
+### Cross-Cutting UX Requirement: Guided Setup
+
+- The app must include a guided tour or onboarding flow that explains:
+  - how to create or pick an avatar
+  - how to configure identity, memory, and LLM credentials
+  - how to reach a first successful conversation
+- This guidance must be designed for non-technical users:
+  - explain concepts in plain language
+  - keep setup steps explicit and sequential
+  - reduce blank-state confusion
+  - make the safe next action obvious on each screen
+- This is a cross-cutting product requirement and should influence frontend UX, backend defaults, and documentation at every phase rather than being postponed as a final pass.
 
 ---
 

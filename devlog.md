@@ -19,6 +19,10 @@ This means the primary product goal is not just "a viewer with chat." It is a pe
 
 The hologram hardware path is a final destination, not the immediate milestone. Before hardware matters, the avatar itself needs to become convincing.
 
+Launch also needs a practical starter experience, not just a flexible system. The product should ship with two curated default avatars, one male-presenting and one female-presenting, that are ready to use as soon as the user connects valid LLM credentials.
+
+Because the intended audience is not purely technical, the app also needs a guided setup experience that explains avatar selection, configuration, and first chat in plain language instead of assuming users already understand the stack.
+
 ## What Has Happened So Far
 
 ### 1. Base viewer foundation landed
@@ -167,6 +171,19 @@ The project currently has:
 
 The biggest thing still missing is not the foundation. The biggest missing piece is the character layer: making the avatar feel responsive, lifelike, and personality-driven through better memory, stronger LLM orchestration, better cue handling, and eventually voice.
 
+## Audit Note On 2026-03-12
+
+A repo audit was run against `TODO.md`, this dev log, and the implemented code.
+
+The conclusion:
+
+- `devlog.md`, `README.md`, and `AGENTS.md` already reflect the real application stage reasonably well
+- `TODO.md` had drifted and still listed many already-completed backend and frontend foundations as if they were pending
+- the real open roadmap gaps are still streaming chat, backend-executed memory tool updates, cue hardening, and character-quality work
+- the main maintenance pressure is now in oversized frontend surfaces and bundle hygiene rather than missing CRUD foundations
+
+This means the project has reached the point where roadmap cleanup matters: planning documents should focus on the remaining orchestration and character work, while implementation cleanup should keep the current UI and viewer code from turning into large hard-to-change surfaces
+
 ## What We Plan To Do Next
 
 ### Core priority order
@@ -188,6 +205,8 @@ That means memory, LLM integration, cue quality, and personality consistency com
 4. Tighten prompt assembly and cue validation so only allowed emotions and animations are used.
 5. Connect the current chat flow more directly to visible avatar reactions in the viewer.
 6. Improve personality consistency so the avatar feels like a character, not just a text endpoint with a model attached.
+7. Curate two launch-ready starter avatars from the shared default set, one male-presenting and one female-presenting, with polished identity defaults.
+8. Make those starter avatars usable immediately after credential setup, without hidden configuration steps.
 
 ### Memory and tool-call priorities
 
@@ -217,6 +236,8 @@ That means memory, LLM integration, cue quality, and personality consistency com
 2. Keep the floating animation test tools useful for development while reducing confusion for normal usage.
 3. Make shared asset adoption and personal library management more obvious.
 4. Improve the Manage page so avatar setup flows in a clearer order: asset -> identity -> memory -> LLM -> chat.
+5. Add a guided tour or onboarding flow for non-technical users so the app explains each setup step in plain language.
+6. Reduce blank-state and configuration confusion by making the next required action obvious on every setup screen.
 
 ### Longer-term goals
 
