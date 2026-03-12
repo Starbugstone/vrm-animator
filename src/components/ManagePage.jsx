@@ -99,6 +99,21 @@ function toList(value) {
     .filter(Boolean)
 }
 
+function buildSharedAvatarDraft(sharedAvatar) {
+  if (!sharedAvatar) {
+    return EMPTY_CUSTOM_AVATAR
+  }
+
+  return {
+    ...EMPTY_CUSTOM_AVATAR,
+    sharedAvatarId: sharedAvatar.id,
+    name: sharedAvatar.label || '',
+    backstory: sharedAvatar.backstory || sharedAvatar.description || '',
+    personality: sharedAvatar.personality || '',
+    systemPrompt: sharedAvatar.systemPrompt || '',
+  }
+}
+
 function AssetListCard({
   title,
   subtitle,
@@ -546,7 +561,15 @@ export default function ManagePage({ user, workspace }) {
   }, [activeSection])
 
   useEffect(() => {
-    if (!selectedAnimationId && animations[0]?.id) {
+    if (animations.length === 0) {
+      if (selectedAnimationId) {
+        setSelectedAnimationId('')
+      }
+      return
+    }
+
+    const hasSelectedAnimation = animations.some((entry) => String(entry.id) === selectedAnimationId)
+    if (!hasSelectedAnimation) {
       setSelectedAnimationId(String(animations[0].id))
     }
   }, [animations, selectedAnimationId])
@@ -772,14 +795,7 @@ export default function ManagePage({ user, workspace }) {
                   selectedId={customAvatarDraft.sharedAvatarId}
                   onSelect={(presetId) => {
                     const nextSharedAvatar = sharedAvatarPresets.find((entry) => entry.id === presetId)
-                    setCustomAvatarDraft((current) => ({
-                      ...current,
-                      sharedAvatarId: presetId,
-                      name: nextSharedAvatar?.label || '',
-                      backstory: nextSharedAvatar?.backstory || nextSharedAvatar?.description || '',
-                      personality: nextSharedAvatar?.personality || '',
-                      systemPrompt: nextSharedAvatar?.systemPrompt || '',
-                    }))
+                    setCustomAvatarDraft(buildSharedAvatarDraft(nextSharedAvatar))
                     setAvatarUpload(EMPTY_AVATAR_UPLOAD)
                   }}
                 />
@@ -800,14 +816,7 @@ export default function ManagePage({ user, workspace }) {
                   onChange={(key, value) => {
                     if (key === 'sharedAvatarId') {
                       const nextSharedAvatar = sharedAvatarPresets.find((entry) => entry.id === value)
-                      setCustomAvatarDraft((current) => ({
-                        ...current,
-                        sharedAvatarId: value,
-                        name: nextSharedAvatar?.label || '',
-                        backstory: nextSharedAvatar?.backstory || nextSharedAvatar?.description || '',
-                        personality: nextSharedAvatar?.personality || '',
-                        systemPrompt: nextSharedAvatar?.systemPrompt || '',
-                      }))
+                      setCustomAvatarDraft(buildSharedAvatarDraft(nextSharedAvatar))
                       return
                     }
 

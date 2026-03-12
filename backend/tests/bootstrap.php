@@ -1,5 +1,8 @@
 <?php
 
+use Doctrine\ORM\Tools\SchemaTool;
+use Doctrine\Persistence\ManagerRegistry;
+
 require dirname(__DIR__).'/config/bootstrap.php';
 
 $databaseUrl = $_SERVER['DATABASE_URL'] ?? $_ENV['DATABASE_URL'] ?? getenv('DATABASE_URL') ?: null;
@@ -23,26 +26,37 @@ $port = (string) ($parts['port'] ?? 3306);
 $user = urldecode((string) ($parts['user'] ?? ''));
 $password = urldecode((string) ($parts['pass'] ?? ''));
 
-$pdo = new PDO(
-    sprintf('mysql:host=%s;port=%s;dbname=%s', $host, $port, $databaseName),
+$serverPdo = new PDO(
+    sprintf('mysql:host=%s;port=%s', $host, $port),
     $user,
     $password,
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
 );
 
-$tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
-if ($tables === false || $tables === []) {
-    return;
-}
+$serverPdo->exec(sprintf(
+    'CREATE DATABASE IF NOT EXISTS `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
+    str_replace('`', '``', $databaseName),
+));
 
-$pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
+$kernelClass = $_SERVER['KERNEL_CLASS'] ?? $_ENV['KERNEL_CLASS'] ?? 'App\\Kernel';
+$kernel = new $kernelClass('test', true);
+$kernel->boot();
 
-foreach ($tables as $table) {
-    if (!is_string($table) || $table === 'doctrine_migration_versions') {
-        continue;
+/** @var ManagerRegistry $doctrine */
+$doctrine = $kernel->getContainer()->get('doctrine');
+$entityManager = $doctrine->getManager();
+$metadata = $entityManager->getMetadataFactory()->getAllMetadata();
+
+if ($metadata !== []) {
+    $schemaTool = new SchemaTool($entityManager);
+    $schemaManager = $entityManager->getConnection()->createSchemaManager();
+
+    if ($schemaManager->listTableNames() !== []) {
+        $schemaTool->dropSchema($metadata);
     }
 
-    $pdo->exec(sprintf('DELETE FROM `%s`', str_replace('`', '``', $table)));
+    $schemaTool->createSchema($metadata);
 }
 
-$pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
+$entityManager->clear();
+$kernel->shutdown();

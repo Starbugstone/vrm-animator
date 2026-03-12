@@ -58,6 +58,12 @@ function removeById(items, id) {
   return items.filter((entry) => entry.id !== id)
 }
 
+function omitKey(record, key) {
+  const next = { ...record }
+  delete next[key]
+  return next
+}
+
 function buildPersonaPayloadFromAvatar(avatar, llmCredentialId = null) {
   return {
     name: avatar?.name || 'Avatar',
@@ -269,11 +275,10 @@ export default function useWorkspace(token) {
     if (payload.systemPrompt) formData.append('systemPrompt', payload.systemPrompt)
 
     const avatar = await uploadAvatar(token, formData)
-    await refreshWorkspace()
     setAvatars((current) => upsertById(current, avatar))
     setSelectedAvatarId(avatar.id)
     return avatar
-  }, [refreshWorkspace, setSelectedAvatarId, token])
+  }, [setSelectedAvatarId, token])
 
   const saveAvatarIdentity = useCallback(async (avatarId, payload) => {
     const { llmCredentialId = null, ...avatarPayload } = payload
@@ -308,27 +313,22 @@ export default function useWorkspace(token) {
     if (String(avatarId) === selectedAvatarId) {
       setSelectedAvatarId('')
     }
-    setPersonasByAvatar((current) => {
-      const next = { ...current }
-      delete next[avatarId]
-      return next
-    })
-    setMemoryByAvatar((current) => {
-      const next = { ...current }
-      delete next[avatarId]
-      return next
-    })
-    setMemoryRevisionsByAvatar((current) => {
-      const next = { ...current }
-      delete next[avatarId]
-      return next
-    })
-    setConversationsByAvatar((current) => {
-      const next = { ...current }
-      delete next[avatarId]
-      return next
-    })
-  }, [selectedAvatarId, setSelectedAvatarId, token])
+    const removedConversationIds = (conversationsByAvatar[avatarId] || []).map((entry) => entry.id)
+
+    setPersonasByAvatar((current) => omitKey(current, avatarId))
+    setMemoryByAvatar((current) => omitKey(current, avatarId))
+    setMemoryRevisionsByAvatar((current) => omitKey(current, avatarId))
+    setConversationsByAvatar((current) => omitKey(current, avatarId))
+    if (removedConversationIds.length > 0) {
+      setMessagesByConversation((current) => {
+        const next = { ...current }
+        removedConversationIds.forEach((conversationId) => {
+          delete next[conversationId]
+        })
+        return next
+      })
+    }
+  }, [conversationsByAvatar, selectedAvatarId, setSelectedAvatarId, token])
 
   const saveAnimationUpload = useCallback(async (payload) => {
     const formData = new FormData()
@@ -341,10 +341,9 @@ export default function useWorkspace(token) {
     ;(payload.emotionTags || []).forEach((tag) => formData.append('emotionTags[]', tag))
 
     const animation = await uploadAnimation(token, formData)
-    await refreshWorkspace()
     setAnimations((current) => upsertById(current, animation))
     return animation
-  }, [refreshWorkspace, token])
+  }, [token])
 
   const adoptSharedAvatar = useCallback(async (asset, overrides = {}) => {
     const file = await downloadSharedAssetFile(asset)

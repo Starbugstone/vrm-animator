@@ -2,6 +2,8 @@
 
 This document defines project layout, technology stack, mandatory practices, and the product roadmap. All contributions and AI-assisted work **must** align with it.
 
+`devlog.md` is the live project recap and the current end-goal reference for VRM Animator. It must be kept updated at all times as features land, plans change, or project direction shifts. When updating roadmap-facing work, keep `AGENTS.md`, `TODO.md`, and `devlog.md` aligned.
+
 ---
 
 ## 1. Project Layout
@@ -45,6 +47,7 @@ vrm-animator/
 ├── vite.config.js
 ├── tailwind.config.js
 ├── AGENTS.md                     # This file
+├── devlog.md                     # Live recap and end-goal reference
 ├── README.md
 └── TODO.md
 ```
@@ -77,6 +80,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **SOLID, DRY, KISS, YAGNI**: Design for single responsibility, avoid duplication, keep solutions simple, add features only when required.
 - **Readability**: Clear naming; comments explain *why*, not *what*. Follow existing project style.
 - **Modularity**: Break complex logic into small, cohesive, loosely coupled functions/modules.
+- **Dev Log Discipline**: `devlog.md` must be updated whenever meaningful implementation progress, roadmap changes, or architectural decisions happen.
 - **Environment files**: When a local-only `.env.local` value is added or changed, update the corresponding committed `.env` template with a dummy placeholder value in the same key. Never copy or leak real values from `.env.local` into a committed `.env` file.
 
 ### 3.2 Backend (Symfony)
@@ -101,6 +105,14 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 ---
 
 ## 4. Roadmap
+
+### Product Goal
+
+- The primary goal is to turn a 3D avatar connected to one or more LLMs into a believable conversational character that can chat naturally with the user.
+- The first interaction mode is text chat.
+- The next major evolution is full speech with TTS and STT.
+- The final hardware-oriented goal is to drive a physical desktop-sized hologram peripheral.
+- Priority order matters: first make the avatar responsive, lifelike, and personality-driven through strong memory and LLM integration; only after that should hologram hardware become a focus.
 
 ### Phase 1: Auth, Default Content, and Persisted Avatars/Animations
 
@@ -175,8 +187,13 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 
 ## 6. Reference: Current API Surface
 
-- **Auth**: `POST /api/register`, `POST /api/login_check` (returns JWT).
-- **Avatars** (JWT required): `GET/POST /api/avatars`, `GET/PATCH/DELETE /api/avatars/{id}`.
+- **Auth**: `POST /api/register`, `POST /api/login_check`, `POST /api/token/refresh`, `POST /api/auth/google`, `GET/PATCH /api/me`.
+- **Shared Library**: `GET /api/library/avatars`, `GET /api/library/animations`, `GET /api/library/shared-file`.
+- **Avatars** (JWT required): `GET/POST /api/avatars`, `GET/PATCH/DELETE /api/avatars/{id}`, `POST /api/avatars/upload`, `GET /api/avatars/{id}/file`.
+- **Animations** (JWT required): `GET/POST /api/animations`, `GET/PATCH/DELETE /api/animations/{id}`, `POST /api/animations/upload`, `GET /api/animations/{id}/file`.
+- **Personas and Memory**: `GET/POST /api/avatars/{id}/personas`, `PATCH/DELETE /api/avatar-personas/{id}`, `GET/PATCH /api/avatars/{id}/memory`, `GET /api/avatars/{id}/memory/revisions`.
+- **Chat**: `GET /api/avatars/{id}/conversations`, `GET /api/conversations/{id}`, `GET /api/conversations/{id}/messages`, `POST /api/avatars/{id}/chat`.
+- **LLM Config**: `GET /api/llm/providers`, `GET /api/llm/providers/openrouter/models`, `GET/POST /api/llm/credentials`, `PATCH/DELETE /api/llm/credentials/{id}`.
 - **Docs**: `GET /api/docs` (public).
 
 All API must remain **stateless** and use JWT for authentication.

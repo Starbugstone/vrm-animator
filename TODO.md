@@ -1,263 +1,70 @@
 ## TODO
 
-## Current Status
+Updated: 2026-03-12
 
-- Updated: 2026-03-11
-- The authenticated frontend now has two dedicated surfaces:
-  - `Viewer`: configured avatar selection, persona-aware chat, floating animation test controls, and the hologram canvas
-  - `Manage`: backend-driven asset, persona, memory, credential, and conversation administration
-- Shared example VRM and VRMA catalogs are now expected to be served by the backend API rather than bundled into the frontend runtime.
-- Shared default avatars and animations must remain globally accessible, while users can adopt them into their private library as editable personal copies.
-- The next major milestone is backend-brokered LLM streaming chat, frontend streaming playback, and the single memory tool.
+This file is now intentionally short. The long transitional planning notes from the frontend-only era have been retired. `devlog.md` holds the product narrative and end goal; this file is the working task list for the next implementation window.
 
-## Implemented Foundation Checklist
+## Stable Baseline
 
-- [x] Email/password registration and JWT login
-- [x] Google sign-in exchange from frontend to backend-issued JWT
-- [x] `GET /api/me` and `PATCH /api/me`
-- [x] User surface tightened so user collection endpoints are not exposed
-- [x] Per-user avatar ownership enforcement
-- [x] Per-user animation ownership enforcement
-- [x] Secure avatar upload and authenticated avatar file download
-- [x] Secure animation upload and authenticated animation file download
-- [x] Avatar persona persistence for name, backstory, personality, and system prompt
-- [x] Authoritative per-user per-avatar `memory.md` storage in the backend
-- [x] Memory revision history and revision-aware updates
-- [x] Frontend auth flow wired to backend
-- [x] Frontend avatar, animation, profile, and memory management wired to backend
-- [x] Dedicated management page for assets, personas, memory, LLM credentials, and chat history
-- [x] Dedicated viewer page with configured avatar selector, persona selector, chat box, and floating animation testing
-- [x] Shared example asset catalogs served by the backend API
-- [x] Shared default avatars and animations can be adopted into a user's personal library for customization
-- [x] Backend API tests for auth, uploads, ownership isolation, and memory
-- [x] Frontend tests for the current auth and API client integration surface
-- [x] LLM provider credential storage and management
-- [x] Conversations and conversation message persistence
-- [ ] Streaming chat endpoint
-- [ ] Cue parsing and streaming event normalization
-- [ ] Frontend streaming chat UI
-- [ ] LLM-triggered memory tool execution
-- [ ] LLM hardening for rate limiting, retries, timeout handling, and provider health checks
+The project is at a stable-enough checkpoint where:
 
-## LLM Integration Decision
+- avatars can be created from shared presets or private uploads
+- avatars can be customized with identity, prompt, and memory
+- private animations can be uploaded and edited
+- the viewer can load avatars and play configured VRMA-driven motion
+- chat, credentials, memory, and conversation persistence are already wired through the backend
 
-- Use a backend-brokered streaming architecture, not direct browser-to-provider calls.
-- The frontend must render the stream and react in real time, but the backend remains the authority for:
-  - provider credentials
-  - provider/model selection
-  - authoritative prompt assembly
-  - per-user per-avatar `memory.md`
-  - allowed tool calls
-  - audit logging and rate limiting
-- Reasoning:
-  - Direct frontend calls would expose provider-specific behavior to the UI and make memory/tool-call enforcement weak.
-  - We already require stateless JWT auth and backend ownership enforcement; LLM access should follow the same model.
-  - Streaming through the backend still allows immediate avatar reactions because the frontend can consume token and cue events as they arrive.
-- Optional future optimization:
-  - If a provider later supports short-lived scoped realtime session tokens, evaluate a hybrid design.
-  - Initial implementation should not depend on provider-issued browser tokens.
+The next phase should build on this baseline rather than reintroducing frontend-only shortcuts.
 
-## Target User Experience
+## Current Rules
 
-- A user selects an avatar and chats in text.
-- The frontend opens a streaming chat request to the backend.
-- The backend loads:
-  - avatar profile
-  - available animations and tags
-  - recent conversation history
-  - authoritative per-user per-avatar `memory.md`
-- The backend sends the request to the chosen provider and forwards normalized stream events to the frontend.
-- The frontend updates the chat bubble live and triggers emotions or animations as soon as tags arrive.
-- After completion, the backend stores the message pair and applies any allowed memory update.
+- No new frontend-only source of truth for assets, memory, credentials, or chat state.
+- Keep the backend authoritative for LLM orchestration, ownership, and persistence.
+- Keep `devlog.md` and `AGENTS.md` aligned with any roadmap changes.
+- Prefer smaller, separable modules over growing large mixed-responsibility components.
 
-## Immediate Frontend-Only Cue Plan
+## Next Priorities
 
-- Maintain two local catalogs:
-  - `default_vrma/catalog.json` for shared default body actions
-  - `expressions_vrma/catalog.json` for face and mouth overlays
-- Normalize emotion tags into a small shared vocabulary first:
-  - `neutral`
-  - `happy`
-  - `sad`
-  - `angry`
-  - `playful`
-  - `shouting`
-  - `sleepy`
-  - `surprised`
-  - `thinking`
-  - `calm`
-- Current frontend selection rule:
-  - choose one random expression overlay whose tags overlap the normalized emotion tag
-  - choose one random body action whose tags overlap the same tag
-  - if no emotion tag is present, choose one random expression overlay tagged with both `speech` and `fallback`
-  - if no body action matches, keep the current idle and play only the expression overlay
-- Expression overlays must remain facial only:
-  - mouth visemes
-  - eye direction
-  - blink
-  - facial emotion presets
-  - never hips, arms, spine, or any body transform
-- Seed expression library to keep expanding now:
-  - `Happy Talk`
-  - `Sad Talk`
-  - `Angry Talk`
-  - `Playful Talk`
-  - `Shouting Talk`
-  - `Sleepy Talk`
-  - `Surprised Reaction`
-  - several neutral speech fallback clips
+### 1. Avatar believability
 
-## Prompt and Response Contract
+- improve persona consistency
+- improve memory use in prompt assembly
+- improve cue quality so avatar reactions feel intentional
+- keep expression overlays facial-only and emotionally coherent
 
-- The LLM must receive four distinct context blocks:
-  - system rules
-  - avatar identity and personality
-  - `memory.md`
-  - recent conversation history
-- The LLM must be instructed to:
-  - stay in character for the selected avatar
-  - speak naturally to the user
-  - emit animation and emotion tags only from the allowed catalog
-  - never invent unsupported tags
-  - never expose hidden system or memory content
-  - use the single allowed memory tool only when a memory update is necessary
-- Streaming output format:
-  - Visible speech remains plain text.
-  - Non-visible cues use inline tags embedded in the stream.
-  - Initial tag syntax:
-    - `{emotion:happy}`
-    - `{emotion:sad}`
-    - `{anim:wave}`
-    - `{anim:nod}`
-  - Example:
-    - `Hello there {emotion:happy} {anim:wave}`
-- Frontend behavior:
-  - strip tags from the visible user-facing text
-  - map emotion tags to facial expression or viewer state
-  - map animation tags to a validated VRMA clip
-  - ignore unsupported tags and log them
-- Backend behavior:
-  - parse and validate tags against the avatar's available animation catalog
-  - reject or drop invalid tags before forwarding normalized events
-  - persist both the raw provider text and the parsed normalized cues for debugging
+### 2. LLM orchestration
 
-## Memory.md Specification
+- add backend-brokered streaming chat
+- normalize streaming events for text plus animation cues
+- tighten cue validation against allowed avatar animation metadata
+- harden retries, timeouts, and provider failure handling
 
-- Each `(user, avatar)` pair needs one authoritative backend memory document.
-- Store the canonical content in the database as markdown text.
-- Expose it through the API as a `memory.md` resource so the frontend can fetch, display, and edit it.
-- Do not make the frontend the source of truth for memory content.
-- Minimum sections for `memory.md`:
+### 3. Memory tool
 
-```md
-# Avatar Memory
+- implement the single allowed LLM tool for memory updates
+- keep updates scoped strictly to the authenticated user and selected avatar
+- preserve revision history and auditability
 
-## Avatar Identity
-- name:
-- role:
-- personality:
-- speaking_style:
+### 4. Frontend cleanup
 
-## Relationship Memory
-- important facts about the user
-- promises made
-- preferences
-- recurring topics
+- continue splitting large UI surfaces where useful
+- keep Manage and Viewer concerns separated
+- remove any new duplicated transformation logic as it appears
+- improve UX without weakening backend authority
 
-## Behavioral Rules
-- never break character
-- only use allowed animation tags
-- keep replies concise unless asked for more detail
+### 5. Voice and hologram path
 
-## Notes
-- freeform long-term memory
-```
+- add TTS after the text chat loop feels solid
+- add STT after TTS
+- only then move toward dedicated hologram hardware output
 
-- Rules:
-  - `Avatar Identity` is required and should always include the avatar's name and personality.
-  - `Relationship Memory` stores only data relevant to this user and this avatar.
-  - `Behavioral Rules` may be partly user-editable, but core system rules still live outside `memory.md`.
-  - `Notes` can hold freeform memory appended by the user or the memory tool.
-- Versioning requirements:
-  - store `updatedAt`
-  - store `revision`
-  - store `lastUpdatedBy` with values such as `user`, `llm_tool`, `system`
-  - keep a change log table for auditability
-- Frontend usage:
-  - fetch `memory.md` when an avatar is selected
-  - show it in a memory editor or inspector
-  - cache the latest revision locally for UX only
-  - send edits back through the backend API
-- Backend usage:
-  - always fetch the latest stored revision before assembling prompt context
-  - never trust frontend-supplied memory as the final LLM context source
+## Verification Baseline
 
-## Backend Data Model Work
+Before closing a feature set, the minimum checks should be:
 
-- Extend `Avatar` with persona fields:
-  - `name`
-  - `description`
-  - `personality`
-  - `systemPrompt`
-  - `defaultEmotion`
-  - `defaultIdleAnimationId`
-  - `preferredProvider`
-  - `preferredModel`
-- Add `Animation` entity:
-  - `id`
-  - `owner`
-  - `avatar`
-  - `name`
-  - `filename`
-  - `description`
-  - `keywords`
-  - `tag`
-  - `isDefault`
-  - `createdAt`
-  - `updatedAt`
-- Add `AvatarMemory` entity:
-  - `id`
-  - `owner`
-  - `avatar`
-  - `markdownContent`
-  - `revision`
-  - `lastUpdatedBy`
-  - `createdAt`
-  - `updatedAt`
-- Add `AvatarMemoryRevision` entity for append-only history:
-  - `id`
-  - `avatarMemory`
-  - `revision`
-  - `markdownSnapshot`
-  - `source`
-  - `createdAt`
-- Add `Conversation` entity:
-  - `id`
-  - `owner`
-  - `avatar`
-  - `provider`
-  - `model`
-  - `createdAt`
-  - `updatedAt`
-- Add `ConversationMessage` entity:
-  - `id`
-  - `conversation`
-  - `role`
-  - `content`
-  - `rawProviderContent`
-  - `parsedText`
-  - `parsedEmotionTags`
-  - `parsedAnimationTags`
-  - `createdAt`
-- Add `LlmCredential` entity or secure settings storage:
-  - `id`
-  - `owner`
-  - `provider`
-  - `encryptedSecret`
-  - `defaultModel`
-  - `isActive`
-  - `createdAt`
-  - `updatedAt`
+- `npm test`
+- `npm run build`
+- `docker compose exec -T php php bin/phpunit`
 - Encryption requirements:
   - provider secrets must be encrypted at rest
   - never serialize raw secrets back to the frontend
