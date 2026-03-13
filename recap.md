@@ -60,3 +60,19 @@ The next implementation stage after this commit should focus on avatar believabi
 - add a clear "thinking" avatar reaction during provider preparation and waiting states
 - use existing expression/action metadata first so the feature works with current assets
 - keep the backend authoritative and avoid introducing a second frontend-only source of truth
+
+## Post-Commit TODO Progress
+
+The first follow-up stage from `TODO.md` is now underway on this same branch.
+
+### Avatar Believability Progress
+
+- added a viewer-side temporary thinking presence during streamed `prepare` and `provider` phases so the avatar visibly reacts before the first reply text arrives
+- resolved the waiting movement through existing animation metadata instead of inventing a separate frontend catalog
+- kept the waiting reaction temporary by clearing it once streaming begins, the turn completes, or the turn errors
+- added frontend unit coverage for thinking-movement asset selection, including description-based matches, action-vs-idle preference, and weighted tie-breaking
+
+### Remaining Follow-Up
+
+- curate dedicated launch-quality thinking VRMA assets so the waiting presence is more polished and less dependent on generic metadata matches
+- continue the broader believability pass around persona consistency, memory use, and launch-ready starter avatars

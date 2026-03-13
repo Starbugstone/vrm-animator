@@ -2,7 +2,7 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
-Latest implementation note: chat prompt budgeting is now model-aware instead of global. The backend derives history, memory, profile, cue-catalog, and completion-token budgets from the selected model’s metadata, using the shared GLM/MiniMax config catalogs and the fetched OpenRouter catalog so fast or smaller-context models stay snappy while larger-context models can safely carry a bit more context.
+Latest implementation note: the viewer now adds a metadata-driven “thinking” presence while the backend is preparing or contacting the selected LLM, so avatars visibly react during reply latency instead of only showing a text spinner. This uses the existing expression/action metadata first and keeps the dedicated thinking-asset pass as a follow-up polish step.
 
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 
@@ -334,6 +334,19 @@ That pass added:
 - a full repository verification run across PHPUnit, frontend unit tests, and the production frontend build after the recent LLM and streaming refactors
 
 This matters because the recent chat, prompt-budget, provider-selection, and cue-parsing changes now have direct regression coverage instead of relying mostly on manual retesting.
+
+### 23. Viewer waiting states now drive a temporary thinking presence
+
+The next post-commit TODO pass improved avatar believability during chat latency instead of only focusing on transport and provider stability.
+
+That pass added:
+
+- viewer-side activation of a temporary thinking emotion overlay during the `prepare` and `provider` stream phases
+- metadata-driven selection of a matching thinking-style movement from the current avatar’s available action and idle catalogs
+- cleanup so the temporary waiting emotion is removed again once text starts streaming, the turn completes, or the turn fails
+- frontend unit coverage for the thinking-movement selector so future metadata or catalog changes do not quietly break the waiting-state behavior
+
+This matters because the app now gives the avatar a more believable “I am processing this” state while the model is still responding, which supports the broader product goal of making the character feel alive instead of just loading behind a spinner.
 
 ## Current State On 2026-03-12
 
