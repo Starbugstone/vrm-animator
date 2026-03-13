@@ -33,6 +33,7 @@ import {
 import {
   fetchAvatarMemory,
   fetchAvatarMemoryRevisions,
+  resetAvatarMemory,
   updateAvatarMemory,
 } from '../api/memory.js'
 import {
@@ -376,6 +377,14 @@ export default function useWorkspace(token) {
     return memory
   }, [token])
 
+  const resetMemory = useCallback(async (avatarId) => {
+    const memory = await resetAvatarMemory(token, avatarId)
+    const revisions = await fetchAvatarMemoryRevisions(token, avatarId)
+    setMemoryByAvatar((current) => ({ ...current, [avatarId]: memory }))
+    setMemoryRevisionsByAvatar((current) => ({ ...current, [avatarId]: Array.isArray(revisions) ? revisions : [] }))
+    return memory
+  }, [token])
+
   const loadOpenRouterCatalog = useCallback(async (options = {}) => {
     setIsModelsLoading(true)
     try {
@@ -491,6 +500,7 @@ export default function useWorkspace(token) {
     saveAnimationMetadata,
     removeAnimation,
     saveMemory,
+    resetMemory,
     loadOpenRouterCatalog,
     saveCredential,
     removeCredential,

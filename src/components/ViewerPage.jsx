@@ -126,6 +126,42 @@ function pickSpeechVoice(speechSynthesis, locale) {
   )
 }
 
+function inferVoiceGender(voice) {
+  const hintText = `${voice?.name || ''} ${voice?.voiceURI || ''}`.toLowerCase()
+  const femaleHints = ['female', 'woman', 'girl', 'ava', 'aria', 'emma', 'jenny', 'joanna', 'samantha', 'victoria', 'karen', 'zira']
+  const maleHints = ['male', 'man', 'boy', 'david', 'daniel', 'george', 'james', 'matthew', 'michael', 'thomas', 'alex', 'fred', 'ralph']
+
+  const femaleScore = femaleHints.filter((hint) => hintText.includes(hint)).length
+  const maleScore = maleHints.filter((hint) => hintText.includes(hint)).length
+
+  if (femaleScore === maleScore) {
+    return null
+  }
+
+  return femaleScore > maleScore ? 'female' : 'male'
+}
+
+function pickSpeechVoiceWithPreference(speechSynthesis, locale, preferredGender) {
+  const voices = speechSynthesis?.getVoices?.() || []
+  if (voices.length === 0) {
+    return null
+  }
+
+  const normalizedLocale = String(locale || SPEECH_LANGUAGE_FALLBACK).toLowerCase()
+  const languageCode = normalizedLocale.split('-')[0]
+  const localeVoices = voices.filter((voice) => {
+    const voiceLocale = String(voice.lang || '').toLowerCase()
+    return voiceLocale === normalizedLocale || voiceLocale.startsWith(`${languageCode}-`) || voiceLocale === languageCode
+  })
+
+  const candidateVoices = localeVoices.length > 0 ? localeVoices : voices
+  const genderVoices = preferredGender
+    ? candidateVoices.filter((voice) => inferVoiceGender(voice) === preferredGender)
+    : []
+
+  return genderVoices[0] || candidateVoices[0] || null
+}
+
 function estimateSpeechDurationMs(text, rate = 1) {
   const wordCount = String(text || '').trim().split(/\s+/).filter(Boolean).length
   if (wordCount === 0) {
@@ -557,6 +593,25 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
     })
   }, [actionItems, idleItems, playAnimationFile])
 
+  const resetSpeechRuntime = useCallback(() => {
+    speechSessionIdRef.current += 1
+    lastSpeechActivityAtRef.current = 0
+
+    if (speechStopTimeoutRef.current) {
+      window.clearTimeout(speechStopTimeoutRef.current)
+      speechStopTimeoutRef.current = null
+    }
+
+    if (speechMonitorIntervalRef.current) {
+      window.clearInterval(speechMonitorIntervalRef.current)
+      speechMonitorIntervalRef.current = null
+    }
+
+    activeEmotionRef.current = 'neutral'
+    speechSynthesisRef.current?.cancel?.()
+    stopOverlayAnimation({ immediate: false })
+  }, [stopOverlayAnimation])
+
   const playEmotionCue = useCallback(async (emotion, options = {}) => {
     const asset = pickExpressionAsset(expressionItems, emotion, options)
     if (!asset) {
@@ -598,8 +653,14 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
     stopOverlayAnimation({ immediate: true })
     speechSynthesis.cancel()
     const utterance = new window.SpeechSynthesisUtterance(cleanedText)
-    const locale = detectLanguageLocale(cleanedText, ...languageSamples)
-    const voice = pickSpeechVoice(speechSynthesis, locale)
+    const locale = selectedAvatar?.speechLanguage && selectedAvatar.speechLanguage !== 'auto'
+      ? selectedAvatar.speechLanguage
+      : detectLanguageLocale(cleanedText, ...languageSamples)
+    const voice = pickSpeechVoiceWithPreference(
+      speechSynthesis,
+      locale,
+      selectedAvatar?.speechVoiceGender || null,
+    ) || pickSpeechVoice(speechSynthesis, locale)
 
     utterance.lang = locale
     if (voice) {
@@ -710,13 +771,34 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
       scheduleSpeechOverlayStop()
     }
     speechSynthesis.speak(utterance)
-  }, [playEmotionCue, stopOverlayAnimation])
+  }, [playEmotionCue, selectedAvatar, stopOverlayAnimation])
 
   const appendPendingAssistantData = useCallback((updater) => {
     setPendingMessages((current) => current.map((message) => (
       message.role !== 'assistant' ? message : updater(message)
     )))
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined
+    }
+
+    const handleSpeechReset = (event) => {
+      const targetAvatarId = event?.detail?.avatarId
+      if (!selectedAvatar || (targetAvatarId && Number(targetAvatarId) !== Number(selectedAvatar.id))) {
+        return
+      }
+
+      resetSpeechRuntime()
+    }
+
+    window.addEventListener('viewer:reset-speech-state', handleSpeechReset)
+
+    return () => {
+      window.removeEventListener('viewer:reset-speech-state', handleSpeechReset)
+    }
+  }, [resetSpeechRuntime, selectedAvatar])
 
   const handlePlayAction = useCallback(async () => {
     if (!selectedAction) return

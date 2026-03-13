@@ -27,6 +27,7 @@ The repo currently includes:
 - streamed chat events for live text and cue playback
 - a working avatar viewer with idle, action, and expression playback
 - browser speech synthesis for spoken avatar replies in the Viewer
+- avatar-level speech preferences for browser voice gender and language selection
 
 ## Requirements
 

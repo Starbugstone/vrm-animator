@@ -56,6 +56,18 @@ class AvatarMemoryController extends AbstractController
         return $this->json($memory, Response::HTTP_OK, [], ['groups' => ['avatar-memory:read']]);
     }
 
+    #[Route('/api/avatars/{id}/memory/reset', name: 'api_avatar_memory_reset', methods: ['POST'])]
+    public function reset(
+        int $id,
+        EntityManagerInterface $entityManager,
+        AvatarMemoryService $avatarMemoryService,
+    ): JsonResponse {
+        $avatar = $this->findOwnedAvatar($id, $entityManager);
+        $memory = $avatarMemoryService->resetMemory($avatar, 'user');
+
+        return $this->json($memory, Response::HTTP_OK, [], ['groups' => ['avatar-memory:read']]);
+    }
+
     #[Route('/api/avatars/{id}/memory/revisions', name: 'api_avatar_memory_revisions', methods: ['GET'])]
     public function revisions(int $id, EntityManagerInterface $entityManager, AvatarMemoryService $avatarMemoryService): JsonResponse
     {

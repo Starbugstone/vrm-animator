@@ -65,6 +65,18 @@ class AvatarMemoryService
         return $this->saveMemory($memory, trim($markdownContent), $source);
     }
 
+    public function resetMemory(Avatar $avatar, string $source = 'user'): AvatarMemory
+    {
+        $memory = $this->getOrCreateMemory($avatar, $source);
+        $defaultMarkdown = $this->buildDefaultMarkdown($avatar);
+
+        if ($memory->getMarkdownContent() === $defaultMarkdown) {
+            return $memory;
+        }
+
+        return $this->saveMemory($memory, $defaultMarkdown, $source);
+    }
+
     /**
      * @param list<string> $entries
      */
@@ -170,6 +182,8 @@ class AvatarMemoryService
             sprintf('- backstory: %s', $avatar->getBackstory() ?: ''),
             sprintf('- personality: %s', $avatar->getPersonality() ?: ''),
             sprintf('- system_prompt: %s', $avatar->getSystemPrompt() ?: ''),
+            sprintf('- speech_voice_gender: %s', $avatar->getSpeechVoiceGender() ?: ''),
+            sprintf('- speech_language: %s', $avatar->getSpeechLanguage()),
         ]);
     }
 

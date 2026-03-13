@@ -541,6 +541,7 @@ export default function ManagePage({ user, workspace, onNavigatePage }) {
     saveAnimationMetadata,
     removeAnimation,
     saveMemory,
+    resetMemory,
     loadOpenRouterCatalog,
     saveCredential,
     removeCredential,
@@ -852,8 +853,19 @@ export default function ManagePage({ user, workspace, onNavigatePage }) {
                 <MemoryPanel
                   memory={memory}
                   revisions={memoryRevisions}
-                  busy={busyKey === 'memory-save'}
+                  busy={busyKey === 'memory-save' || busyKey === 'memory-reset'}
                   onSave={(payload) => runAction('memory-save', () => saveMemory(selectedAvatar.id, payload), 'Memory updated.')}
+                  onReset={() => runAction('memory-reset', async () => {
+                    const result = await resetMemory(selectedAvatar.id)
+
+                    if (typeof window !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('viewer:reset-speech-state', {
+                        detail: { avatarId: selectedAvatar.id },
+                      }))
+                    }
+
+                    return result
+                  }, 'Bot memory and speech state reset.')}
                 />
               </div>
             </div>

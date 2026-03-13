@@ -40,8 +40,8 @@ done
 echo "Ensuring test database exists..."
 php <<'PHP'
 <?php
-$host = getenv('DATABASE_HOST') ?: 'database';
-$port = getenv('DATABASE_PORT') ?: '3306';
+$host = getenv('DATABASE_TEST_HOST') ?: 'database_test';
+$port = getenv('DATABASE_TEST_PORT') ?: '3306';
 $appUser = getenv('DATABASE_USER') ?: 'vrm_user';
 $appPassword = getenv('DATABASE_PASSWORD') ?: 'vrm_pass';
 $rootUser = getenv('DATABASE_ROOT_USER') ?: 'root';
@@ -81,19 +81,56 @@ run_migration_command() {
     shift
 
     echo "Running ${label}..."
-    if timeout 90 "$@"; then
+    set +e
+    timeout 90 "$@"
+    local exit_code=$?
+    set -e
+
+    if [ "${exit_code}" -eq 0 ]; then
         return 0
     fi
 
-    local exit_code=$?
     echo "Warning: ${label} did not complete cleanly (exit ${exit_code}). Continuing startup so Apache can serve requests."
     return 0
+}
+
+test_database_has_user_tables() {
+    php <<'PHP'
+<?php
+$host = getenv('DATABASE_TEST_HOST') ?: 'database_test';
+$port = getenv('DATABASE_TEST_PORT') ?: '3306';
+$database = getenv('DATABASE_TEST_NAME') ?: 'vrm_animator_test';
+$user = getenv('DATABASE_USER') ?: 'vrm_user';
+$password = getenv('DATABASE_PASSWORD') ?: 'vrm_pass';
+
+$pdo = new PDO(
+    sprintf('mysql:host=%s;port=%s;dbname=%s', $host, $port, $database),
+    $user,
+    $password,
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
+);
+
+$statement = $pdo->prepare(
+    'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = :schema AND table_name <> :migration_table'
+);
+$statement->execute([
+    'schema' => $database,
+    'migration_table' => 'doctrine_migration_versions',
+]);
+
+exit(((int) $statement->fetchColumn()) > 0 ? 0 : 1);
+PHP
 }
 
 echo "Running database migrations..."
 run_migration_command "database migrations" php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
 rm -rf /var/www/html/var/cache/test
-run_migration_command "test database migrations" env APP_ENV=test php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+
+if test_database_has_user_tables; then
+    echo "Skipping test database migrations because the test schema already contains tables."
+else
+    run_migration_command "test database migrations" env APP_ENV=test php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+fi
 
 # Fix permissions
 chown -R www-data:www-data /var/www/html/var /var/www/html/config/jwt 2>/dev/null || true

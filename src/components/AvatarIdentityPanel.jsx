@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react'
 
+const SPEECH_LANGUAGE_OPTIONS = [
+  { value: 'auto', label: 'Auto detect' },
+  { value: 'en-US', label: 'English' },
+  { value: 'fr-FR', label: 'French' },
+  { value: 'es-ES', label: 'Spanish' },
+  { value: 'de-DE', label: 'German' },
+  { value: 'it-IT', label: 'Italian' },
+]
+
 export default function AvatarIdentityPanel({
   avatar,
   credentialId = '',
@@ -13,6 +22,8 @@ export default function AvatarIdentityPanel({
     personality: '',
     systemPrompt: '',
     llmCredentialId: '',
+    speechVoiceGender: '',
+    speechLanguage: 'auto',
   })
 
   useEffect(() => {
@@ -22,6 +33,8 @@ export default function AvatarIdentityPanel({
       personality: avatar?.personality || '',
       systemPrompt: avatar?.systemPrompt || '',
       llmCredentialId: credentialId ? String(credentialId) : '',
+      speechVoiceGender: avatar?.speechVoiceGender || '',
+      speechLanguage: avatar?.speechLanguage || 'auto',
     })
   }, [avatar, credentialId])
 
@@ -53,6 +66,8 @@ export default function AvatarIdentityPanel({
             personality: draft.personality,
             systemPrompt: draft.systemPrompt,
             llmCredentialId: draft.llmCredentialId ? Number(draft.llmCredentialId) : null,
+            speechVoiceGender: draft.speechVoiceGender || null,
+            speechLanguage: draft.speechLanguage || 'auto',
           })}
           disabled={busy}
           className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
@@ -116,6 +131,34 @@ export default function AvatarIdentityPanel({
             ))}
           </select>
         </label>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block space-y-2">
+            <div className="text-xs uppercase tracking-[0.24em] text-white/45">Speech voice</div>
+            <select
+              value={draft.speechVoiceGender}
+              onChange={(event) => setDraft((current) => ({ ...current, speechVoiceGender: event.target.value }))}
+              className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+            >
+              <option value="">No preference</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select>
+          </label>
+          <label className="block space-y-2">
+            <div className="text-xs uppercase tracking-[0.24em] text-white/45">Speech language</div>
+            <select
+              value={draft.speechLanguage}
+              onChange={(event) => setDraft((current) => ({ ...current, speechLanguage: event.target.value }))}
+              className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+            >
+              {SPEECH_LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
     </section>
   )

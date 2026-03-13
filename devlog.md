@@ -2,6 +2,8 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
+Latest implementation note: Docker dev startup now treats the main DB and test DB separately. The PHP entrypoint provisions the test database on `database_test`, skips test migrations when PHPUnit has already built the schema directly, and no longer lets test bootstrap collisions kill the PHP container.
+
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 
 ## Project End Goal
@@ -184,6 +186,17 @@ That pass added:
 - memory appends driven from restricted inline memory tags, persisted through the existing avatar memory revision system
 
 This matters because the avatar can now feel active during a reply instead of only after the full assistant message has already been saved.
+
+### 12. Interim speech preferences were added to avatar configuration
+
+As a practical bridge before full backend TTS, avatar configuration now includes:
+
+- preferred speech voice gender
+- preferred speech language
+
+Those settings are stored on the avatar record and used by the frontend browser speech path when choosing a voice.
+
+This is intentionally an interim step. The long-term goal still remains true TTS with stronger timing control, but these avatar-level speech preferences make the current browser speech path more usable in the meantime.
 
 ## Current State On 2026-03-12
 

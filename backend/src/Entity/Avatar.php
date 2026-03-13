@@ -74,6 +74,14 @@ class Avatar
     #[Groups(['avatar:read', 'avatar:write'])]
     private ?string $systemPrompt = null;
 
+    #[ORM\Column(length: 16, nullable: true)]
+    #[Groups(['avatar:read', 'avatar:write'])]
+    private ?string $speechVoiceGender = null;
+
+    #[ORM\Column(length: 16)]
+    #[Groups(['avatar:read', 'avatar:write'])]
+    private string $speechLanguage = 'auto';
+
     #[ORM\Column(length: 255)]
     #[Groups(['avatar:read', 'avatar:write', 'user:read'])]
     private ?string $filename = null;
@@ -165,6 +173,30 @@ class Avatar
     public function getFilename(): ?string
     {
         return $this->filename;
+    }
+
+    public function getSpeechVoiceGender(): ?string
+    {
+        return $this->speechVoiceGender;
+    }
+
+    public function setSpeechVoiceGender(?string $speechVoiceGender): static
+    {
+        $this->speechVoiceGender = $speechVoiceGender;
+
+        return $this;
+    }
+
+    public function getSpeechLanguage(): string
+    {
+        return $this->speechLanguage;
+    }
+
+    public function setSpeechLanguage(string $speechLanguage): static
+    {
+        $this->speechLanguage = $speechLanguage;
+
+        return $this;
     }
 
     public function setFilename(string $filename): static

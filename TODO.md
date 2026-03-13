@@ -66,6 +66,7 @@ This baseline has been verified against the current repository. The next phase s
 
 ### 5. Voice and hologram path
 
+- keep the current browser-speech fallback usable through avatar-level speech language and voice preferences
 - add TTS after the text chat loop feels solid
 - add STT after TTS
 - only then move toward dedicated hologram hardware output

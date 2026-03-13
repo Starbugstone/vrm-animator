@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-export default function MemoryPanel({ memory, revisions, busy, onSave }) {
+export default function MemoryPanel({ memory, revisions, busy, onSave, onReset }) {
   const [draft, setDraft] = useState('')
 
   useEffect(() => {
@@ -34,6 +34,14 @@ export default function MemoryPanel({ memory, revisions, busy, onSave }) {
           className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? 'Saving...' : 'Save memory'}
+        </button>
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={busy}
+          className="rounded-2xl border border-amber-300/30 bg-amber-300/12 px-4 py-2 text-sm font-medium text-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {busy ? 'Working...' : 'Dev reset'}
         </button>
       </div>
 

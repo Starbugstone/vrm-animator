@@ -57,6 +57,44 @@ class AvatarTest extends WebTestCase
         $this->assertTrue($data['isDefault']);
     }
 
+    public function testAvatarSpeechPreferencesCanBeSaved(): void
+    {
+        $client = static::createClient();
+        $token = $this->createAuthenticatedUser($client, 'avatar-speech@example.com');
+
+        $client->request('POST', '/api/avatars', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'Speech Avatar',
+            'filename' => 'speech-avatar.vrm',
+            'speechVoiceGender' => 'female',
+            'speechLanguage' => 'en-US',
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('female', $data['speechVoiceGender']);
+        $this->assertSame('en-US', $data['speechLanguage']);
+
+        $client->request('PATCH', '/api/avatars/'.$data['id'], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/merge-patch+json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'speechVoiceGender' => 'male',
+            'speechLanguage' => 'fr-FR',
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+
+        $updated = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('male', $updated['speechVoiceGender']);
+        $this->assertSame('fr-FR', $updated['speechLanguage']);
+    }
+
     public function testListOwnAvatars(): void
     {
         $client = static::createClient();
