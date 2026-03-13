@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CameraPopover from '../CameraPopover.jsx'
 import useHologramViewer from '../useHologramViewer.js'
 import AnimationPopover from './AnimationPopover.jsx'
-import SetupGuideCard from './SetupGuideCard.jsx'
 import {
   assetToFile,
   createPersistedAnimationAsset,
@@ -261,7 +260,7 @@ function normalizeSharedAsset(asset, fallbackType) {
   }
 }
 
-export default function ViewerPage({ workspace, onNavigatePage }) {
+export default function ViewerPage({ workspace }) {
   const {
     avatars,
     selectedAvatarId,
@@ -303,6 +302,7 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
   const [draftMessage, setDraftMessage] = useState('')
   const [notice, setNotice] = useState('')
   const [isChatBusy, setIsChatBusy] = useState(false)
+  const [isContextLoading, setIsContextLoading] = useState(false)
   const [loadedAvatarName, setLoadedAvatarName] = useState('No avatar loaded')
   const [pendingMessages, setPendingMessages] = useState([])
   const lastSyncedAvatarIdRef = useRef(selectedAvatarId)
@@ -415,6 +415,7 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
     if (!selectedAvatar || !workspace.token) {
       setActiveConversationId(null)
       setPendingMessages([])
+      setIsContextLoading(false)
       activeEmotionRef.current = 'neutral'
       if (speechStopTimeoutRef.current) {
         window.clearTimeout(speechStopTimeoutRef.current)
@@ -432,6 +433,7 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
     let cancelled = false
 
     async function loadAvatarContext() {
+      setIsContextLoading(true)
       try {
         const [, loadedConversations] = await Promise.all([
           ensurePersonas(selectedAvatar.id),
@@ -448,6 +450,10 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
       } catch (error) {
         if (!cancelled) {
           setNotice(error.message || 'Unable to load avatar context.')
+        }
+      } finally {
+        if (!cancelled) {
+          setIsContextLoading(false)
         }
       }
     }
@@ -960,54 +966,13 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
   ])
 
   const chatDisabled = !selectedAvatar || !effectivePersona || !effectivePersona.llmCredentialId
-  const viewerSetupSteps = useMemo(() => [
-    {
-      id: 'pick-avatar',
-      title: 'Load an avatar into the viewer',
-      detail: selectedAvatarAsset
-        ? `${selectedAvatarAsset.label} is selected and ready for preview.`
-        : 'Choose an avatar from the list so it can load into the scene.',
-      status: selectedAvatarAsset ? 'done' : 'current',
-    },
-    {
-      id: 'save-avatar',
-      title: 'Use a personal avatar for chat',
-      detail: hasConnectedAvatar
-        ? `${selectedAvatar?.name || 'This avatar'} is already in your personal library.`
-        : 'Default avatars are preview-only here. Open Manage to add one to your library before chatting.',
-      status: hasConnectedAvatar ? 'done' : !selectedAvatarAsset ? 'todo' : 'current',
-      actionLabel: hasConnectedAvatar ? null : 'Open Manage',
-      onAction: hasConnectedAvatar ? null : () => onNavigatePage('manage'),
-    },
-    {
-      id: 'connect-ai',
-      title: 'Connect one AI provider',
-      detail: hasConnectedLlm
-        ? 'The selected avatar already has an active AI connection.'
-        : 'Open Manage and attach one active AI connection to this avatar.',
-      status: hasConnectedLlm ? 'done' : hasConnectedAvatar ? 'current' : 'todo',
-      actionLabel: hasConnectedLlm ? null : 'Open Manage',
-      onAction: hasConnectedLlm ? null : () => onNavigatePage('manage'),
-    },
-    {
-      id: 'first-chat',
-      title: 'Send the first message',
-      detail: hasStartedChat
-        ? 'Conversation history is already available for this avatar.'
-        : chatDisabled
-          ? 'Finish the setup steps above, then come back and start chatting here.'
-          : 'Everything is ready. Type a short message and send it.',
-      status: hasStartedChat ? 'done' : chatDisabled ? 'todo' : 'current',
-    },
-  ], [
-    chatDisabled,
-    hasConnectedAvatar,
-    hasConnectedLlm,
-    hasStartedChat,
-    onNavigatePage,
-    selectedAvatar,
-    selectedAvatarAsset,
-  ])
+
+  function handleChatComposerKeyDown(event) {
+    if (event.key !== 'Enter' || event.shiftKey) return
+    event.preventDefault()
+    if (chatDisabled || isChatBusy || isContextLoading || !draftMessage.trim()) return
+    handleSendMessage()
+  }
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#162c4f_0%,_#08111d_38%,_#03070d_100%)] text-white">
@@ -1016,9 +981,13 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
           <section>
             <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Viewer</div>
             <div className="mt-2 text-3xl font-semibold tracking-tight">Avatar runtime</div>
-            <div className="mt-3 text-sm leading-6 text-white/62">
-              Preview the avatar, test animations, and talk to it once setup is complete.
-            </div>
+            <div className="mt-3 text-sm leading-6 text-white/62">Preview the avatar, test animations, and chat in one place.</div>
+            {isContextLoading ? (
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-xs text-cyan-100">
+                <span className="h-4 w-4 rounded-full border-2 border-cyan-100/30 border-t-cyan-100 animate-spin" />
+                Loading avatar context...
+              </div>
+            ) : null}
           </section>
 
           <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.85)] p-4">
@@ -1030,23 +999,32 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
             <textarea
               value={draftMessage}
               onChange={(event) => setDraftMessage(event.target.value)}
+              onKeyDown={handleChatComposerKeyDown}
               rows={4}
-              disabled={chatDisabled}
+              disabled={chatDisabled || isContextLoading}
               placeholder={chatDisabled ? (!selectedAvatar ? 'Open Manage and save this avatar to your library first.' : 'Open Manage and connect one AI provider first.') : 'Type a message to the selected avatar'}
               className="mt-4 w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:border-cyan-300/40 disabled:cursor-not-allowed disabled:opacity-50"
             />
             <button
               type="button"
               onClick={handleSendMessage}
-              disabled={chatDisabled || isChatBusy || !draftMessage.trim()}
+              disabled={chatDisabled || isChatBusy || isContextLoading || !draftMessage.trim()}
               className="mt-3 w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isChatBusy ? 'Sending...' : 'Send message'}
+              {isChatBusy ? 'Sending...' : isContextLoading ? 'Loading...' : 'Send message'}
             </button>
 
             {notice ? <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-100">{notice}</div> : null}
 
             <div className="mt-4 max-h-[320px] space-y-2 overflow-y-auto rounded-3xl border border-white/10 bg-black/25 p-3">
+              {isChatBusy ? (
+                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-3 text-sm text-cyan-100">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="h-3.5 w-3.5 rounded-full border-2 border-cyan-100/30 border-t-cyan-100 animate-spin" />
+                    Avatar is thinking...
+                  </span>
+                </div>
+              ) : null}
               {liveMessages.length === 0 ? (
                 <div className="rounded-2xl bg-black/30 px-3 py-3 text-sm text-white/60">
                   {chatDisabled
@@ -1077,14 +1055,6 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
             </div>
           </section>
 
-          <SetupGuideCard
-            eyebrow="Before you chat"
-            title="Quick viewer checklist"
-            description="The Viewer should feel simple: load an avatar, confirm the setup is complete, then send the first message."
-            steps={viewerSetupSteps}
-            compact
-          />
-
           <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.85)] p-4">
             <div className="text-xs uppercase tracking-[0.28em] text-white/45">Configured avatar</div>
             <select
@@ -1098,7 +1068,8 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
                   setSelectedAvatarId(nextAvatar.remoteId)
                 }
               }}
-              className="mt-3 w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:border-cyan-300/40"
+              disabled={isContextLoading}
+              className="mt-3 w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:border-cyan-300/40 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {viewerAvatarItems.length === 0 ? <option value="">No avatars available</option> : null}
               {viewerAvatarItems.map((avatar) => (

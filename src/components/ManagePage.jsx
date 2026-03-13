@@ -5,7 +5,7 @@ import AvatarPreviewCard from './AvatarPreviewCard.jsx'
 import ChatAdminPanel from './ChatAdminPanel.jsx'
 import LlmSettingsPanel from './LlmSettingsPanel.jsx'
 import MemoryPanel from './MemoryPanel.jsx'
-import SetupGuideCard from './SetupGuideCard.jsx'
+import HelpPopover from './HelpPopover.jsx'
 import { createPersistedAvatarAsset } from '../lib/viewerAssets.js'
 
 const SECTIONS = [
@@ -15,6 +15,35 @@ const SECTIONS = [
   { id: 'llm-config', label: 'AI Connection' },
   { id: 'chat', label: 'Conversation Test' },
 ]
+
+
+const SECTION_HELP = {
+  'avatar-edit': `Set up your avatar identity here.
+
+- Name and personality shape how the avatar speaks
+- Memory stores important long-term notes
+- AI connection selects which credential/model this avatar uses`,
+  'vrm-library': `Build your personal avatar library.
+
+- Shared presets are starter avatars for everyone
+- Creating from a preset copies it into your private library
+- Uploading a file creates a brand-new personal avatar`,
+  'vrma-library': `Manage animation files used during conversations.
+
+- Upload VRMA files to your private library
+- Add description and keywords so the model can choose them correctly
+- Keep names clear so later tuning is easier`,
+  'llm-config': `Connect one or more LLM providers.
+
+- Add credentials and keep at least one active
+- Pick a stable default model
+- Credentials are required before chat can send messages`,
+  chat: `Run safe conversation tests before switching back to Viewer.
+
+- Select an existing thread or start a new one
+- Send a message with Enter
+- Use this area to validate model behavior and tags`,
+}
 
 const SECTION_COPY = {
   'avatar-edit': {
@@ -511,7 +540,7 @@ function EffectiveAvatarPersona({ avatar, persona }) {
   )
 }
 
-export default function ManagePage({ user, workspace, onNavigatePage }) {
+export default function ManagePage({ user, workspace }) {
   const {
     avatars,
     selectedAvatarId,
@@ -651,67 +680,6 @@ export default function ManagePage({ user, workspace, onNavigatePage }) {
     }
   }, [ensureConversationMessages, ensureConversations, ensureMemory, ensurePersonas, selectedAvatar])
 
-  const setupSteps = useMemo(() => [
-    {
-      id: 'avatar',
-      title: 'Pick a starter avatar or upload your own',
-      detail: hasAvatarLibrary
-        ? `${avatars.length} avatar${avatars.length > 1 ? 's are' : ' is'} ready in your personal library.`
-        : 'Begin with a shared starter avatar for the fastest path, or upload a VRM/GLB file if you already have one.',
-      status: hasAvatarLibrary ? 'done' : activeSection === 'vrm-library' ? 'current' : 'todo',
-      actionLabel: activeSection === 'vrm-library' ? null : 'Open Avatar Library',
-      onAction: activeSection === 'vrm-library' ? null : () => setActiveSection('vrm-library'),
-    },
-    {
-      id: 'identity',
-      title: 'Give the avatar a clear profile',
-      detail: selectedAvatar
-        ? hasPersonality
-          ? `${selectedAvatar.name} has a saved profile. You can refine it any time.`
-          : 'Add a name plus a short backstory or personality so the avatar feels intentional.'
-        : 'Choose an avatar first, then fill in the profile and memory on the Profile screen.',
-      status: hasPersonality ? 'done' : activeSection === 'avatar-edit' ? 'current' : 'todo',
-      actionLabel: activeSection === 'avatar-edit' ? null : 'Open Profile',
-      onAction: activeSection === 'avatar-edit' ? null : () => setActiveSection('avatar-edit'),
-    },
-    {
-      id: 'llm',
-      title: 'Connect one AI provider',
-      detail: hasActiveCredential
-        ? 'This avatar already has an active AI connection and is ready to talk.'
-        : 'Paste one provider API key and keep that connection active. You only need one working setup to start.',
-      status: hasActiveCredential ? 'done' : activeSection === 'llm-config' ? 'current' : 'todo',
-      actionLabel: activeSection === 'llm-config' ? null : 'Open AI Connection',
-      onAction: activeSection === 'llm-config' ? null : () => setActiveSection('llm-config'),
-    },
-    {
-      id: 'chat',
-      title: 'Start the first conversation',
-      detail: conversations.length > 0
-        ? 'This avatar already has saved conversations. You can continue here or move to the Viewer.'
-        : hasMemoryNotes
-          ? 'The setup is close. Test one message here or jump to the Viewer for the full experience.'
-          : 'Optional: add a few memory notes first, then send the first message in Viewer.',
-      status: conversations.length > 0 ? 'done' : activeSection === 'chat' ? 'current' : 'todo',
-      actionLabel: conversations.length > 0 ? 'Open Viewer' : activeSection === 'chat' ? 'Open Viewer' : 'Open Conversation Test',
-      onAction: conversations.length > 0
-        ? () => onNavigatePage('viewer')
-        : activeSection === 'chat'
-          ? () => onNavigatePage('viewer')
-          : () => setActiveSection('chat'),
-    },
-  ], [
-    activeSection,
-    avatars.length,
-    conversations.length,
-    hasActiveCredential,
-    hasAvatarLibrary,
-    hasMemoryNotes,
-    hasPersonality,
-    onNavigatePage,
-    selectedAvatar,
-  ])
-
   async function runAction(key, action, successMessage) {
     setBusyKey(key)
     setNotice('')
@@ -735,10 +703,8 @@ export default function ManagePage({ user, workspace, onNavigatePage }) {
           <div className="sticky top-6 space-y-4">
             <section className="rounded-[32px] border border-white/10 bg-[rgba(6,10,20,0.82)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
               <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Setup</div>
-              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">Avatar setup</div>
-              <div className="mt-3 text-sm leading-6 text-white/62">
-                Follow the steps in order: choose an avatar, fill in the profile, connect one AI provider, then test the first conversation.
-              </div>
+              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">Configuration</div>
+              <div className="mt-3 text-sm leading-6 text-white/62">Use the sections below to keep avatar, animations, AI connection, and chat setup organized.</div>
             </section>
 
             <section className="rounded-[32px] border border-white/10 bg-[rgba(6,10,20,0.82)] p-3 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
@@ -747,7 +713,8 @@ export default function ManagePage({ user, workspace, onNavigatePage }) {
                   key={section.id}
                   type="button"
                   onClick={() => setActiveSection(section.id)}
-                  className={`mb-2 block w-full rounded-2xl px-4 py-3 text-left text-sm transition last:mb-0 ${
+                  disabled={Boolean(busyKey) || isBootstrapping}
+                  className={`mb-2 block w-full rounded-2xl px-4 py-3 text-left text-sm transition last:mb-0 disabled:cursor-not-allowed disabled:opacity-45 ${
                     activeSection === section.id
                       ? 'bg-cyan-300/18 text-cyan-100'
                       : 'bg-white/0 text-white/70 hover:bg-white/8 hover:text-white'
@@ -771,7 +738,10 @@ export default function ManagePage({ user, workspace, onNavigatePage }) {
             <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">{sectionCopy.eyebrow}</div>
-                <div className="mt-2 text-3xl font-semibold tracking-tight">{sectionCopy.title}</div>
+                <div className="mt-2 flex items-center gap-3">
+                  <div className="text-3xl font-semibold tracking-tight">{sectionCopy.title}</div>
+                  <HelpPopover title={`${sectionCopy.title} help`} content={SECTION_HELP[activeSection]} />
+                </div>
                 <div className="mt-3 max-w-3xl text-sm leading-6 text-white/62">
                   {sectionCopy.description}
                 </div>
@@ -788,16 +758,15 @@ export default function ManagePage({ user, workspace, onNavigatePage }) {
               </div>
             </div>
 
-            {isBootstrapping ? <div className="mt-4 text-sm text-cyan-100/80">Syncing backend workspace...</div> : null}
+            {(isBootstrapping || busyKey) ? (
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-xs text-cyan-100">
+                <span className="h-4 w-4 rounded-full border-2 border-cyan-100/30 border-t-cyan-100 animate-spin" />
+                {isBootstrapping ? "Syncing backend workspace..." : "Saving changes..."}
+              </div>
+            ) : null}
             {error ? <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
             {notice ? <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-100">{notice}</div> : null}
           </header>
-
-          <SetupGuideCard
-            title="Start here if you want the fastest path"
-            description="This checklist is aimed at first-time, non-technical setup. It points to the next step instead of expecting you to already know the workflow."
-            steps={setupSteps}
-          />
 
           <div className="grid gap-4 lg:hidden">
             {SECTIONS.map((section) => (
@@ -805,7 +774,8 @@ export default function ManagePage({ user, workspace, onNavigatePage }) {
                 key={section.id}
                 type="button"
                 onClick={() => setActiveSection(section.id)}
-                className={`rounded-2xl px-4 py-3 text-left text-sm transition ${
+                disabled={Boolean(busyKey) || isBootstrapping}
+                className={`rounded-2xl px-4 py-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-45 ${
                   activeSection === section.id
                     ? 'bg-cyan-300/18 text-cyan-100'
                     : 'border border-white/10 bg-[rgba(6,10,20,0.72)] text-white/70'

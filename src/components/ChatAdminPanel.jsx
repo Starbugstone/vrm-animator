@@ -45,6 +45,20 @@ export default function ChatAdminPanel({
     }
   }, [credentialId, model, credentialOptions])
 
+  async function handleDraftKeyDown(event) {
+    if (event.key !== 'Enter' || event.shiftKey) return
+    event.preventDefault()
+    if (busy || credentialOptions.length === 0 || !draft.trim()) return
+
+    await onSendMessage({
+      message: draft,
+      conversationId: selectedConversationId ? Number(selectedConversationId) : null,
+      credentialId: credentialId ? Number(credentialId) : null,
+      model,
+    })
+    setDraft('')
+  }
+
   if (!avatar) {
     return (
       <section className="rounded-3xl border border-white/10 bg-white/5 p-4">
@@ -156,6 +170,7 @@ export default function ChatAdminPanel({
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={handleDraftKeyDown}
             rows={4}
             placeholder="Type a test message for this avatar"
             className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300/40"
