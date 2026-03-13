@@ -46,8 +46,7 @@ This starts:
 |---------|-------------|---------|
 | `php` | http://localhost:8080 | Symfony API backend |
 | `node` | http://localhost:5173 | Vite frontend dev server |
-| `database` | localhost:3307 | Main MariaDB database |
-| `database_test` | localhost:3308 | Dedicated MariaDB database for backend tests |
+| `database` | localhost:3307 | Main MariaDB service hosting both the app and test databases |
 | `mailpit` | http://localhost:8025 | Local mail capture |
 
 On first launch the PHP container installs Composer dependencies, generates the JWT keypair, and runs the main database migrations.
@@ -186,11 +185,11 @@ npm run build
 ### Backend tests
 
 ```bash
-docker compose up -d database_test php
+docker compose up -d --build database php
 docker compose exec -T php php bin/phpunit
 ```
 
-The backend test suite now uses the dedicated `database_test` service and bootstraps its own schema before running.
+The backend test suite uses a separate `vrm_animator_test` database on the same MariaDB service and bootstraps its own schema before running.
 
 ## Third-Party Example Assets
 

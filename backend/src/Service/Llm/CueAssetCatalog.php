@@ -24,15 +24,18 @@ final class CueAssetCatalog
         $assets = [];
 
         foreach ($this->animationRepository->findAvailableForAvatar($user, $avatar) as $animation) {
+            $normalizedKeywords = $this->normalizeKeywords($animation->getKeywords());
+            $normalizedEmotions = $this->emotionVocabulary->normalizeMany($animation->getEmotionTags());
             $assets[] = new CueAsset(
-                sprintf('user:%d', $animation->getId() ?? 0),
+                sprintf('%s:user:%d', $animation->getKind(), $animation->getId() ?? 0),
                 trim((string) $animation->getName()),
                 trim((string) $animation->getName()),
                 $animation->getKind(),
                 trim((string) ($animation->getDescription() ?? '')),
-                $this->normalizeKeywords($animation->getKeywords()),
-                $this->emotionVocabulary->normalizeMany($animation->getEmotionTags()),
+                $normalizedKeywords,
+                $normalizedEmotions,
                 'user',
+                array_values(array_unique(array_merge($normalizedKeywords, $normalizedEmotions))),
             );
         }
 
@@ -67,6 +70,9 @@ final class CueAssetCatalog
                 $this->normalizeKeywords($keywords),
                 $this->emotionVocabulary->normalizeMany($emotionCandidates),
                 'shared',
+                $this->normalizeKeywords(is_array($item['tags'] ?? null) ? array_map('strval', $item['tags']) : []),
+                $this->normalizeKeywords(is_array($item['channels'] ?? null) ? array_map('strval', $item['channels']) : []),
+                max(0, (int) ($item['weight'] ?? 0)),
             );
         }
 

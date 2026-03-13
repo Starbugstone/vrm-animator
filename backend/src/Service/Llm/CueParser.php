@@ -17,7 +17,7 @@ class CueParser
      *   emotionTags:list<string>,
      *   animationTags:list<string>,
      *   memoryEntries:list<string>,
-     *   timeline:list<array<string, string>>
+     *   timeline:list<array<string, mixed>>
      * }
      */
     public function parse(string $rawContent, array $assets): array
@@ -28,6 +28,7 @@ class CueParser
         $timeline = [];
         $plainText = '';
         $animationLookup = $this->buildAnimationLookup($assets);
+        $expressionAssets = array_values(array_filter($assets, static fn (CueAsset $asset): bool => $asset->isExpression()));
 
         $parts = preg_split('/(\{(?:emotion|anim|memory):[^}]+\})/i', $rawContent, -1, PREG_SPLIT_DELIM_CAPTURE);
         foreach ($parts ?: [$rawContent] as $part) {
@@ -39,7 +40,11 @@ class CueParser
                 $normalized = $this->emotionVocabulary->normalize($matches[1] ?? null);
                 if ($normalized !== null) {
                     $emotionTags[] = $normalized;
-                    $timeline[] = ['type' => 'emotion', 'value' => $normalized];
+                    $timeline[] = $this->buildCueTimelineEntry(
+                        'emotion',
+                        $normalized,
+                        $this->resolveExpressionAsset($expressionAssets, $normalized),
+                    );
                 }
                 continue;
             }
@@ -48,8 +53,8 @@ class CueParser
                 $normalized = $this->normalizeAnimationToken((string) ($matches[1] ?? ''));
                 if ($normalized !== '' && array_key_exists($normalized, $animationLookup)) {
                     $resolved = $animationLookup[$normalized];
-                    $animationTags[] = $resolved;
-                    $timeline[] = ['type' => 'animation', 'value' => $resolved];
+                    $animationTags[] = $resolved->label;
+                    $timeline[] = $this->buildCueTimelineEntry('animation', $resolved->label, $resolved);
                 }
                 continue;
             }
@@ -84,7 +89,7 @@ class CueParser
     /**
      * @param list<CueAsset> $assets
      *
-     * @return array<string, string>
+     * @return array<string, CueAsset>
      */
     private function buildAnimationLookup(array $assets): array
     {
@@ -98,7 +103,7 @@ class CueParser
             $canonicalName = trim($asset->name);
             $canonicalKey = $this->normalizeAnimationToken($canonicalName);
             if ($canonicalKey !== '' && !array_key_exists($canonicalKey, $lookup)) {
-                $lookup[$canonicalKey] = $canonicalName;
+                $lookup[$canonicalKey] = $asset;
             }
 
             foreach ($asset->keywords as $keyword) {
@@ -108,12 +113,73 @@ class CueParser
                 }
 
                 if (!array_key_exists($normalizedKeyword, $lookup)) {
-                    $lookup[$normalizedKeyword] = $canonicalName;
+                    $lookup[$normalizedKeyword] = $asset;
                 }
             }
         }
 
         return $lookup;
+    }
+
+    /**
+     * @param list<CueAsset> $assets
+     */
+    private function resolveExpressionAsset(array $assets, string $emotion): ?CueAsset
+    {
+        $bestAsset = null;
+        $bestScore = 0;
+
+        foreach ($assets as $asset) {
+            $score = $this->scoreExpressionAsset($asset, $emotion);
+            if ($score > $bestScore) {
+                $bestAsset = $asset;
+                $bestScore = $score;
+            }
+        }
+
+        return $bestAsset;
+    }
+
+    private function scoreExpressionAsset(CueAsset $asset, string $emotion): int
+    {
+        $tags = $asset->normalizedTags();
+        $score = 0;
+
+        if (in_array($emotion, $tags, true)) {
+            $score += 8;
+        }
+
+        if (in_array('speech', $tags, true) || in_array('fallback', $tags, true)) {
+            $score += 4;
+        }
+
+        if (in_array('face', $asset->channels, true) || in_array('eyes', $asset->channels, true) || in_array('mouth', $asset->channels, true)) {
+            $score += 2;
+        }
+
+        return $score + max(0, $asset->weight);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildCueTimelineEntry(string $type, string $value, ?CueAsset $asset = null): array
+    {
+        $entry = [
+            'type' => $type,
+            'value' => $value,
+        ];
+
+        if ($asset === null) {
+            return $entry;
+        }
+
+        $entry['assetId'] = $asset->id;
+        $entry['assetLabel'] = $asset->label;
+        $entry['assetKind'] = $asset->kind;
+        $entry['assetSource'] = $asset->source;
+
+        return $entry;
     }
 
     private function normalizeAnimationToken(string $value): string

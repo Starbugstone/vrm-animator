@@ -2,7 +2,7 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
-Latest implementation note: Docker dev startup now treats the main DB and test DB separately. The PHP entrypoint provisions the test database on `database_test`, skips test migrations when PHPUnit has already built the schema directly, and no longer lets test bootstrap collisions kill the PHP container.
+Latest implementation note: the Docker test database setup no longer needs a second MariaDB container. The app and test databases now live on the same MariaDB service under different database names, which keeps backend test isolation without the extra `database_test` container.
 
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 
@@ -198,6 +198,20 @@ Those settings are stored on the avatar record and used by the frontend browser 
 
 This is intentionally an interim step. The long-term goal still remains true TTS with stronger timing control, but these avatar-level speech preferences make the current browser speech path more usable in the meantime.
 
+### 13. Backend-resolved cue playback replaced final viewer-side cue matching for chat
+
+The next pass tightened the contract between the LLM response, the backend, and the viewer so the avatar behaves more predictably during live chat.
+
+That pass added:
+
+- stronger prompt rules in `backend/prompts/chat_rules.md` so the LLM is explicitly told when and how to use `{emotion:...}` and `{anim:...}` tags
+- richer backend cue asset metadata, including shared-catalog tags, channels, and weights where available
+- backend-side resolution of streamed movement and expression cues to specific asset ids
+- SSE cue payloads that now carry both the normalized cue value and the resolved asset id metadata
+- viewer-side playback that now prefers backend-resolved asset ids for streamed chat cues instead of picking the final streamed cue locally
+
+This matters because it moves the product closer to backend-authoritative character behavior: the LLM is told more clearly how to emit cues, the backend validates and resolves them, and the viewer acts on that authoritative result rather than reinterpreting the final cue on its own.
+
 ## Current State On 2026-03-12
 
 The project currently has:
@@ -231,6 +245,7 @@ The conclusion:
 - streaming now exists through a backend SSE layer, but upstream provider-native token streaming is still not implemented
 - memory updates now work through a restricted inline bridge, but a stricter formal tool-call path is still a likely future refinement
 - the real open roadmap gaps are now provider-native streaming, cue hardening, stronger backend authority over final playback selection, and character-quality work
+- backend authority over streamed final cue playback is now in place, but provider-native streaming and richer persisted cue metadata still remain open
 - the main maintenance pressure is now in oversized frontend surfaces and bundle hygiene rather than missing CRUD foundations
 
 This means the project has reached the point where roadmap cleanup matters: planning documents should focus on the remaining orchestration and character work, while implementation cleanup should keep the current UI and viewer code from turning into large hard-to-change surfaces
@@ -251,7 +266,7 @@ That means memory, LLM integration, cue quality, and personality consistency com
 ### Near-term priorities
 
 1. Improve the current SSE event contract and move from backend chunked playback to provider-native upstream token streaming.
-2. Move animation selection fully onto backend-authoritative metadata instead of relying on frontend-side asset matching for final playback.
+2. Extend backend-authoritative cue selection beyond streamed playback and keep enriching the asset metadata contract.
 3. Tighten prompt assembly and cue validation so only allowed emotions and animations are used.
 4. Continue improving live viewer reactions so speech, emotion overlays, and body motion feel more tightly synchronized.
 5. Improve personality consistency so the avatar feels like a character, not just a text endpoint with a model attached.

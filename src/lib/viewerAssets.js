@@ -27,6 +27,9 @@ export function createPersistedAnimationAsset(record, authToken) {
     description: record.description || '',
     keywords: Array.isArray(record.keywords) ? record.keywords : [],
     emotionTags: Array.isArray(record.emotionTags) ? record.emotionTags : [],
+    tags: Array.isArray(record.tags) ? record.tags : [],
+    channels: Array.isArray(record.channels) ? record.channels : [],
+    weight: Number.isFinite(Number(record.weight)) ? Number(record.weight) : 0,
   }
 }
 

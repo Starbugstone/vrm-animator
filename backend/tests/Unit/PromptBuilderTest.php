@@ -23,7 +23,7 @@ class PromptBuilderTest extends TestCase
             ->setSystemPrompt('Keep the tone steady.');
 
         $animation = new CueAsset(
-            'user:1',
+            'action:user:1',
             'Greeting',
             'Greeting',
             'action',
@@ -31,6 +31,7 @@ class PromptBuilderTest extends TestCase
             ['hello'],
             ['happy'],
             'user',
+            ['hello', 'happy'],
         );
 
         $conversation = new Conversation();
@@ -41,7 +42,7 @@ class PromptBuilderTest extends TestCase
             ->setRawProviderContent('Previous visible reply {emotion:calm}');
 
         $kernel = $this->createMock(KernelInterface::class);
-        $kernel->method('getProjectDir')->willReturn('/var/www/html');
+        $kernel->method('getProjectDir')->willReturn(dirname(__DIR__, 2));
 
         $builder = new PromptBuilder(new PromptRulesProvider($kernel));
         $messages = $builder->buildMessages(
@@ -58,6 +59,8 @@ class PromptBuilderTest extends TestCase
         $this->assertStringContainsString('Guide', $messages[0]['content']);
         $this->assertStringContainsString('remembers teal', $messages[0]['content']);
         $this->assertStringContainsString('Greeting', $messages[0]['content']);
+        $this->assertStringContainsString('When the reply has any noticeable emotion or tone shift', $messages[0]['content']);
+        $this->assertStringContainsString('{anim:name}', $messages[0]['content']);
         $this->assertSame('assistant', $messages[1]['role']);
         $this->assertStringContainsString('{emotion:calm}', $messages[1]['content']);
         $this->assertSame('user', $messages[2]['role']);

@@ -207,6 +207,13 @@ function findMovementAssetByTag(items, tag) {
   }) || null
 }
 
+function findAssetById(items, assetId) {
+  const normalizedAssetId = String(assetId || '').trim()
+  if (!normalizedAssetId) return null
+
+  return items.find((item) => String(item.id) === normalizedAssetId) || null
+}
+
 function scoreExpressionAssetForEmotion(asset, emotion, { preferSpeech = false, allowSpeechFallback = false } = {}) {
   const tags = collectAssetTags(asset)
   const hasSpeechTag = tags.includes('speech') || tags.includes('fallback')
@@ -593,6 +600,20 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
     })
   }, [actionItems, idleItems, playAnimationFile])
 
+  const playMovementCueByAssetId = useCallback(async (assetId, fallbackTag = '') => {
+    const availableItems = [...actionItems, ...idleItems]
+    const asset = findAssetById(availableItems, assetId) || findMovementAssetByTag(availableItems, fallbackTag)
+    if (!asset) return
+
+    const file = await assetToFile(asset)
+    if (!file) return
+
+    playAnimationFile(file, asset.label, {
+      cacheKey: asset.id,
+      kind: asset.kind || 'action',
+    })
+  }, [actionItems, idleItems, playAnimationFile])
+
   const resetSpeechRuntime = useCallback(() => {
     speechSessionIdRef.current += 1
     lastSpeechActivityAtRef.current = 0
@@ -614,6 +635,25 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
 
   const playEmotionCue = useCallback(async (emotion, options = {}) => {
     const asset = pickExpressionAsset(expressionItems, emotion, options)
+    if (!asset) {
+      if (options.stopOnMiss) {
+        stopOverlayAnimation()
+      }
+      return
+    }
+
+    const file = await assetToFile(asset)
+    if (!file) return
+
+    playOverlayAnimationFile(file, asset.label, {
+      cacheKey: `${asset.id}:${options.preferSpeech ? 'speech' : 'cue'}`,
+      expressionOnly: true,
+      loop: Boolean(options.loop),
+    })
+  }, [expressionItems, playOverlayAnimationFile, stopOverlayAnimation])
+
+  const playEmotionCueByAssetId = useCallback(async (assetId, fallbackEmotion = '', options = {}) => {
+    const asset = findAssetById(expressionItems, assetId) || pickExpressionAsset(expressionItems, fallbackEmotion, options)
     if (!asset) {
       if (options.stopOnMiss) {
         stopOverlayAnimation()
@@ -862,6 +902,7 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
         onCue: (event) => {
           const cueType = event?.cueType
           const value = event?.value
+          const assetId = event?.assetId
 
           if (!value) return
 
@@ -871,7 +912,7 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
               ...message,
               emotionTags: Array.from(new Set([...(message.emotionTags || []), value])),
             }))
-            playEmotionCue(value, { stopOnMiss: true })
+            playEmotionCueByAssetId(assetId, value, { stopOnMiss: true })
             return
           }
 
@@ -880,7 +921,7 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
               ...message,
               animationTags: Array.from(new Set([...(message.animationTags || []), value])),
             }))
-            playMovementCue(value)
+            playMovementCueByAssetId(assetId, value)
           }
         },
         onMemory: (event) => {
@@ -911,7 +952,8 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
     draftMessage,
     effectivePersona,
     playEmotionCue,
-    playMovementCue,
+    playEmotionCueByAssetId,
+    playMovementCueByAssetId,
     selectedAvatar,
     speakAssistantReply,
     streamChatMessage,

@@ -8,7 +8,7 @@ use App\Entity\ConversationMessage;
 final readonly class ChatTurnResult
 {
     /**
-     * @param list<array<string, string>> $assistantTimeline
+     * @param list<array<string, mixed>> $assistantTimeline
      * @param list<string> $assistantMemoryEntries
      */
     public function __construct(

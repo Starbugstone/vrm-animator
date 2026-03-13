@@ -160,6 +160,10 @@ class ConversationController extends AbstractController
                 $this->emitSseEvent('cue', [
                     'cueType' => (string) ($event['type'] ?? ''),
                     'value' => (string) ($event['value'] ?? ''),
+                    'assetId' => isset($event['assetId']) ? (string) $event['assetId'] : null,
+                    'assetLabel' => isset($event['assetLabel']) ? (string) $event['assetLabel'] : null,
+                    'assetKind' => isset($event['assetKind']) ? (string) $event['assetKind'] : null,
+                    'assetSource' => isset($event['assetSource']) ? (string) $event['assetSource'] : null,
                 ]);
             }
 

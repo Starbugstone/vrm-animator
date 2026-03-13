@@ -40,8 +40,8 @@ done
 echo "Ensuring test database exists..."
 php <<'PHP'
 <?php
-$host = getenv('DATABASE_TEST_HOST') ?: 'database_test';
-$port = getenv('DATABASE_TEST_PORT') ?: '3306';
+$host = getenv('DATABASE_TEST_HOST') ?: (getenv('DATABASE_HOST') ?: 'database');
+$port = getenv('DATABASE_TEST_PORT') ?: (getenv('DATABASE_PORT') ?: '3306');
 $appUser = getenv('DATABASE_USER') ?: 'vrm_user';
 $appPassword = getenv('DATABASE_PASSWORD') ?: 'vrm_pass';
 $rootUser = getenv('DATABASE_ROOT_USER') ?: 'root';
@@ -97,8 +97,8 @@ run_migration_command() {
 test_database_has_user_tables() {
     php <<'PHP'
 <?php
-$host = getenv('DATABASE_TEST_HOST') ?: 'database_test';
-$port = getenv('DATABASE_TEST_PORT') ?: '3306';
+$host = getenv('DATABASE_TEST_HOST') ?: (getenv('DATABASE_HOST') ?: 'database');
+$port = getenv('DATABASE_TEST_PORT') ?: (getenv('DATABASE_PORT') ?: '3306');
 $database = getenv('DATABASE_TEST_NAME') ?: 'vrm_animator_test';
 $user = getenv('DATABASE_USER') ?: 'vrm_user';
 $password = getenv('DATABASE_PASSWORD') ?: 'vrm_pass';

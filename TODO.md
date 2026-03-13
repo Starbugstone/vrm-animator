@@ -1,6 +1,6 @@
 ## TODO
 
-Updated: 2026-03-12
+Updated: 2026-03-13
 
 This file is intentionally short. `devlog.md` holds the product narrative and end goal; this file is the working task list for the next implementation window.
 
@@ -41,7 +41,7 @@ This baseline has been verified against the current repository. The next phase s
 
 - improve provider-native upstream streaming instead of backend chunking after completion
 - harden the streamed event contract for text, cue, memory, and completion events
-- tighten cue validation against allowed avatar animation metadata
+- continue tightening cue validation against allowed avatar animation metadata
 - harden retries, timeouts, and provider failure handling
 - make the starter avatars usable immediately once credentials are connected, without extra hidden setup
 
@@ -89,8 +89,10 @@ Before closing a feature set, the minimum checks should be:
 - `docker compose exec -T php php bin/phpunit`
 - Latest verified implementation window:
   - backend prompt rules now come from `backend/prompts/chat_rules.md`
+  - backend prompt rules now explicitly instruct the LLM to place allowed `{emotion:...}` and `{anim:...}` tags inline when the reply tone or body language calls for them
   - `/api/avatars/{id}/chat` now supports streamed SSE playback when `stream: true`
-  - viewer-side chat now consumes streamed text and cue events, plays movement and facial overlays, and uses browser speech synthesis for spoken replies
+  - streamed cue events now include backend-resolved asset ids for movement and expression playback so the viewer no longer has to make the final streamed cue choice locally
+  - viewer-side chat now consumes streamed text and cue events, plays movement and facial overlays from backend-resolved cues, and uses browser speech synthesis for spoken replies
   - assistant replies may append long-term memory entries through the restricted inline `{memory:...}` bridge, persisted through the existing avatar memory revision flow
 - Encryption requirements:
   - provider secrets must be encrypted at rest
@@ -120,9 +122,9 @@ Before closing a feature set, the minimum checks should be:
 - During chat orchestration, the backend should:
   - normalize provider emotion tags into the shared vocabulary
   - resolve allowed candidate assets for the selected avatar
-  - optionally choose the final asset server-side for authoritative behavior
-  - stream either the normalized tag or the resolved asset id back to the frontend
+  - choose the final streamed cue asset server-side for authoritative behavior
+  - stream the normalized tag plus the resolved asset id back to the frontend
 - Preferred end state:
   - frontend still supports local weighted random selection for preview mode
-  - backend becomes the source of truth for production
+  - backend is now the source of truth for streamed production cue playback
   - both frontend and backend use the same normalized tag vocabulary

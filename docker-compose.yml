@@ -15,16 +15,12 @@ services:
     depends_on:
       database:
         condition: service_healthy
-      database_test:
-        condition: service_healthy
     environment:
       APP_ENV: dev
       APP_DEBUG: 1
       DATABASE_HOST: database
       DATABASE_PORT: 3306
       DATABASE_NAME: vrm_animator
-      DATABASE_TEST_HOST: database_test
-      DATABASE_TEST_PORT: 3306
       DATABASE_TEST_NAME: vrm_animator_test
       DATABASE_USER: vrm_user
       DATABASE_PASSWORD: vrm_pass
@@ -45,26 +41,6 @@ services:
       MARIADB_PASSWORD: vrm_pass
     volumes:
       - db-data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - vrm-network
-
-  database_test:
-    image: mariadb:11
-    container_name: vrm-database-test
-    ports:
-      - "${MARIADB_TEST_HOST_PORT:-3308}:3306"
-    environment:
-      MARIADB_ROOT_PASSWORD: root
-      MARIADB_DATABASE: vrm_animator_test
-      MARIADB_USER: vrm_user
-      MARIADB_PASSWORD: vrm_pass
-    volumes:
-      - db-test-data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 5s
@@ -97,7 +73,6 @@ services:
 
 volumes:
   db-data:
-  db-test-data:
   node_modules:
 
 networks:
