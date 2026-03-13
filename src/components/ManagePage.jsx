@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import AnimationMetadataPanel from './AnimationMetadataPanel.jsx'
 import AvatarIdentityPanel from './AvatarIdentityPanel.jsx'
 import AvatarPreviewCard from './AvatarPreviewCard.jsx'
@@ -548,7 +548,7 @@ export default function ManagePage({ user, workspace }) {
     sharedAvatars,
     providers,
     credentials,
-    openRouterModels,
+    providerModels,
     personasByAvatar,
     memoryByAvatar,
     memoryRevisionsByAvatar,
@@ -571,6 +571,7 @@ export default function ManagePage({ user, workspace }) {
     removeAnimation,
     saveMemory,
     resetMemory,
+    loadProviderModelCatalog,
     loadOpenRouterCatalog,
     saveCredential,
     removeCredential,
@@ -695,6 +696,10 @@ export default function ManagePage({ user, workspace }) {
       setBusyKey('')
     }
   }
+
+  const handleLoadProviderModels = useCallback((options) => (
+    loadProviderModelCatalog(options.provider, options)
+  ), [loadProviderModelCatalog])
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#18355c_0%,_#08111f_36%,_#04070d_100%)] text-white">
@@ -989,10 +994,10 @@ export default function ManagePage({ user, workspace }) {
             <LlmSettingsPanel
               providers={providers}
               credentials={credentials}
-              models={openRouterModels}
+              models={providerModels}
               busy={busyKey === 'credential-save' || busyKey === 'credential-delete'}
               modelsBusy={isModelsLoading}
-              onLoadModels={loadOpenRouterCatalog}
+              onLoadModels={handleLoadProviderModels}
               onSaveCredential={(payload) => runAction('credential-save', () => saveCredential(payload), 'Credential saved.')}
               onDeleteCredential={(credentialId) => runAction('credential-delete', () => removeCredential(credentialId), 'Credential deleted.')}
             />

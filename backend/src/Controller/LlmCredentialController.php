@@ -8,6 +8,7 @@ use App\Repository\LlmCredentialRepository;
 use App\Service\LlmCredentialCrypto;
 use App\Service\LlmProviderCatalog;
 use App\Service\Llm\OpenRouterModelCatalog;
+use App\Service\Llm\StaticProviderModelCatalog;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -28,7 +29,40 @@ class LlmCredentialController extends AbstractController
     #[Route('/api/llm/providers/openrouter/models', name: 'api_llm_openrouter_models', methods: ['GET'])]
     public function openRouterModels(Request $request, OpenRouterModelCatalog $openRouterModelCatalog): JsonResponse
     {
-        $billing = strtolower(trim((string) $request->query->get('billing', 'all')));
+        return $this->buildOpenRouterModelResponse($request, $openRouterModelCatalog);
+    }
+
+    #[Route('/api/llm/providers/{provider}/models', name: 'api_llm_provider_models', methods: ['GET'])]
+    public function providerModels(
+        string $provider,
+        Request $request,
+        LlmProviderCatalog $providerCatalog,
+        OpenRouterModelCatalog $openRouterModelCatalog,
+        StaticProviderModelCatalog $staticProviderModelCatalog,
+    ): JsonResponse {
+        $provider = strtolower(trim($provider));
+
+        try {
+            $providerCatalog->assertSupported($provider);
+        } catch (\InvalidArgumentException $exception) {
+            return $this->json(['message' => $exception->getMessage()], Response::HTTP_BAD_REQUEST);
+        }
+
+        if ($provider === 'openrouter') {
+            return $this->buildOpenRouterModelResponse($request, $openRouterModelCatalog);
+        }
+
+        return $this->json([
+            'models' => $staticProviderModelCatalog->listModels(
+                $provider,
+                is_string($request->query->get('search')) ? $request->query->get('search') : null,
+            ),
+        ]);
+    }
+
+    private function buildOpenRouterModelResponse(Request $request, OpenRouterModelCatalog $openRouterModelCatalog): JsonResponse
+    {
+        $billing = strtolower(trim((string) $request->query->get('billing', 'free')));
         if (!in_array($billing, ['all', 'free', 'paid'], true)) {
             return $this->json(['message' => 'billing must be one of all, free, or paid.'], Response::HTTP_BAD_REQUEST);
         }
@@ -127,6 +161,9 @@ class LlmCredentialController extends AbstractController
             return $this->json(['message' => 'Invalid JSON.'], Response::HTTP_BAD_REQUEST);
         }
 
+        $currentProvider = $credential->getProvider();
+        $nextProvider = $currentProvider;
+
         if (array_key_exists('secret', $payload)) {
             $secret = trim((string) $payload['secret']);
             if ($secret === '') {
@@ -157,7 +194,18 @@ class LlmCredentialController extends AbstractController
                 return $this->json(['message' => $exception->getMessage()], Response::HTTP_BAD_REQUEST);
             }
 
-            $credential->setProvider($provider);
+            $nextProvider = $provider;
+        }
+
+        if ($nextProvider !== $currentProvider && !array_key_exists('secret', $payload)) {
+            return $this->json(
+                ['message' => 'A new API key is required when changing provider.'],
+                Response::HTTP_BAD_REQUEST,
+            );
+        }
+
+        if ($nextProvider !== $currentProvider) {
+            $credential->setProvider($nextProvider);
         }
 
         if (array_key_exists('defaultModel', $payload)) {

@@ -886,6 +886,7 @@ export default function ViewerPage({ workspace }) {
       },
     ])
     speechSynthesisRef.current?.cancel?.()
+    let receivedAssistantText = false
 
     try {
       const response = await streamChatMessage(selectedAvatar.id, {
@@ -898,8 +899,16 @@ export default function ViewerPage({ workspace }) {
             setActiveConversationId(event.conversation.id)
           }
         },
+        onStatus: (event) => {
+          if (event?.message) {
+            setNotice(event.message)
+          }
+        },
         onTextDelta: (event) => {
           const delta = event?.delta || ''
+          if (delta) {
+            receivedAssistantText = true
+          }
           appendPendingAssistantData((message) => ({
             ...message,
             content: `${message.content || ''}${delta}`,
@@ -939,16 +948,30 @@ export default function ViewerPage({ workspace }) {
 
       setPendingMessages([])
       setActiveConversationId(response.conversation.id)
-      setNotice(`Reply received via ${response.conversation.provider}.`)
+      const firstDeltaMs = response?.timing?.firstDeltaMs
+      const providerLabel = response?.conversation?.provider || 'provider'
+      const modelLabel = response?.conversation?.model ? ` / ${response.conversation.model}` : ''
+      setNotice(
+        typeof firstDeltaMs === 'number'
+          ? `Reply received via ${providerLabel}${modelLabel}. First text in ${firstDeltaMs} ms.`
+          : `Reply received via ${providerLabel}${modelLabel}.`,
+      )
       await speakAssistantReply(
         response.assistantMessage?.content || '',
         response.assistantMessage?.emotionTags?.[0] || activeEmotionRef.current || 'neutral',
         [outgoingMessage],
       )
     } catch (error) {
-      setPendingMessages([])
-      setDraftMessage(outgoingMessage)
-      setNotice(error.message || 'Chat failed.')
+      if (!receivedAssistantText) {
+        setPendingMessages([])
+        setDraftMessage(outgoingMessage)
+      }
+
+      setNotice(
+        receivedAssistantText
+          ? `${error.message || 'Chat failed.'} Partial reply kept on screen, but this turn was not saved.`
+          : (error.message || 'Chat failed.'),
+      )
     } finally {
       setIsChatBusy(false)
     }

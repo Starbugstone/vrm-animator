@@ -30,41 +30,30 @@ class CueParser
         $animationLookup = $this->buildAnimationLookup($assets);
         $expressionAssets = array_values(array_filter($assets, static fn (CueAsset $asset): bool => $asset->isExpression()));
 
-        $parts = preg_split('/(\{(?:emotion|anim|memory):[^}]+\})/i', $rawContent, -1, PREG_SPLIT_DELIM_CAPTURE);
+        $parts = preg_split('/(\{(?:emotion|anim|memory):[^}]+\}|\[[^\]]*(?:emotion|anim|memory)\s*:[^\]]+\])/i', $rawContent, -1, PREG_SPLIT_DELIM_CAPTURE);
         foreach ($parts ?: [$rawContent] as $part) {
             if (!is_string($part) || $part === '') {
                 continue;
             }
 
-            if (preg_match('/^\{emotion:([^}]+)\}$/i', $part, $matches) === 1) {
-                $normalized = $this->emotionVocabulary->normalize($matches[1] ?? null);
-                if ($normalized !== null) {
-                    $emotionTags[] = $normalized;
-                    $timeline[] = $this->buildCueTimelineEntry(
-                        'emotion',
-                        $normalized,
-                        $this->resolveExpressionAsset($expressionAssets, $normalized),
-                    );
-                }
-                continue;
-            }
+            $parsedTokens = $this->parseCueTokenBundle($part, $animationLookup, $expressionAssets);
+            if ($parsedTokens !== null) {
+                foreach ($parsedTokens as $entry) {
+                    if (($entry['type'] ?? '') === 'emotion') {
+                        $emotionTags[] = (string) ($entry['value'] ?? '');
+                    }
 
-            if (preg_match('/^\{anim:([^}]+)\}$/i', $part, $matches) === 1) {
-                $normalized = $this->normalizeAnimationToken((string) ($matches[1] ?? ''));
-                if ($normalized !== '' && array_key_exists($normalized, $animationLookup)) {
-                    $resolved = $animationLookup[$normalized];
-                    $animationTags[] = $resolved->label;
-                    $timeline[] = $this->buildCueTimelineEntry('animation', $resolved->label, $resolved);
-                }
-                continue;
-            }
+                    if (($entry['type'] ?? '') === 'animation') {
+                        $animationTags[] = (string) ($entry['value'] ?? '');
+                    }
 
-            if (preg_match('/^\{memory:([^}]+)\}$/i', $part, $matches) === 1) {
-                $entry = $this->normalizeMemoryEntry((string) ($matches[1] ?? ''));
-                if ($entry !== null) {
-                    $memoryEntries[] = $entry;
-                    $timeline[] = ['type' => 'memory', 'value' => $entry];
+                    if (($entry['type'] ?? '') === 'memory') {
+                        $memoryEntries[] = (string) ($entry['value'] ?? '');
+                    }
+
+                    $timeline[] = $entry;
                 }
+
                 continue;
             }
 
@@ -83,6 +72,65 @@ class CueParser
             'animationTags' => array_values(array_unique($animationTags)),
             'memoryEntries' => array_values(array_unique($memoryEntries)),
             'timeline' => $timeline,
+        ];
+    }
+
+    /**
+     * @param list<CueAsset> $assets
+     * @return array{timeline:list<array<string, mixed>>,cursor:int}
+     */
+    public function parseStreamDelta(string $rawContent, array $assets, int $cursor): array
+    {
+        $timeline = [];
+        $animationLookup = $this->buildAnimationLookup($assets);
+        $expressionAssets = array_values(array_filter($assets, static fn (CueAsset $asset): bool => $asset->isExpression()));
+        $length = strlen($rawContent);
+        $offset = max(0, min($cursor, $length));
+
+        while ($offset < $length) {
+            $tagStart = $this->findNextCueStart($rawContent, $offset);
+            if ($tagStart === false) {
+                $text = $this->normalizeTextSegment(substr($rawContent, $offset));
+                if ($text !== '') {
+                    $timeline[] = ['type' => 'text', 'value' => $text];
+                }
+                $offset = $length;
+                break;
+            }
+
+            if ($tagStart > $offset) {
+                $text = $this->normalizeTextSegment(substr($rawContent, $offset, $tagStart - $offset));
+                if ($text !== '') {
+                    $timeline[] = ['type' => 'text', 'value' => $text];
+                }
+            }
+
+            $tagEnd = strpos($rawContent, $rawContent[$tagStart] === '[' ? ']' : '}', $tagStart);
+            if ($tagEnd === false) {
+                $offset = $tagStart;
+                break;
+            }
+
+            $token = substr($rawContent, $tagStart, $tagEnd - $tagStart + 1);
+            $parsedTokens = $this->parseCueTokenBundle($token, $animationLookup, $expressionAssets);
+
+            if ($parsedTokens === null) {
+                $text = $this->normalizeTextSegment($token);
+                if ($text !== '') {
+                    $timeline[] = ['type' => 'text', 'value' => $text];
+                }
+            } else {
+                foreach ($parsedTokens as $entry) {
+                    $timeline[] = $entry;
+                }
+            }
+
+            $offset = $tagEnd + 1;
+        }
+
+        return [
+            'timeline' => $timeline,
+            'cursor' => $offset,
         ];
     }
 
@@ -207,5 +255,95 @@ class CueParser
         $normalized = preg_replace("/\n{3,}/", "\n\n", $normalized) ?? $normalized;
 
         return $normalized;
+    }
+
+    /**
+     * @param array<string, CueAsset> $animationLookup
+     * @param list<CueAsset> $expressionAssets
+     * @return list<array<string, mixed>>|null
+     */
+    private function parseCueTokenBundle(string $token, array $animationLookup, array $expressionAssets): ?array
+    {
+        $trimmed = trim($token);
+        $isBraceToken = str_starts_with($trimmed, '{') && str_ends_with($trimmed, '}');
+        $isBracketToken = str_starts_with($trimmed, '[') && str_ends_with($trimmed, ']');
+
+        if (!$isBraceToken && !$isBracketToken) {
+            return null;
+        }
+
+        $inner = trim(substr($trimmed, 1, -1));
+        if ($inner === '') {
+            return null;
+        }
+
+        $segments = preg_split('/\s*(?:\||;)\s*/', $inner) ?: [];
+        $timeline = [];
+        $matchedCue = false;
+
+        foreach ($segments as $segment) {
+            $segment = trim((string) $segment);
+            if ($segment === '') {
+                continue;
+            }
+
+            if (preg_match('/^(emotion|anim|memory)\s*:\s*(.+)$/i', $segment, $matches) !== 1) {
+                if ($isBracketToken) {
+                    return null;
+                }
+
+                continue;
+            }
+
+            $matchedCue = true;
+            $type = strtolower((string) ($matches[1] ?? ''));
+            $value = trim((string) ($matches[2] ?? ''));
+
+            if ($type === 'emotion') {
+                $normalizedEmotion = $this->emotionVocabulary->normalize($value);
+                if ($normalizedEmotion !== null) {
+                    $timeline[] = $this->buildCueTimelineEntry(
+                        'emotion',
+                        $normalizedEmotion,
+                        $this->resolveExpressionAsset($expressionAssets, $normalizedEmotion),
+                    );
+                }
+
+                continue;
+            }
+
+            if ($type === 'anim') {
+                $normalizedAnimation = $this->normalizeAnimationToken($value);
+                if ($normalizedAnimation !== '' && array_key_exists($normalizedAnimation, $animationLookup)) {
+                    $resolved = $animationLookup[$normalizedAnimation];
+                    $timeline[] = $this->buildCueTimelineEntry('animation', $resolved->label, $resolved);
+                }
+
+                continue;
+            }
+
+            $entry = $this->normalizeMemoryEntry($value);
+            if ($entry !== null) {
+                $timeline[] = ['type' => 'memory', 'value' => $entry];
+            }
+        }
+
+        return $matchedCue ? $timeline : null;
+    }
+
+    private function findNextCueStart(string $rawContent, int $offset): int|false
+    {
+        $braceStart = strpos($rawContent, '{', $offset);
+        $bracketStart = strpos($rawContent, '[', $offset);
+
+        if ($braceStart === false) {
+            return $bracketStart;
+        }
+
+        if ($bracketStart === false) {
+            return $braceStart;
+        }
+
+        return min($braceStart, $bracketStart);
     }
 }

@@ -86,4 +86,65 @@ class AvatarMemoryTest extends WebTestCase
 
         $this->assertResponseStatusCodeSame(404);
     }
+
+    public function testAvatarMemoryRejectsStaleRevisionAndCanBeReset(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'memory-reset@example.com');
+
+        $client->request('POST', '/api/avatars', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'Reset Avatar',
+            'filename' => 'reset-avatar.vrm',
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $avatar = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('GET', '/api/avatars/'.$avatar['id'].'/memory', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $memory = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('PATCH', '/api/avatars/'.$avatar['id'].'/memory', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'markdownContent' => $memory['markdownContent']."\n- Updated once.\n",
+            'revision' => $memory['revision'],
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+        $updated = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('PATCH', '/api/avatars/'.$avatar['id'].'/memory', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'markdownContent' => $memory['markdownContent']."\n- Stale update.\n",
+            'revision' => $memory['revision'],
+        ]));
+
+        $this->assertResponseStatusCodeSame(409);
+        $error = json_decode($client->getResponse()->getContent(), true);
+        $this->assertStringContainsString('revision', strtolower($error['message'] ?? ''));
+
+        $client->request('POST', '/api/avatars/'.$avatar['id'].'/memory/reset', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $reset = json_decode($client->getResponse()->getContent(), true);
+        $this->assertGreaterThan($updated['revision'], $reset['revision']);
+        $this->assertStringContainsString('Reset Avatar', $reset['markdownContent']);
+    }
 }

@@ -31,6 +31,7 @@ class AvatarChatService
         private LlmProviderResolver $providerResolver,
         private AvatarMemoryService $avatarMemoryService,
         private CueAssetCatalog $cueAssetCatalog,
+        private ChatModelPolicyResolver $chatModelPolicyResolver,
         private PromptBuilder $promptBuilder,
         private CueParser $cueParser,
     ) {
@@ -47,38 +48,29 @@ class AvatarChatService
         ?string $requestedModel,
         int $includeRecentMessages,
     ): ChatTurnResult {
-        $trimmedMessage = trim($message);
-        if ($trimmedMessage === '') {
-            throw new AvatarChatException('message is required.', Response::HTTP_BAD_REQUEST);
-        }
-
-        $conversation = $this->resolveConversation($user, $avatar, $conversationId);
-        $persona = $this->resolvePersona($user, $avatar, $personaId, $conversation);
-        $credential = $this->resolveCredential($user, $persona, $credentialId, $requestedProvider, $conversation);
-        $provider = $requestedProvider ?? $conversation?->getProvider() ?? $credential->getProvider();
-        $model = $this->resolveModel($credential, $provider, $requestedModel, $conversation);
-
-        $memory = $this->avatarMemoryService->getOrCreateMemory($avatar);
-        $assets = $this->cueAssetCatalog->listForAvatar($user, $avatar);
-        $recentMessages = $conversation !== null
-            ? $this->conversationMessageRepository->findRecentForConversation($conversation, $includeRecentMessages)
-            : [];
-
-        $providerMessages = $this->promptBuilder->buildMessages(
+        $preparedTurn = $this->prepareChat(
+            $user,
             $avatar,
-            $persona,
-            $memory->getMarkdownContent(),
-            $assets,
-            $recentMessages,
-            $trimmedMessage,
+            $message,
+            $conversationId,
+            $personaId,
+            $credentialId,
+            $requestedProvider,
+            $requestedModel,
+            $includeRecentMessages,
         );
 
         try {
             $completion = $this->providerResolver
-                ->resolve($provider)
+                ->resolve($preparedTurn->provider)
                 ->complete(
-                    new LlmCompletionRequest($provider, $model, $providerMessages),
-                    $this->credentialCrypto->decrypt($credential->getEncryptedSecret()),
+                    new LlmCompletionRequest(
+                        $preparedTurn->provider,
+                        $preparedTurn->model,
+                        $preparedTurn->providerMessages,
+                        $preparedTurn->modelPolicy->maxOutputTokens,
+                    ),
+                    $this->credentialCrypto->decrypt($preparedTurn->credential->getEncryptedSecret()),
                 );
         } catch (AvatarChatException $exception) {
             throw $exception;
@@ -90,23 +82,86 @@ class AvatarChatService
             );
         }
 
-        $parsedAssistant = $this->cueParser->parse($completion->content, $assets);
+        return $this->finalizeChat($preparedTurn, $completion);
+    }
+
+    public function prepareChat(
+        User $user,
+        Avatar $avatar,
+        string $message,
+        ?int $conversationId,
+        ?int $personaId,
+        ?int $credentialId,
+        ?string $requestedProvider,
+        ?string $requestedModel,
+        int $includeRecentMessages,
+    ): PreparedChatTurn {
+        $trimmedMessage = trim($message);
+        if ($trimmedMessage === '') {
+            throw new AvatarChatException('message is required.', Response::HTTP_BAD_REQUEST);
+        }
+
+        $conversation = $this->resolveConversation($user, $avatar, $conversationId);
+        $persona = $this->resolvePersona($user, $avatar, $personaId, $conversation);
+        $credential = $this->resolveCredential($user, $persona, $credentialId, $requestedProvider, $conversation);
+        $provider = $requestedProvider ?? $credential->getProvider();
+        $model = $this->resolveModel($credential, $provider, $requestedModel, $conversation);
+        $modelPolicy = $this->chatModelPolicyResolver->resolve($provider, $model);
+
+        $memory = $this->avatarMemoryService->getOrCreateMemory($avatar);
+        $assets = $this->cueAssetCatalog->listForAvatar($user, $avatar);
+        $recentMessages = $conversation !== null
+            ? $this->conversationMessageRepository->findRecentForConversation(
+                $conversation,
+                min($includeRecentMessages, $modelPolicy->maxRecentMessages),
+            )
+            : [];
+
+        $providerMessages = $this->promptBuilder->buildMessages(
+            $avatar,
+            $persona,
+            $memory->getMarkdownContent(),
+            $assets,
+            $recentMessages,
+            $trimmedMessage,
+            $modelPolicy,
+        );
+
+        return new PreparedChatTurn(
+            $user,
+            $avatar,
+            $trimmedMessage,
+            $conversation,
+            $persona,
+            $credential,
+            $provider,
+            $model,
+            $modelPolicy,
+            $assets,
+            $providerMessages,
+        );
+    }
+
+    public function finalizeChat(PreparedChatTurn $preparedTurn, LlmCompletionResponse $completion): ChatTurnResult
+    {
+        $conversation = $preparedTurn->conversation;
+        $parsedAssistant = $this->cueParser->parse($completion->content, $preparedTurn->assets);
         $conversation ??= (new Conversation())
-            ->setOwner($user)
-            ->setAvatar($avatar)
-            ->setTitle($this->buildConversationTitle($trimmedMessage));
+            ->setOwner($preparedTurn->user)
+            ->setAvatar($preparedTurn->avatar)
+            ->setTitle($this->buildConversationTitle($preparedTurn->message));
 
         $conversation
-            ->setPersona($persona)
-            ->setProvider($provider)
-            ->setModel($model)
+            ->setPersona($preparedTurn->persona)
+            ->setProvider($preparedTurn->provider)
+            ->setModel($preparedTurn->model)
             ->touch();
 
         $userMessage = (new ConversationMessage())
             ->setConversation($conversation)
             ->setRole('user')
-            ->setContent($trimmedMessage)
-            ->setParsedText($trimmedMessage)
+            ->setContent($preparedTurn->message)
+            ->setParsedText($preparedTurn->message)
             ->setParsedEmotionTags([])
             ->setParsedAnimationTags([]);
 
@@ -115,7 +170,7 @@ class AvatarChatService
             ->setConversation($conversation)
             ->setRole('assistant')
             ->setContent($assistantText)
-            ->setRawProviderContent($completion->content)
+            ->setRawProviderContent($completion->rawResponse)
             ->setParsedText($parsedAssistant['text'])
             ->setParsedEmotionTags($parsedAssistant['emotionTags'])
             ->setParsedAnimationTags($parsedAssistant['animationTags']);
@@ -126,7 +181,7 @@ class AvatarChatService
         $this->entityManager->flush();
 
         if ($parsedAssistant['memoryEntries'] !== []) {
-            $this->avatarMemoryService->appendRelationshipMemory($avatar, $parsedAssistant['memoryEntries'], 'assistant');
+            $this->avatarMemoryService->appendRelationshipMemory($preparedTurn->avatar, $parsedAssistant['memoryEntries'], 'assistant');
         }
 
         return new ChatTurnResult(
@@ -136,6 +191,36 @@ class AvatarChatService
             $parsedAssistant['timeline'],
             $parsedAssistant['memoryEntries'],
         );
+    }
+
+    public function getProviderResolver(): LlmProviderResolver
+    {
+        return $this->providerResolver;
+    }
+
+    public function decryptCredentialSecret(LlmCredential $credential): string
+    {
+        return $this->credentialCrypto->decrypt($credential->getEncryptedSecret());
+    }
+
+    /**
+     * @param list<CueAsset> $assets
+     * @return array{timeline:list<array<string, mixed>>,cursor:int}
+     */
+    public function parseStreamingTimeline(array $assets, string $rawContent, int $cursor): array
+    {
+        return $this->cueParser->parseStreamDelta($rawContent, $assets, $cursor);
+    }
+
+    /**
+     * @param list<CueAsset> $assets
+     * @return list<array<string, mixed>>
+     */
+    public function parseCompletionTimeline(array $assets, string $rawContent): array
+    {
+        $parsed = $this->cueParser->parse($rawContent, $assets);
+
+        return $parsed['timeline'];
     }
 
     private function resolveConversation(User $user, Avatar $avatar, ?int $conversationId): ?Conversation
@@ -246,7 +331,11 @@ class AvatarChatService
             return $normalizedRequestedModel;
         }
 
-        $conversationModel = $this->normalizeNullableString($conversation?->getModel());
+        $conversationModel = $this->normalizeNullableString(
+            $conversation !== null && $conversation->getProvider() === $provider
+                ? $conversation->getModel()
+                : null,
+        );
         if ($conversationModel !== null) {
             return $conversationModel;
         }

@@ -13,7 +13,8 @@ class LlmProviderCatalog
             'label' => 'GLM',
             'requiresApiKey' => true,
             'recommendedModels' => [
-                'glm-4.5',
+                'glm-5',
+                'glm-4.7',
                 'glm-4.5-air',
             ],
         ],
@@ -22,8 +23,9 @@ class LlmProviderCatalog
             'label' => 'MiniMax',
             'requiresApiKey' => true,
             'recommendedModels' => [
-                'MiniMax-M1',
-                'MiniMax-Text-01',
+                'MiniMax-M2.5',
+                'MiniMax-M2.5-highspeed',
+                'MiniMax-M2.1',
             ],
         ],
         'openrouter' => [
@@ -51,9 +53,29 @@ class LlmProviderCatalog
         return $providers;
     }
 
+    /**
+     * @return array{id:string,label:string,requiresApiKey:bool,recommendedModels:list<string>}|null
+     */
+    public function findProvider(string $provider): ?array
+    {
+        $normalized = $this->normalizeProviderId($provider);
+
+        return self::PROVIDERS[$normalized] ?? null;
+    }
+
+    public function getLabel(string $provider): string
+    {
+        $metadata = $this->findProvider($provider);
+        if ($metadata !== null) {
+            return $metadata['label'];
+        }
+
+        return strtoupper($this->normalizeProviderId($provider));
+    }
+
     public function isSupported(string $provider): bool
     {
-        return array_key_exists($provider, self::PROVIDERS);
+        return array_key_exists($this->normalizeProviderId($provider), self::PROVIDERS);
     }
 
     public function assertSupported(string $provider): void
@@ -61,5 +83,10 @@ class LlmProviderCatalog
         if (!$this->isSupported($provider)) {
             throw new \InvalidArgumentException('Unsupported LLM provider.');
         }
+    }
+
+    private function normalizeProviderId(string $provider): string
+    {
+        return strtolower(trim($provider));
     }
 }

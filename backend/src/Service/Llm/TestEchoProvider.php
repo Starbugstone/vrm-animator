@@ -11,6 +11,26 @@ final class TestEchoProvider implements LlmProviderInterface
 
     public function complete(LlmCompletionRequest $request, string $secret): LlmCompletionResponse
     {
+        return $this->buildEchoResponse($request);
+    }
+
+    public function streamComplete(LlmCompletionRequest $request, string $secret, callable $onDelta): LlmCompletionResponse
+    {
+        $response = $this->buildEchoResponse($request);
+
+        foreach (str_split($response->content, 18) as $chunk) {
+            if ($chunk === '') {
+                continue;
+            }
+
+            $onDelta(new LlmStreamDelta($chunk, $chunk));
+        }
+
+        return $response;
+    }
+
+    private function buildEchoResponse(LlmCompletionRequest $request): LlmCompletionResponse
+    {
         $lastUserMessage = '';
         foreach (array_reverse($request->messages) as $message) {
             if (($message['role'] ?? null) !== 'user') {
