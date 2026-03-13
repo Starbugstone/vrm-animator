@@ -2,7 +2,7 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
-Latest implementation note: the frontend layout has been refocused for clarity and responsiveness. Oversized checklist/help blocks were removed from Manage and Viewer, spacing was increased, and explicit loading spinners/disabled states were added while avatar context, chat history, and save actions sync with the API.
+Latest implementation note: the frontend layout has been refocused for clarity and responsiveness, and auth validation errors are now surfaced cleanly in the frontend. Oversized checklist/help blocks were removed from Manage and Viewer, spacing was increased, explicit loading spinners and disabled states were added while avatar context, chat history, and save actions sync with the API, and backend `422` responses like duplicate-email or invalid-email validation now display the real backend message instead of a generic status-code failure.
 
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 

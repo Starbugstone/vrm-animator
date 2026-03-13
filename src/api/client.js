@@ -69,9 +69,15 @@ async function fetchWithAuthRetry(path, options = {}, auth = {}) {
 }
 
 function buildApiError(path, response, data) {
+  const validationMessage =
+    typeof data === 'object' && data?.errors && typeof data.errors === 'object'
+      ? Object.values(data.errors).find((value) => typeof value === 'string')
+      : null
+
   const message =
     (typeof data === 'object' && data?.message) ||
     (typeof data === 'object' && data?.detail) ||
+    validationMessage ||
     `Request failed with status ${response.status}`
 
   return new ApiError(message, response.status, data)
