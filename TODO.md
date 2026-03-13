@@ -34,6 +34,7 @@ This baseline has been verified against the current repository. The next phase s
 - improve persona consistency
 - improve memory use in prompt assembly
 - improve cue quality so avatar reactions feel intentional
+- add a core “thinking” movement and emotion VRMA set so avatars visibly reflect reasoning while waiting for replies
 - keep expression overlays facial-only and emotionally coherent
 - define and polish the two launch starter avatars from the default asset pool so they feel production-ready
 

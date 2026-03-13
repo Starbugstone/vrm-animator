@@ -76,7 +76,6 @@ export default function App() {
 
   const commonPageProps = {
     user: auth.user,
-    onNavigatePage: setActivePage,
     workspace: {
       ...workspace,
       token: auth.token,
@@ -89,10 +88,8 @@ export default function App() {
         <div className="mx-auto flex max-w-[1680px] flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div>
             <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">VRM Animator</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">Choose an avatar, connect your AI, start chatting</div>
-            <div className="mt-2 text-sm text-white/58">
-              `Manage` is for setup. `Viewer` is for previewing and talking with the current avatar.
-            </div>
+            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">Avatar workspace</div>
+            <div className="mt-2 text-sm text-white/58">Manage setup in one tab, then run and chat in Viewer.</div>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
