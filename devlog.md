@@ -2,7 +2,7 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
-Latest implementation note: the Docker test database setup no longer needs a second MariaDB container. The app and test databases now live on the same MariaDB service under different database names, which keeps backend test isolation without the extra `database_test` container.
+Latest implementation note: the viewer utility controls are now more usable during live preview. Camera and animation debug controls both use the same movable/minimizable window pattern, and the conversation composer now sits at the top of the left rail for faster access while chatting.
 
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 

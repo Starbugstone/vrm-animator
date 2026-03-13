@@ -1021,6 +1021,62 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
             </div>
           </section>
 
+          <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.85)] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs uppercase tracking-[0.28em] text-white/45">Conversation</div>
+              <div className="text-[11px] text-white/40">{conversations.length} threads</div>
+            </div>
+
+            <textarea
+              value={draftMessage}
+              onChange={(event) => setDraftMessage(event.target.value)}
+              rows={4}
+              disabled={chatDisabled}
+              placeholder={chatDisabled ? (!selectedAvatar ? 'Open Manage and save this avatar to your library first.' : 'Open Manage and connect one AI provider first.') : 'Type a message to the selected avatar'}
+              className="mt-4 w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:border-cyan-300/40 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={handleSendMessage}
+              disabled={chatDisabled || isChatBusy || !draftMessage.trim()}
+              className="mt-3 w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isChatBusy ? 'Sending...' : 'Send message'}
+            </button>
+
+            {notice ? <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-100">{notice}</div> : null}
+
+            <div className="mt-4 max-h-[320px] space-y-2 overflow-y-auto rounded-3xl border border-white/10 bg-black/25 p-3">
+              {liveMessages.length === 0 ? (
+                <div className="rounded-2xl bg-black/30 px-3 py-3 text-sm text-white/60">
+                  {chatDisabled
+                    ? !selectedAvatar
+                      ? 'Default avatars are preview-only here. Open Manage to add one to your library first.'
+                      : 'Open Manage and attach one AI connection before starting chat.'
+                    : 'Start a conversation with the selected avatar.'}
+                </div>
+              ) : null}
+              {liveMessages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`rounded-2xl px-3 py-3 text-sm ${
+                    message.role === 'assistant' ? 'bg-cyan-300/10 text-cyan-50' : 'bg-white/8 text-white/82'
+                  }`}
+                >
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">{message.role}</div>
+                  <div className="mt-2 whitespace-pre-wrap leading-6">{message.content}</div>
+                  {message.emotionTags?.length > 0 || message.animationTags?.length > 0 ? (
+                    <div className="mt-2 text-[11px] text-white/45">
+                      {[message.emotionTags?.length ? `emotion: ${message.emotionTags.join(', ')}` : null, message.animationTags?.length ? `movement: ${message.animationTags.join(', ')}` : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+
           <SetupGuideCard
             eyebrow="Before you chat"
             title="Quick viewer checklist"
@@ -1088,61 +1144,6 @@ export default function ViewerPage({ workspace, onNavigatePage }) {
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.85)] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs uppercase tracking-[0.28em] text-white/45">Conversation</div>
-              <div className="text-[11px] text-white/40">{conversations.length} threads</div>
-            </div>
-
-            <div className="mt-4 max-h-[320px] space-y-2 overflow-y-auto rounded-3xl border border-white/10 bg-black/25 p-3">
-              {liveMessages.length === 0 ? (
-                <div className="rounded-2xl bg-black/30 px-3 py-3 text-sm text-white/60">
-                  {chatDisabled
-                    ? !selectedAvatar
-                      ? 'Default avatars are preview-only here. Open Manage to add one to your library first.'
-                      : 'Open Manage and attach one AI connection before starting chat.'
-                    : 'Start a conversation with the selected avatar.'}
-                </div>
-              ) : null}
-              {liveMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`rounded-2xl px-3 py-3 text-sm ${
-                    message.role === 'assistant' ? 'bg-cyan-300/10 text-cyan-50' : 'bg-white/8 text-white/82'
-                  }`}
-                >
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">{message.role}</div>
-                  <div className="mt-2 whitespace-pre-wrap leading-6">{message.content}</div>
-                  {message.emotionTags?.length > 0 || message.animationTags?.length > 0 ? (
-                    <div className="mt-2 text-[11px] text-white/45">
-                      {[message.emotionTags?.length ? `emotion: ${message.emotionTags.join(', ')}` : null, message.animationTags?.length ? `movement: ${message.animationTags.join(', ')}` : null]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-
-            <textarea
-              value={draftMessage}
-              onChange={(event) => setDraftMessage(event.target.value)}
-              rows={5}
-              disabled={chatDisabled}
-              placeholder={chatDisabled ? (!selectedAvatar ? 'Open Manage and save this avatar to your library first.' : 'Open Manage and connect one AI provider first.') : 'Type a message to the selected avatar'}
-              className="mt-4 w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:border-cyan-300/40 disabled:cursor-not-allowed disabled:opacity-50"
-            />
-            <button
-              type="button"
-              onClick={handleSendMessage}
-              disabled={chatDisabled || isChatBusy || !draftMessage.trim()}
-              className="mt-3 w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isChatBusy ? 'Sending...' : 'Send message'}
-            </button>
-
-            {notice ? <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-100">{notice}</div> : null}
-          </section>
         </aside>
 
         <main className="relative min-h-[62vh]">

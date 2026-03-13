@@ -1,3 +1,5 @@
+import FloatingWindow from './FloatingWindow.jsx'
+
 export default function AnimationPopover({
   idleItems,
   actionItems,
@@ -13,9 +15,13 @@ export default function AnimationPopover({
   onPlayExpression,
 }) {
   return (
-    <div className="absolute left-4 top-20 z-20 w-[320px] max-w-[calc(100%-2rem)] rounded-[28px] border border-white/10 bg-[rgba(3,7,18,0.72)] p-4 text-white shadow-2xl backdrop-blur-md">
-      <div className="mb-3 text-xs uppercase tracking-[0.28em] text-white/45">Animation test window</div>
-
+    <FloatingWindow
+      title="Animation controls"
+      subtitle="Drag this bar to reposition"
+      restoreTitle="Show animation controls"
+      initialPosition={{ x: 16, y: 196 }}
+      widthClass="w-[320px]"
+    >
       <div className="space-y-3 text-sm">
         <AnimationSection
           title="Idle"
@@ -42,7 +48,7 @@ export default function AnimationPopover({
           actionLabel="Play expression"
         />
       </div>
-    </div>
+    </FloatingWindow>
   )
 }
 
