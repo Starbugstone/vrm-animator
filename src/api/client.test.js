@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { clearAuthSession, registerAuthHandlers, syncAuthSession } from './authSession'
-import { apiRequest, downloadFile } from './client'
+import { apiRequest, ApiError, downloadFile } from './client'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -59,5 +59,30 @@ describe('apiRequest', () => {
 
     const secondHeaders = fetchMock.mock.calls[1][1].headers
     expect(secondHeaders.get('Authorization')).toBe('Bearer fresh-access-token')
+  })
+
+  it('surfaces validation errors from the backend', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 422,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({
+        errors: {
+          email: 'This email is already registered.',
+        },
+      }),
+    })
+
+    await expect(apiRequest('/api/register', {
+      method: 'POST',
+      json: {
+        email: 'duplicate@example.com',
+        password: 'password123',
+      },
+    })).rejects.toEqual(new ApiError('This email is already registered.', 422, {
+      errors: {
+        email: 'This email is already registered.',
+      },
+    }))
   })
 })

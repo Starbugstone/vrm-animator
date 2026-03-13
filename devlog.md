@@ -2,7 +2,7 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
-Latest implementation note: the viewer utility controls are now more usable during live preview. Camera and animation debug controls both use the same movable/minimizable window pattern, and the conversation composer now sits at the top of the left rail for faster access while chatting.
+Latest implementation note: auth validation errors are now surfaced cleanly in the frontend. Registration was still working for valid payloads, but backend `422` responses like duplicate-email or invalid-email validation now display the actual backend message instead of a generic status-code failure.
 
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 
