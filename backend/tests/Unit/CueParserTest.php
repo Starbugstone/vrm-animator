@@ -142,6 +142,36 @@ class CueParserTest extends TestCase
         $this->assertSame('relationship', $parsed['timeline'][3]['scope']);
     }
 
+    public function testItParsesDelayedAnimationCuesFromBracketBundles(): void
+    {
+        $animation = new CueAsset(
+            'action:user:1',
+            'Swing Arms',
+            'Swing Arms',
+            'action',
+            'Conversational swing',
+            ['speech', 'casual'],
+            ['neutral', 'happy'],
+            'user',
+            ['speech', 'casual', 'neutral', 'happy'],
+        );
+
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parse(
+            'Let me build to that [emotion:happy | anim:Swing Arms | delay:2.5s] right here.',
+            [$animation],
+        );
+
+        $animationEvents = array_values(array_filter(
+            $parsed['timeline'],
+            static fn (array $entry): bool => ($entry['type'] ?? '') === 'animation',
+        ));
+
+        $this->assertCount(1, $animationEvents);
+        $this->assertSame('Swing Arms', $animationEvents[0]['value']);
+        $this->assertSame(2500, $animationEvents[0]['delayMs'] ?? null);
+    }
+
     public function testItParsesScopedMemoryEntries(): void
     {
         $parser = new CueParser(new EmotionVocabulary());

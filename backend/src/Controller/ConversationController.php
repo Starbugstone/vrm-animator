@@ -391,6 +391,7 @@ class ConversationController extends AbstractController
             'assetLabel' => isset($event['assetLabel']) ? (string) $event['assetLabel'] : null,
             'assetKind' => isset($event['assetKind']) ? (string) $event['assetKind'] : null,
             'assetSource' => isset($event['assetSource']) ? (string) $event['assetSource'] : null,
+            'delayMs' => isset($event['delayMs']) ? (int) $event['delayMs'] : null,
         ]);
     }
 

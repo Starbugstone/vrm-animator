@@ -36,6 +36,7 @@ This baseline has been verified against the current repository. The next phase s
 - test whether the new split between Relationship Memory and Long-Term Memory produces better character consistency in real chats
 - refine the new long-term memory directive and compression prompt based on real chat behavior
 - improve cue quality so avatar reactions feel intentional
+- keep tuning speech-time cue pacing so long spoken replies stay lively without becoming repetitive
 - continue polishing the core “thinking” movement and emotion VRMA set; `thinking` is now a first-class animation kind used for viewer wait states, and `default_vrma/thinking/` remains the dedicated drop zone for those launch-ready clips
 - keep expression overlays facial-only and emotionally coherent
 - define and polish the two launch starter avatars from the default asset pool so they feel production-ready
@@ -153,3 +154,11 @@ Before closing a feature set, the minimum checks should be:
   - frontend still supports local weighted random selection for preview mode
   - backend is now the source of truth for streamed production cue playback
   - both frontend and backend use the same normalized tag vocabulary
+
+
+##ideas - emotional state
+- have the avatar keep an emotional memory from global memory to state the idle animations. if angry then prioritise angry idle stances, if happy then prioritise happy idle stances, worried the same and all other emotional possibilities possible with vrma posibilities.
+- emotional memory. remember the actual state of the avatar and respond depending on that state (angry, happy, calm,ancious, flirty ... expand on the basic emotional states). These states should evolve depending on the discussion and situation and be updated
+- make sur custom vrma uploaded animations have the emotional tags so the avatar can use them accordingly depending on emotional state
+- use a bucket / weight system for emotions to value how the avatar feels the most inclined towards, can mix 2
+- replys from LLM must include the actual top emotions and the app should ajust with the bucket implemented.

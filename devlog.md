@@ -2,7 +2,7 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
-Latest implementation note: the app now has a first real backend-managed TTS path instead of relying only on browser speech synthesis. Users can save their own ElevenLabs API keys on a BYOK basis, Manage now includes a dedicated `Voice & speech` section, and each avatar can store its own speech language, avatar sex tag, optional voice-gender override, attached ElevenLabs credential, and selected ElevenLabs voice. Shared default avatars now include sex metadata so new personal copies can start with a sensible voice filter, but the voice choice can still be overridden intentionally. The viewer now prefers streamed ElevenLabs playback when an avatar has a saved remote voice and falls back automatically to the existing browser speech path when no remote voice is attached or remote playback fails. In the same pass, the configuration UX was tightened so avatar, AI, and speech setup behave more like one family of settings instead of isolated one-off forms. The development guide also continues to treat Docker Compose as the source of truth for Node and PHP verification so frontend and backend checks run against the project runtime instead of the host machine.
+Latest implementation note: speech playback no longer leaves the avatar expressive only for the first beat of a long reply. The viewer now turns the backend cue timeline into a speech-motion plan, replays explicit body gestures at speaking time, and injects spaced-out emotion-matched conversational motions during longer replies so the avatar does not snap back to idle while it is still talking. The reply sequence now also keeps the selected main idle as the baseline instead of pulling extra idle clips into spoken gesture injection, rejects reply-time body gestures whose emotion metadata conflicts with the current LLM emotion, and supports delayed bracketed cue bundles such as `[emotion:happy | anim:Swing Arms | delay:2.5s]` so the LLM can intentionally place a gesture later in the spoken reply for dramatic timing. This works with both browser speech and the newer ElevenLabs playback path, while still avoiding obvious hard loops by keeping random fallback gestures on a longer cooldown. The app still has the backend-managed TTS path, per-avatar speech settings, and the tightened configuration UX from the previous pass, and Docker Compose remains the source of truth for frontend and backend verification.
 
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 
@@ -238,6 +238,27 @@ That pass added:
 - a backend generic provider-model endpoint so the frontend can request model options consistently
 - frontend AI Connection model browsing for all supported providers, not just OpenRouter
 - recommended-vs-legacy hints for the static provider lists while keeping OpenRouter live and filterable
+
+### 16. Spoken replies now keep body language alive for longer turns
+
+The next implementation pass focused on a mismatch between cue timing and speech timing.
+
+Before this pass:
+
+- streamed `{anim:...}` cues only fired once
+- remote TTS could finish cue parsing long before speech playback actually started
+- long spoken replies often returned to idle body motion while the avatar was still talking
+
+That pass added:
+
+- a viewer-side speech cue plan built from the backend assistant timeline
+- speech-time replay of explicit movement cues instead of relying only on their arrival-time playback
+- optional delayed bracketed cue bundles so the LLM can intentionally place a gesture beat later in the spoken reply
+- dynamic in-speech gesture injection based on the active emotion and available conversational motion clips
+- longer cooldown logic so long replies stay active without looking like a rigid animation loop
+- chat cue playback that now treats body gestures as short conversational beats, always returning cleanly to the avatar's normal idle after each beat
+
+This matters because the avatar now keeps a more believable presence through longer spoken answers. It can still follow the LLM's intended vibe, but it no longer feels like it "gives up" on body language after the first sentence.
 - updated recommended provider defaults in the backend provider catalog
 
 This matters because provider setup is now much more approachable for non-technical users, and future model refreshes for GLM and MiniMax can be handled by editing a single provider-specific config file instead of hunting through UI code.

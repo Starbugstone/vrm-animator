@@ -8,11 +8,16 @@ import {
   createPersistedAvatarAsset,
 } from '../lib/viewerAssets.js'
 import { isExpressionAssetAllowed, pickExpressionAsset, pickThinkingExpressionAsset } from '../lib/viewerExpressions.js'
+import { isSpeechMovementAssetAllowed, pickSpeechMovementAsset } from '../lib/viewerPresence.js'
 import {
   pickThinkingInjectionAsset,
   sampleThinkingInjectionDelay,
 } from '../lib/viewerThinking.js'
-import { takeSpeakableSpeechChunk } from '../lib/viewerSpeech.js'
+import {
+  buildSpeechCuePlan,
+  sampleSpeechMotionDelay,
+  takeSpeakableSpeechChunk,
+} from '../lib/viewerSpeech.js'
 import { playStreamedAudioResponse } from '../lib/streamingAudio.js'
 import { getEffectiveVoiceGender, hasRemoteTtsConfiguration } from '../lib/ttsVoices.js'
 import { streamAvatarTts } from '../api/tts.js'
@@ -25,6 +30,10 @@ const VIEWER_OPTION_LABELS = {
 const SPEECH_LANGUAGE_FALLBACK = 'en-US'
 const SPEECH_OVERLAY_RELEASE_MS = 220
 const SPEECH_BOUNDARY_RELEASE_MS = 180
+const SPEECH_MOVEMENT_END_BUFFER_MS = 1500
+const SPEECH_MOVEMENT_EXPLICIT_GUARD_MS = 2400
+const SPEECH_MOVEMENT_MIN_GAP_MS = 3200
+const SPEECH_RECENT_MOVEMENT_LIMIT = 3
 const LANGUAGE_PROFILES = [
   {
     code: 'en',
@@ -60,6 +69,23 @@ const LANGUAGE_PROFILES = [
 
 function normalizeToken(value) {
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+function createEmptySpeechPresenceState() {
+  return {
+    sessionId: 0,
+    started: false,
+    startedAt: 0,
+    totalDurationMs: 0,
+    beats: [],
+    recentMovementIds: [],
+    lastMovementAssetId: '',
+    lastMovementAtMs: 0,
+  }
+}
+
+function nowMs() {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
 }
 
 function detectLanguageLocale(...samples) {
@@ -254,6 +280,12 @@ export default function ViewerPage({ workspace }) {
   const speechSessionIdRef = useRef(0)
   const speechStopTimeoutRef = useRef(null)
   const speechMonitorIntervalRef = useRef(null)
+  const speechPresenceRef = useRef(createEmptySpeechPresenceState())
+  const speechPresenceBeatTimeoutsRef = useRef([])
+  const speechPresenceInjectionTimeoutRef = useRef(null)
+  const speechCuePlanRef = useRef(buildSpeechCuePlan())
+  const pendingDelayedSpeechCuesRef = useRef([])
+  const delayedSpeechCueIdRef = useRef(0)
   const remoteAudioRef = useRef(typeof Audio !== 'undefined' ? new Audio() : null)
   const remoteTtsAbortRef = useRef(null)
   const lastSpeechActivityAtRef = useRef(0)
@@ -377,6 +409,24 @@ export default function ViewerPage({ workspace }) {
   const hasRemoteTts = hasRemoteTtsConfiguration(selectedAvatar)
   const hasStartedChat = liveMessages.length > 0 || conversations.length > 0
 
+  const clearSpeechPresenceTimers = useCallback(() => {
+    speechPresenceBeatTimeoutsRef.current.forEach((timeoutId) => {
+      window.clearTimeout(timeoutId)
+    })
+    speechPresenceBeatTimeoutsRef.current = []
+
+    if (speechPresenceInjectionTimeoutRef.current) {
+      window.clearTimeout(speechPresenceInjectionTimeoutRef.current)
+      speechPresenceInjectionTimeoutRef.current = null
+    }
+  }, [])
+
+  const stopSpeechPresenceSession = useCallback(() => {
+    clearSpeechPresenceTimers()
+    pendingDelayedSpeechCuesRef.current = []
+    speechPresenceRef.current = createEmptySpeechPresenceState()
+  }, [clearSpeechPresenceTimers])
+
   const stopRemoteTtsPlayback = useCallback(() => {
     remoteTtsAbortRef.current?.abort?.()
     remoteTtsAbortRef.current = null
@@ -413,6 +463,8 @@ export default function ViewerPage({ workspace }) {
         window.clearInterval(speechMonitorIntervalRef.current)
         speechMonitorIntervalRef.current = null
       }
+      stopSpeechPresenceSession()
+      speechCuePlanRef.current = buildSpeechCuePlan()
       speechSynthesisRef.current?.cancel?.()
       stopRemoteTtsPlayback()
       stopOverlayAnimation({ immediate: false })
@@ -452,14 +504,15 @@ export default function ViewerPage({ workspace }) {
     return () => {
       cancelled = true
     }
-  }, [ensureConversationMessages, ensureConversations, ensurePersonas, selectedAvatar, setThinkingIndicatorEnabled, stopOverlayAnimation, stopRemoteTtsPlayback, workspace.token])
+  }, [ensureConversationMessages, ensureConversations, ensurePersonas, selectedAvatar, setThinkingIndicatorEnabled, stopOverlayAnimation, stopRemoteTtsPlayback, stopSpeechPresenceSession, workspace.token])
 
   useEffect(() => () => {
     if (thinkingCycleTimeoutRef.current) {
       window.clearTimeout(thinkingCycleTimeoutRef.current)
       thinkingCycleTimeoutRef.current = null
     }
-  }, [])
+    stopSpeechPresenceSession()
+  }, [stopSpeechPresenceSession])
 
   useEffect(() => {
     if (idleItems.length === 0) {
@@ -589,39 +642,72 @@ export default function ViewerPage({ workspace }) {
         window.clearInterval(speechMonitorIntervalRef.current)
         speechMonitorIntervalRef.current = null
       }
+      stopSpeechPresenceSession()
+      speechCuePlanRef.current = buildSpeechCuePlan()
       speechSynthesis.removeEventListener?.('voiceschanged', primeVoices)
       speechSynthesisRef.current?.cancel?.()
       stopRemoteTtsPlayback()
       stopOverlayAnimation({ immediate: false })
     }
-  }, [stopOverlayAnimation, stopRemoteTtsPlayback])
+  }, [stopOverlayAnimation, stopRemoteTtsPlayback, stopSpeechPresenceSession])
 
-  const playMovementCue = useCallback(async (movementTag) => {
-    const asset = findMovementAssetByTag([...actionItems, ...idleItems], movementTag)
-    if (!asset) return
+  const rememberSpeechMovement = useCallback((asset) => {
+    if (!asset?.id) {
+      return
+    }
+
+    const state = speechPresenceRef.current
+    const assetId = String(asset.id)
+
+    state.lastMovementAssetId = assetId
+    state.lastMovementAtMs = nowMs()
+    state.recentMovementIds = [
+      ...state.recentMovementIds.filter((entry) => entry !== assetId),
+      assetId,
+    ].slice(-SPEECH_RECENT_MOVEMENT_LIMIT)
+  }, [])
+
+  const playConversationalMovementAsset = useCallback(async (asset, reason = 'cue') => {
+    if (!asset) return null
 
     const file = await assetToFile(asset)
-    if (!file) return
+    if (!file) return null
 
     playAnimationFile(file, asset.label, {
-      cacheKey: asset.id,
-      kind: asset.kind || 'action',
+      cacheKey: `${asset.id}:${reason}`,
+      kind: 'action',
+      loop: false,
+      returnToDefault: true,
+      stripExpressionTracks: true,
     })
-  }, [actionItems, idleItems, playAnimationFile])
 
-  const playMovementCueByAssetId = useCallback(async (assetId, fallbackTag = '') => {
-    const availableItems = [...actionItems, ...idleItems]
-    const asset = findAssetById(availableItems, assetId) || findMovementAssetByTag(availableItems, fallbackTag)
-    if (!asset) return
+    return asset
+  }, [playAnimationFile])
 
-    const file = await assetToFile(asset)
-    if (!file) return
+  const resolveReplyMovementAsset = useCallback((assetId, fallbackTag = '', options = {}) => {
+    const emotion = options.emotion || activeEmotionRef.current || 'neutral'
+    const allowIdle = Boolean(options.allowIdle)
+    const availableItems = allowIdle ? [...actionItems, ...idleItems] : actionItems
+    const directAsset = findAssetById(availableItems, assetId)
 
-    playAnimationFile(file, asset.label, {
-      cacheKey: asset.id,
-      kind: asset.kind || 'action',
-    })
-  }, [actionItems, idleItems, playAnimationFile])
+    if (directAsset && isSpeechMovementAssetAllowed(directAsset, emotion, { allowIdle })) {
+      return directAsset
+    }
+
+    const taggedAsset = findMovementAssetByTag(availableItems, fallbackTag)
+    if (taggedAsset && isSpeechMovementAssetAllowed(taggedAsset, emotion, { allowIdle })) {
+      return taggedAsset
+    }
+
+    return null
+  }, [actionItems, idleItems])
+
+  const playMovementCueByAssetId = useCallback(async (assetId, fallbackTag = '', options = {}) => {
+    const asset = resolveReplyMovementAsset(assetId, fallbackTag, options)
+    if (!asset) return null
+
+    return playConversationalMovementAsset(asset, 'cue')
+  }, [playConversationalMovementAsset, resolveReplyMovementAsset])
 
   const resetSpeechRuntime = useCallback(() => {
     speechSessionIdRef.current += 1
@@ -630,6 +716,7 @@ export default function ViewerPage({ workspace }) {
     streamingSpeechCursorRef.current = 0
     streamingSpeechSamplesRef.current = []
     hasVisibleAssistantTextRef.current = false
+    speechCuePlanRef.current = buildSpeechCuePlan()
 
     if (speechStopTimeoutRef.current) {
       window.clearTimeout(speechStopTimeoutRef.current)
@@ -642,10 +729,11 @@ export default function ViewerPage({ workspace }) {
     }
 
     activeEmotionRef.current = 'neutral'
+    stopSpeechPresenceSession()
     speechSynthesisRef.current?.cancel?.()
     stopRemoteTtsPlayback()
     stopOverlayAnimation({ immediate: true })
-  }, [stopOverlayAnimation, stopRemoteTtsPlayback])
+  }, [stopOverlayAnimation, stopRemoteTtsPlayback, stopSpeechPresenceSession])
 
   const playEmotionCue = useCallback(async (emotion, options = {}) => {
     const asset = pickExpressionAsset(expressionItems, emotion, options)
@@ -687,6 +775,228 @@ export default function ViewerPage({ workspace }) {
       loop: Boolean(options.loop),
     })
   }, [expressionItems, playOverlayAnimationFile, stopOverlayAnimation])
+
+  const runSpeechBeat = useCallback(async (beat, sessionId) => {
+    if (!beat) {
+      return
+    }
+
+    const state = speechPresenceRef.current
+    if (!state.started || state.sessionId !== sessionId) {
+      return
+    }
+
+    const nextEmotion = beat.emotion || activeEmotionRef.current || 'neutral'
+    activeEmotionRef.current = nextEmotion
+    playEmotionCueByAssetId(beat.emotionAssetId, nextEmotion, {
+      preferSpeech: true,
+      loop: true,
+      stopOnMiss: true,
+    })
+
+    if (!beat.hasExplicitAnimation) {
+      return
+    }
+
+    const playedAsset = await playMovementCueByAssetId(beat.animationAssetId, beat.animationTag, {
+      emotion: nextEmotion,
+      allowIdle: false,
+    })
+    if (playedAsset) {
+      rememberSpeechMovement(playedAsset)
+    }
+  }, [playEmotionCueByAssetId, playMovementCueByAssetId, rememberSpeechMovement])
+
+  const scheduleDelayedSpeechCue = useCallback((cue, sessionIdOverride = null) => {
+    const delayMs = Number.isFinite(Number(cue?.delayMs)) ? Math.max(0, Number(cue.delayMs)) : null
+    if (delayMs === null || typeof window === 'undefined') {
+      return false
+    }
+
+    const state = speechPresenceRef.current
+    if (!state.started) {
+      pendingDelayedSpeechCuesRef.current = [...pendingDelayedSpeechCuesRef.current, cue]
+      return true
+    }
+
+    const sessionId = sessionIdOverride ?? state.sessionId
+    if (state.sessionId !== sessionId) {
+      return false
+    }
+
+    const elapsedMs = Math.max(0, nowMs() - state.startedAt)
+    const remainingMs = Math.max(0, delayMs - elapsedMs)
+    const timeoutId = window.setTimeout(() => {
+      void runSpeechBeat({
+        emotion: cue.emotion || activeEmotionRef.current || 'neutral',
+        emotionAssetId: cue.emotionAssetId || '',
+        animationTag: cue.animationTag || cue.value || '',
+        animationAssetId: cue.animationAssetId || cue.assetId || '',
+        animationDelayMs: delayMs,
+        hasExplicitAnimation: true,
+      }, sessionId)
+    }, remainingMs)
+
+    speechPresenceBeatTimeoutsRef.current.push(timeoutId)
+    return true
+  }, [runSpeechBeat])
+
+  const queueNextSpeechMovementInjection = useCallback(() => {
+    if (speechPresenceInjectionTimeoutRef.current) {
+      window.clearTimeout(speechPresenceInjectionTimeoutRef.current)
+      speechPresenceInjectionTimeoutRef.current = null
+    }
+
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const state = speechPresenceRef.current
+    if (!state.started) {
+      return
+    }
+
+    const elapsedMs = Math.max(0, nowMs() - state.startedAt)
+    const remainingMs = state.totalDurationMs - elapsedMs
+    if (remainingMs <= SPEECH_MOVEMENT_END_BUFFER_MS) {
+      return
+    }
+
+    const sampledDelay = sampleSpeechMotionDelay()
+    const delayMs = Math.max(
+      900,
+      Math.min(sampledDelay, remainingMs - SPEECH_MOVEMENT_END_BUFFER_MS),
+    )
+
+    speechPresenceInjectionTimeoutRef.current = window.setTimeout(async () => {
+      const currentState = speechPresenceRef.current
+      if (!currentState.started) {
+        return
+      }
+
+      const currentElapsedMs = Math.max(0, nowMs() - currentState.startedAt)
+      const currentRemainingMs = currentState.totalDurationMs - currentElapsedMs
+      if (currentRemainingMs <= SPEECH_MOVEMENT_END_BUFFER_MS) {
+        return
+      }
+
+      const nextExplicitBeat = currentState.beats.find(
+        (beat) => beat.hasExplicitAnimation && beat.offsetMs > currentElapsedMs,
+      )
+      const msUntilExplicitBeat = nextExplicitBeat
+        ? nextExplicitBeat.offsetMs - currentElapsedMs
+        : Number.POSITIVE_INFINITY
+      const msSinceLastMovement = currentState.lastMovementAtMs > 0
+        ? nowMs() - currentState.lastMovementAtMs
+        : Number.POSITIVE_INFINITY
+
+      if (
+        msUntilExplicitBeat <= SPEECH_MOVEMENT_EXPLICIT_GUARD_MS ||
+        msSinceLastMovement < SPEECH_MOVEMENT_MIN_GAP_MS
+      ) {
+        queueNextSpeechMovementInjection()
+        return
+      }
+
+      const asset = pickSpeechMovementAsset(
+        actionItems,
+        activeEmotionRef.current || 'neutral',
+        {
+          lastAssetId: currentState.lastMovementAssetId,
+          recentAssetIds: currentState.recentMovementIds,
+        },
+      )
+
+      if (asset) {
+        const playedAsset = await playConversationalMovementAsset(asset, 'speech')
+        if (playedAsset) {
+          rememberSpeechMovement(playedAsset)
+        }
+      }
+
+      queueNextSpeechMovementInjection()
+    }, delayMs)
+  }, [
+    actionItems,
+    idleItems,
+    playConversationalMovementAsset,
+    rememberSpeechMovement,
+  ])
+
+  const startSpeechPresenceSession = useCallback((sessionId, totalDurationMs, fallbackEmotion = 'neutral') => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const currentState = speechPresenceRef.current
+    if (currentState.started && currentState.sessionId === sessionId) {
+      return
+    }
+
+    const plan = speechCuePlanRef.current?.beats?.length
+      ? speechCuePlanRef.current
+      : buildSpeechCuePlan([], {
+        fallbackText: streamingSpeechBufferRef.current,
+        fallbackEmotion,
+      })
+    const beats = plan.beats.map((beat) => ({
+      ...beat,
+      offsetMs: beat.animationDelayMs !== null && beat.animationDelayMs !== undefined
+        ? Math.max(0, Math.min(Number(beat.animationDelayMs), Math.max(0, totalDurationMs - SPEECH_MOVEMENT_END_BUFFER_MS)))
+        : Math.round(Math.max(0, totalDurationMs) * beat.offsetRatio),
+    }))
+
+    clearSpeechPresenceTimers()
+    speechPresenceRef.current = {
+      sessionId,
+      started: true,
+      startedAt: nowMs(),
+      totalDurationMs,
+      beats,
+      recentMovementIds: [],
+      lastMovementAssetId: '',
+      lastMovementAtMs: 0,
+    }
+
+    const firstBeat = beats[0] || null
+    const initialEmotion = firstBeat?.emotion || fallbackEmotion || activeEmotionRef.current || 'neutral'
+    activeEmotionRef.current = initialEmotion
+    playEmotionCueByAssetId(firstBeat?.emotionAssetId || '', initialEmotion, {
+      preferSpeech: true,
+      loop: true,
+      stopOnMiss: true,
+    })
+
+    beats.forEach((beat) => {
+      const needsCuePlayback = beat.hasExplicitAnimation || beat.index > 0
+      if (!needsCuePlayback) {
+        return
+      }
+
+      if (beat.offsetMs <= 120) {
+        void runSpeechBeat(beat, sessionId)
+        return
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        void runSpeechBeat(beat, sessionId)
+      }, beat.offsetMs)
+
+      speechPresenceBeatTimeoutsRef.current.push(timeoutId)
+    })
+
+    if (totalDurationMs > SPEECH_MOVEMENT_END_BUFFER_MS + 800) {
+      queueNextSpeechMovementInjection()
+    }
+
+    if (pendingDelayedSpeechCuesRef.current.length > 0) {
+      const queuedCues = [...pendingDelayedSpeechCuesRef.current]
+      pendingDelayedSpeechCuesRef.current = []
+      queuedCues.forEach((cue) => {
+        scheduleDelayedSpeechCue(cue, sessionId)
+      })
+    }
+  }, [clearSpeechPresenceTimers, playEmotionCueByAssetId, queueNextSpeechMovementInjection, runSpeechBeat, scheduleDelayedSpeechCue])
 
   const pickThinkingMovementAsset = useCallback(() => {
     const next = pickThinkingInjectionAsset({
@@ -825,6 +1135,7 @@ export default function ViewerPage({ workspace }) {
         return
       }
 
+      stopSpeechPresenceSession()
       stopOverlayAnimation({ immediate: false })
     }
 
@@ -842,6 +1153,11 @@ export default function ViewerPage({ workspace }) {
             return
           }
 
+          startSpeechPresenceSession(
+            sessionId,
+            estimateSpeechDurationMs(speechCuePlanRef.current.fullText || cleanedText),
+            emotion || activeEmotionRef.current || 'neutral',
+          )
           playEmotionCue(emotion || activeEmotionRef.current || 'neutral', { preferSpeech: true, loop: true })
         },
         onEnd: stopRemoteOverlay,
@@ -853,7 +1169,7 @@ export default function ViewerPage({ workspace }) {
     }
 
     return true
-  }, [playEmotionCue, selectedAvatar, stopOverlayAnimation, stopRemoteTtsPlayback, workspace.token])
+  }, [playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopRemoteTtsPlayback, stopSpeechPresenceSession, workspace.token])
 
   const queueSpeechUtterance = useCallback((text, emotion, languageSamples = []) => {
     const speechSynthesis = speechSynthesisRef.current
@@ -900,6 +1216,7 @@ export default function ViewerPage({ workspace }) {
         speechMonitorIntervalRef.current = null
       }
 
+      stopSpeechPresenceSession()
       stopOverlayAnimation({ immediate: false })
     }
 
@@ -937,6 +1254,11 @@ export default function ViewerPage({ workspace }) {
       }
 
       markSpeechActivity()
+      startSpeechPresenceSession(
+        sessionId,
+        estimateSpeechDurationMs(speechCuePlanRef.current.fullText || cleanedText, utterance.rate),
+        emotion || activeEmotionRef.current || 'neutral',
+      )
       playEmotionCue(emotion || activeEmotionRef.current || 'neutral', { preferSpeech: true, loop: true })
       speechStopTimeoutRef.current = window.setTimeout(
         stopSpeechOverlayNow,
@@ -996,7 +1318,7 @@ export default function ViewerPage({ workspace }) {
     }
     speechSynthesis.speak(utterance)
     return true
-  }, [playEmotionCue, selectedAvatar, stopOverlayAnimation])
+  }, [playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopSpeechPresenceSession])
 
   const flushStreamingSpeechBuffer = useCallback((options = {}) => {
     const final = Boolean(options.final)
@@ -1160,6 +1482,7 @@ export default function ViewerPage({ workspace }) {
           const cueType = event?.cueType
           const value = event?.value
           const assetId = event?.assetId
+          const delayMs = Number.isFinite(Number(event?.delayMs)) ? Number(event.delayMs) : null
 
           if (!value) return
           if (!hasVisibleAssistantTextRef.current) return
@@ -1186,7 +1509,30 @@ export default function ViewerPage({ workspace }) {
               ...message,
               animationTags: Array.from(new Set([...(message.animationTags || []), value])),
             }))
-            playMovementCueByAssetId(assetId, value)
+            if (delayMs !== null) {
+              const delayedCue = {
+                id: `delayed-cue-${++delayedSpeechCueIdRef.current}`,
+                cueType,
+                value,
+                assetId,
+                animationTag: value,
+                animationAssetId: assetId,
+                emotion: activeEmotionRef.current || 'neutral',
+                delayMs,
+              }
+
+              scheduleDelayedSpeechCue(delayedCue)
+              return
+            }
+
+            void playMovementCueByAssetId(assetId, value, {
+              emotion: activeEmotionRef.current || 'neutral',
+              allowIdle: false,
+            }).then((playedAsset) => {
+              if (playedAsset && speechPresenceRef.current.started) {
+                rememberSpeechMovement(playedAsset)
+              }
+            })
           }
         },
         onMemory: (event) => {
@@ -1217,6 +1563,11 @@ export default function ViewerPage({ workspace }) {
         streamingSpeechBufferRef.current = completedText
       }
       const finalEmotion = response.assistantMessage?.emotionTags?.[0] || activeEmotionRef.current || 'neutral'
+      pendingDelayedSpeechCuesRef.current = []
+      speechCuePlanRef.current = buildSpeechCuePlan(response.assistantTimeline, {
+        fallbackText: completedText,
+        fallbackEmotion: finalEmotion,
+      })
       if (hasRemoteTts) {
         void playRemoteTts(completedText, finalEmotion, [outgoingMessage]).catch((nextError) => {
           setNotice(`${nextError.message || 'ElevenLabs playback failed.'} Falling back to browser speech.`)
@@ -1261,7 +1612,9 @@ export default function ViewerPage({ workspace }) {
     flushStreamingSpeechBuffer,
     hasRemoteTts,
     playRemoteTts,
+    rememberSpeechMovement,
     resetSpeechRuntime,
+    scheduleDelayedSpeechCue,
     selectedAvatar,
     startThinkingPresence,
     stopThinkingPresence,

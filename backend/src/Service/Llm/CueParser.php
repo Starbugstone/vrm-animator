@@ -30,7 +30,7 @@ class CueParser
         $animationLookup = $this->buildAnimationLookup($assets);
         $expressionAssets = array_values(array_filter($assets, static fn (CueAsset $asset): bool => $asset->isExpression()));
 
-        $parts = preg_split('/(\{(?:emotion|anim|memory):[^}]+\}|\[[^\]]*(?:emotion|anim|memory)\s*:[^\]]+\])/i', $rawContent, -1, PREG_SPLIT_DELIM_CAPTURE);
+        $parts = preg_split('/(\{(?:emotion|anim|memory):[^}]+\}|\[[^\]]*(?:emotion|anim|memory|delay)\s*:[^\]]+\])/i', $rawContent, -1, PREG_SPLIT_DELIM_CAPTURE);
         foreach ($parts ?: [$rawContent] as $part) {
             if (!is_string($part) || $part === '') {
                 continue;
@@ -219,12 +219,16 @@ class CueParser
     /**
      * @return array<string, mixed>
      */
-    private function buildCueTimelineEntry(string $type, string $value, ?CueAsset $asset = null): array
+    private function buildCueTimelineEntry(string $type, string $value, ?CueAsset $asset = null, array $extra = []): array
     {
         $entry = [
             'type' => $type,
             'value' => $value,
         ];
+
+        foreach ($extra as $key => $extraValue) {
+            $entry[$key] = $extraValue;
+        }
 
         if ($asset === null) {
             return $entry;
@@ -243,6 +247,28 @@ class CueParser
         $lower = strtolower(trim($value));
 
         return preg_replace('/[^a-z0-9]+/', '', $lower) ?? '';
+    }
+
+    private function normalizeDelayMs(string $value): ?int
+    {
+        $normalized = strtolower(trim($value));
+        if ($normalized === '') {
+            return null;
+        }
+
+        if (preg_match('/^(\d+(?:\.\d+)?)\s*ms$/', $normalized, $matches) === 1) {
+            $delayMs = (int) round((float) ($matches[1] ?? 0));
+
+            return max(0, min(12000, $delayMs));
+        }
+
+        if (preg_match('/^(\d+(?:\.\d+)?)\s*s?$/', $normalized, $matches) === 1) {
+            $delayMs = (int) round(((float) ($matches[1] ?? 0)) * 1000);
+
+            return max(0, min(12000, $delayMs));
+        }
+
+        return null;
     }
 
     /**
@@ -307,6 +333,8 @@ class CueParser
             : [$inner];
         $timeline = [];
         $matchedCue = false;
+        $bundleDelayMs = null;
+        $rawSegments = [];
 
         foreach ($segments as $segment) {
             $segment = trim((string) $segment);
@@ -314,7 +342,7 @@ class CueParser
                 continue;
             }
 
-            if (preg_match('/^(emotion|anim|memory)\s*:\s*(.+)$/i', $segment, $matches) !== 1) {
+            if (preg_match('/^(emotion|anim|memory|delay)\s*:\s*(.+)$/i', $segment, $matches) !== 1) {
                 if ($isBracketToken) {
                     return null;
                 }
@@ -325,6 +353,32 @@ class CueParser
             $matchedCue = true;
             $type = strtolower((string) ($matches[1] ?? ''));
             $value = trim((string) ($matches[2] ?? ''));
+
+            $rawSegments[] = [
+                'type' => $type,
+                'value' => $value,
+            ];
+        }
+
+        if (!$matchedCue) {
+            return null;
+        }
+
+        foreach ($rawSegments as $segment) {
+            if (($segment['type'] ?? '') !== 'delay') {
+                continue;
+            }
+
+            $bundleDelayMs = $this->normalizeDelayMs((string) ($segment['value'] ?? ''));
+        }
+
+        foreach ($rawSegments as $segment) {
+            $type = (string) ($segment['type'] ?? '');
+            $value = (string) ($segment['value'] ?? '');
+
+            if ($type === 'delay') {
+                continue;
+            }
 
             if ($type === 'emotion') {
                 $normalizedEmotion = $this->emotionVocabulary->normalize($value);
@@ -343,7 +397,12 @@ class CueParser
                 $normalizedAnimation = $this->normalizeAnimationToken($value);
                 if ($normalizedAnimation !== '' && array_key_exists($normalizedAnimation, $animationLookup)) {
                     $resolved = $animationLookup[$normalizedAnimation];
-                    $timeline[] = $this->buildCueTimelineEntry('animation', $resolved->label, $resolved);
+                    $extra = [];
+                    if ($bundleDelayMs !== null) {
+                        $extra['delayMs'] = $bundleDelayMs;
+                    }
+
+                    $timeline[] = $this->buildCueTimelineEntry('animation', $resolved->label, $resolved, $extra);
                 }
 
                 continue;
@@ -359,7 +418,7 @@ class CueParser
             }
         }
 
-        return $matchedCue ? $timeline : null;
+        return $timeline;
     }
 
     private function findNextCueStart(string $rawContent, int $offset): int|false
