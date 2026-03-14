@@ -252,6 +252,7 @@ class ConversationController extends AbstractController
                             $preparedTurn->model,
                             $preparedTurn->providerMessages,
                             $preparedTurn->modelPolicy->maxOutputTokens,
+                            $preparedTurn->credential->getProviderOptions(),
                         ),
                         $avatarChatService->decryptCredentialSecret($preparedTurn->credential),
                         function ($delta) use ($avatarChatService, $preparedTurn, &$rawContent, &$streamCursor, &$firstDeltaEmittedAt, $streamStartedAt): void {
@@ -284,6 +285,7 @@ class ConversationController extends AbstractController
                                     $preparedTurn->model,
                                     $preparedTurn->providerMessages,
                                     $preparedTurn->modelPolicy->maxOutputTokens,
+                                    $preparedTurn->credential->getProviderOptions(),
                                 ),
                                 $avatarChatService->decryptCredentialSecret($preparedTurn->credential),
                             );

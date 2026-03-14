@@ -22,16 +22,16 @@ return [
     [
         'id' => 'glm-4.7-flash',
         'name' => 'GLM-4.7-Flash',
-        'description' => 'Free faster GLM-4.7 variant for lightweight chat and prototyping.',
+        'description' => 'Fast GLM-4.7 variant for lightweight chat when enabled by your account billing or plan.',
         'group' => 'fast',
         'releasedAt' => '2025-12-22',
         'contextLength' => 131072,
-        'isRecommended' => true,
+        'isRecommended' => false,
     ],
     [
         'id' => 'glm-4.7-flashx',
         'name' => 'GLM-4.7-FlashX',
-        'description' => 'Low-cost fast variant tuned for speed-sensitive workloads.',
+        'description' => 'Speed-focused GLM-4.7 variant whose availability depends on your account billing setup.',
         'group' => 'fast',
         'releasedAt' => '2025-12-22',
         'contextLength' => 131072,
@@ -85,7 +85,7 @@ return [
     [
         'id' => 'glm-4.5-flash',
         'name' => 'GLM-4.5-Flash',
-        'description' => 'Free GLM-4.5 variant useful for lightweight chat and testing.',
+        'description' => 'Fast GLM-4.5 variant useful for lightweight chat when enabled by your account billing or plan.',
         'group' => 'fast',
         'releasedAt' => '2025-07-28',
         'contextLength' => 128000,

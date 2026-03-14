@@ -37,9 +37,12 @@ class LlmCredentialTest extends WebTestCase
         $data = json_decode($client->getResponse()->getContent(), true);
 
         $providerIds = array_column($data['providers'] ?? [], 'id');
+        $this->assertContains('deepseek', $providerIds);
         $this->assertContains('openrouter', $providerIds);
+        $this->assertContains('openai', $providerIds);
         $this->assertContains('minimax', $providerIds);
         $this->assertContains('glm', $providerIds);
+        $this->assertContains('gemini', $providerIds);
     }
 
     public function testOpenRouterModelsCanBeListedAndFiltered(): void
@@ -82,10 +85,20 @@ class LlmCredentialTest extends WebTestCase
         $this->assertSame('openai/gpt-4.1-mini', $paidModels['models'][0]['id']);
     }
 
-    public function testStaticProviderModelsCanBeListedForGlmAndMiniMax(): void
+    public function testStaticProviderModelsCanBeListedForSupportedProviders(): void
     {
         $client = static::createClient();
         $token = $this->registerUser($client, 'llm-static-models@example.com');
+
+        $client->request('GET', '/api/llm/providers/deepseek/models', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $deepSeekModels = json_decode($client->getResponse()->getContent(), true);
+        $this->assertNotEmpty($deepSeekModels['models']);
+        $this->assertSame('deepseek-chat', $deepSeekModels['models'][0]['id']);
 
         $client->request('GET', '/api/llm/providers/glm/models', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,
@@ -97,6 +110,16 @@ class LlmCredentialTest extends WebTestCase
         $this->assertNotEmpty($glmModels['models']);
         $this->assertSame('glm-5', $glmModels['models'][0]['id']);
 
+        $client->request('GET', '/api/llm/providers/gemini/models?search=flash', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $geminiModels = json_decode($client->getResponse()->getContent(), true);
+        $this->assertNotEmpty($geminiModels['models']);
+        $this->assertSame('gemini-2.5-flash', $geminiModels['models'][0]['id']);
+
         $client->request('GET', '/api/llm/providers/minimax/models?search=M2.5', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,
             'HTTP_ACCEPT' => 'application/json',
@@ -106,6 +129,16 @@ class LlmCredentialTest extends WebTestCase
         $minimaxModels = json_decode($client->getResponse()->getContent(), true);
         $this->assertNotEmpty($minimaxModels['models']);
         $this->assertSame('MiniMax-M2.5', $minimaxModels['models'][0]['id']);
+
+        $client->request('GET', '/api/llm/providers/openai/models?search=gpt-5.2', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $openAiModels = json_decode($client->getResponse()->getContent(), true);
+        $this->assertNotEmpty($openAiModels['models']);
+        $this->assertSame('gpt-5.2', $openAiModels['models'][0]['id']);
     }
 
     public function testCredentialCanBeCreatedListedAndUpdatedWithoutExposingRawSecret(): void
@@ -130,8 +163,11 @@ class LlmCredentialTest extends WebTestCase
         $this->assertSame('Primary OpenRouter', $created['name']);
         $this->assertSame('openrouter', $created['provider']);
         $this->assertSame('openai/gpt-4.1-mini', $created['defaultModel']);
+        $this->assertSame([], $created['providerOptions']);
         $this->assertTrue($created['isActive']);
         $this->assertTrue($created['hasSecret']);
+        $this->assertTrue($created['secretReadable']);
+        $this->assertNull($created['secretWarning']);
         $this->assertArrayNotHasKey('secret', $created);
         $this->assertStringEndsWith('oken', $created['maskedSecret']);
 
@@ -150,6 +186,7 @@ class LlmCredentialTest extends WebTestCase
         $listed = json_decode($client->getResponse()->getContent(), true);
         $this->assertCount(1, $listed['credentials']);
         $this->assertSame($created['maskedSecret'], $listed['credentials'][0]['maskedSecret']);
+        $this->assertTrue($listed['credentials'][0]['secretReadable']);
 
         $client->request('PATCH', '/api/llm/credentials/'.$created['id'], [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,
@@ -167,7 +204,47 @@ class LlmCredentialTest extends WebTestCase
         $this->assertSame('Renamed OpenRouter', $updated['name']);
         $this->assertSame('anthropic/claude-3.7-sonnet', $updated['defaultModel']);
         $this->assertFalse($updated['isActive']);
+        $this->assertTrue($updated['secretReadable']);
         $this->assertStringEndsWith('oken', $updated['maskedSecret']);
+    }
+
+    public function testGlmCredentialCanStoreEndpointModePerConnection(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'llm-glm-options@example.com');
+
+        $client->request('POST', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'GLM Coding',
+            'provider' => 'glm',
+            'secret' => 'glm-secret-token',
+            'defaultModel' => 'glm-4.7',
+            'providerOptions' => [
+                'endpointMode' => 'coding',
+            ],
+            'isActive' => true,
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $created = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame(['endpointMode' => 'coding'], $created['providerOptions']);
+
+        $client->request('PATCH', '/api/llm/credentials/'.$created['id'], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'providerOptions' => [
+                'endpointMode' => 'standard',
+            ],
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+        $updated = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame(['endpointMode' => 'standard'], $updated['providerOptions']);
     }
 
     public function testCredentialEndpointsArePrivateToOwner(): void
@@ -282,6 +359,7 @@ class LlmCredentialTest extends WebTestCase
         $this->assertSame('MiniMax Secondary', $updated['name']);
         $this->assertSame('MiniMax-M2.1', $updated['defaultModel']);
         $this->assertTrue($updated['hasSecret']);
+        $this->assertTrue($updated['secretReadable']);
     }
 
     public function testChangingProviderRequiresNewSecret(): void

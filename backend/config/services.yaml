@@ -10,6 +10,7 @@ services:
             bool $llmTestMode: '%env(bool:LLM_TEST_MODE)%'
             int $refreshTokenTtl: '%env(int:REFRESH_TOKEN_TTL)%'
             string $sharedAssetRoot: '%env(SHARED_ASSET_ROOT)%'
+            string $glmBaseUrl: '%env(GLM_BASE_URL)%'
 
     App\Security\JwtAuthenticationSuccessHandler:
         arguments:
@@ -37,6 +38,15 @@ services:
     App\Service\Llm\OpenRouterProvider:
         tags: ['app.llm_provider']
 
+    App\Service\Llm\OpenAiProvider:
+        tags: ['app.llm_provider']
+
+    App\Service\Llm\GeminiProvider:
+        tags: ['app.llm_provider']
+
+    App\Service\Llm\DeepSeekProvider:
+        tags: ['app.llm_provider']
+
     App\Service\Llm\MiniMaxProvider:
         tags: ['app.llm_provider']
 
@@ -46,4 +56,3 @@ services:
     App\Service\Llm\LlmProviderResolver:
         arguments:
             $providers: !tagged_iterator app.llm_provider
-

@@ -110,6 +110,7 @@ class LlmCredentialController extends AbstractController
         $name = trim((string) ($payload['name'] ?? ''));
         $secret = trim((string) ($payload['secret'] ?? ''));
         $defaultModel = $this->normalizeNullableString($payload['defaultModel'] ?? null);
+        $providerOptions = $this->normalizeProviderOptions($provider, $payload['providerOptions'] ?? null);
         $isActive = array_key_exists('isActive', $payload) ? filter_var($payload['isActive'], FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) : true;
 
         if ($provider === '' || $name === '' || $secret === '' || !is_bool($isActive)) {
@@ -131,6 +132,7 @@ class LlmCredentialController extends AbstractController
             ->setProvider($provider)
             ->setEncryptedSecret($credentialCrypto->encrypt($secret))
             ->setDefaultModel($defaultModel)
+            ->setProviderOptions($providerOptions)
             ->setIsActive($isActive);
 
         $entityManager->persist($credential);
@@ -208,6 +210,12 @@ class LlmCredentialController extends AbstractController
             $credential->setProvider($nextProvider);
         }
 
+        if (array_key_exists('provider', $payload) || array_key_exists('providerOptions', $payload)) {
+            $credential->setProviderOptions(
+                $this->normalizeProviderOptions($nextProvider, $payload['providerOptions'] ?? $credential->getProviderOptions()),
+            );
+        }
+
         if (array_key_exists('defaultModel', $payload)) {
             $credential->setDefaultModel($this->normalizeNullableString($payload['defaultModel']));
         }
@@ -250,7 +258,10 @@ class LlmCredentialController extends AbstractController
      *   provider:string,
      *   maskedSecret:string,
      *   hasSecret:bool,
+     *   secretReadable:bool,
+     *   secretWarning:?string,
      *   defaultModel:?string,
+     *   providerOptions:array<string, mixed>,
      *   isActive:bool,
      *   createdAt:string,
      *   updatedAt:string
@@ -258,13 +269,23 @@ class LlmCredentialController extends AbstractController
      */
     private function serializeCredential(LlmCredential $credential, LlmCredentialCrypto $credentialCrypto): array
     {
+        $hasSecret = $credential->getEncryptedSecret() !== '';
+        $secretReadable = $hasSecret ? $credentialCrypto->canDecrypt($credential->getEncryptedSecret()) : false;
+
         return [
             'id' => $credential->getId(),
             'name' => $credential->getName(),
             'provider' => $credential->getProvider(),
-            'maskedSecret' => $credentialCrypto->mask($credential->getEncryptedSecret()),
-            'hasSecret' => $credential->getEncryptedSecret() !== '',
+            'maskedSecret' => $hasSecret
+                ? $credentialCrypto->tryMask($credential->getEncryptedSecret())
+                : '',
+            'hasSecret' => $hasSecret,
+            'secretReadable' => $secretReadable,
+            'secretWarning' => $hasSecret && !$secretReadable
+                ? 'This saved API key was encrypted with a different backend encryption key and must be entered again before it can be used.'
+                : null,
             'defaultModel' => $credential->getDefaultModel(),
+            'providerOptions' => $credential->getProviderOptions(),
             'isActive' => $credential->isActive(),
             'createdAt' => $credential->getCreatedAt()?->format(DATE_ATOM) ?? '',
             'updatedAt' => $credential->getUpdatedAt()?->format(DATE_ATOM) ?? '',
@@ -288,5 +309,25 @@ class LlmCredentialController extends AbstractController
         $trimmed = trim($value);
 
         return $trimmed !== '' ? $trimmed : null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeProviderOptions(string $provider, mixed $value): array
+    {
+        if ($provider !== 'glm') {
+            return [];
+        }
+
+        $options = is_array($value) ? $value : [];
+        $endpointMode = strtolower(trim((string) ($options['endpointMode'] ?? 'standard')));
+        if (!in_array($endpointMode, ['standard', 'coding'], true)) {
+            $endpointMode = 'standard';
+        }
+
+        return [
+            'endpointMode' => $endpointMode,
+        ];
     }
 }

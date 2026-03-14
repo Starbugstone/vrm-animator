@@ -2,7 +2,7 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
-Latest implementation note: the viewer now adds a metadata-driven “thinking” presence while the backend is preparing or contacting the selected LLM, so avatars visibly react during reply latency instead of only showing a text spinner. This uses the existing expression/action metadata first and keeps the dedicated thinking-asset pass as a follow-up polish step.
+Latest implementation note: the viewer thinking state now starts with a silent pause instead of reusing mouth/speech overlays, so avatars no longer appear to talk while the backend is still thinking. GLM can now be configured per saved AI connection for either the standard API endpoint or the Coding subscription endpoint instead of forcing one global choice, shared body-motion assets are now consolidated under `default_vrma/`, with idle clips moved into `default_vrma/idle/` and a new `default_vrma/thinking/` folder ready for curated waiting animations, the AI Connection system now also supports OpenAI, Gemini, and DeepSeek alongside OpenRouter, MiniMax, and GLM, and saved AI connections now stay visible with a repair warning if the local credential encryption key changes and older secrets can no longer be decrypted.
 
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 
@@ -61,7 +61,8 @@ To make the viewer usable without user uploads, shared example assets were added
 
 - default VRM avatars in `default_vrm/`
 - default body animations in `default_vrma/`
-- idle motion clips in `idle/`
+- idle motion clips in `default_vrma/idle/`
+- dedicated thinking motion drop zone in `default_vrma/thinking/`
 - expression and mouth overlays in `expressions_vrma/`
 
 This created the first practical out-of-the-box experience: pick an avatar, pick a motion, and see it animate.
@@ -134,7 +135,7 @@ The backend already contains the first real LLM integration layer rather than ju
 What exists now:
 
 - provider catalog endpoints
-- OpenRouter, MiniMax, and GLM provider support
+- OpenRouter, OpenAI, Gemini, DeepSeek, MiniMax, and GLM provider support
 - encrypted per-user credential storage
 - default model selection
 - avatar chat endpoint

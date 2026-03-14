@@ -69,8 +69,9 @@ class AvatarChatService
                         $preparedTurn->model,
                         $preparedTurn->providerMessages,
                         $preparedTurn->modelPolicy->maxOutputTokens,
+                        $preparedTurn->credential->getProviderOptions(),
                     ),
-                    $this->credentialCrypto->decrypt($preparedTurn->credential->getEncryptedSecret()),
+                    $this->decryptCredentialSecret($preparedTurn->credential),
                 );
         } catch (AvatarChatException $exception) {
             throw $exception;
@@ -200,7 +201,18 @@ class AvatarChatService
 
     public function decryptCredentialSecret(LlmCredential $credential): string
     {
-        return $this->credentialCrypto->decrypt($credential->getEncryptedSecret());
+        try {
+            return $this->credentialCrypto->decrypt($credential->getEncryptedSecret());
+        } catch (\RuntimeException $exception) {
+            throw new AvatarChatException(
+                sprintf(
+                    'The saved %s API key can no longer be decrypted by this backend. Restore the original LLM_CREDENTIAL_ENCRYPTION_KEY in backend/.env.local or paste the API key again and save this AI connection.',
+                    $this->providerCatalog->getLabel($credential->getProvider()),
+                ),
+                Response::HTTP_BAD_REQUEST,
+                $exception,
+            );
+        }
     }
 
     /**

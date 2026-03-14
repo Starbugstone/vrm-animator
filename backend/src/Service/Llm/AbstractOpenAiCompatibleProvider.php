@@ -6,6 +6,11 @@ abstract class AbstractOpenAiCompatibleProvider implements LlmProviderInterface
 {
     abstract protected function getBaseUrl(): string;
 
+    protected function resolveBaseUrl(LlmCompletionRequest $request): string
+    {
+        return rtrim($this->getBaseUrl(), '/');
+    }
+
     /**
      * @return array<string, string>
      */
@@ -49,7 +54,7 @@ abstract class AbstractOpenAiCompatibleProvider implements LlmProviderInterface
             throw new \RuntimeException('The cURL extension is required for upstream streaming.');
         }
 
-        $url = rtrim($this->getBaseUrl(), '/').'/chat/completions';
+        $url = $this->resolveBaseUrl($request).'/chat/completions';
         $payload = [
             'model' => $request->model,
             'messages' => $request->messages,
@@ -170,7 +175,7 @@ abstract class AbstractOpenAiCompatibleProvider implements LlmProviderInterface
      */
     private function requestJson(LlmCompletionRequest $request, string $secret, bool $stream): array
     {
-        $url = rtrim($this->getBaseUrl(), '/').'/chat/completions';
+        $url = $this->resolveBaseUrl($request).'/chat/completions';
         $headers = $this->buildHeaders($secret, false);
         $payload = [
             'model' => $request->model,

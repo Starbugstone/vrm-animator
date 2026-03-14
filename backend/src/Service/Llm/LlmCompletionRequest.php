@@ -12,6 +12,7 @@ final readonly class LlmCompletionRequest
         public string $model,
         public array $messages,
         public int $maxOutputTokens = 1200,
+        public array $providerOptions = [],
     ) {
     }
 }

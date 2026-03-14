@@ -8,6 +8,15 @@ class LlmProviderCatalog
      * @var array<string, array{id:string,label:string,requiresApiKey:bool,recommendedModels:list<string>}>
      */
     private const PROVIDERS = [
+        'deepseek' => [
+            'id' => 'deepseek',
+            'label' => 'DeepSeek',
+            'requiresApiKey' => true,
+            'recommendedModels' => [
+                'deepseek-chat',
+                'deepseek-reasoner',
+            ],
+        ],
         'glm' => [
             'id' => 'glm',
             'label' => 'GLM',
@@ -18,6 +27,16 @@ class LlmProviderCatalog
                 'glm-4.5-air',
             ],
         ],
+        'gemini' => [
+            'id' => 'gemini',
+            'label' => 'Gemini',
+            'requiresApiKey' => true,
+            'recommendedModels' => [
+                'gemini-2.5-pro',
+                'gemini-2.5-flash',
+                'gemini-2.5-flash-lite',
+            ],
+        ],
         'minimax' => [
             'id' => 'minimax',
             'label' => 'MiniMax',
@@ -26,6 +45,16 @@ class LlmProviderCatalog
                 'MiniMax-M2.5',
                 'MiniMax-M2.5-highspeed',
                 'MiniMax-M2.1',
+            ],
+        ],
+        'openai' => [
+            'id' => 'openai',
+            'label' => 'OpenAI',
+            'requiresApiKey' => true,
+            'recommendedModels' => [
+                'gpt-5.2',
+                'gpt-5-mini',
+                'gpt-5-nano',
             ],
         ],
         'openrouter' => [

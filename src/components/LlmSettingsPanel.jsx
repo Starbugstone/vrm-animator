@@ -6,7 +6,30 @@ const EMPTY_DRAFT = {
   provider: 'openrouter',
   secret: '',
   defaultModel: '',
+  providerOptions: {},
   isActive: true,
+}
+
+function getDefaultProviderOptions(provider) {
+  if (provider === 'glm') {
+    return {
+      endpointMode: 'standard',
+    }
+  }
+
+  return {}
+}
+
+function formatProviderSummary(credential, providerLabelMap) {
+  const providerLabel = providerLabelMap.get(credential.provider) || credential.provider
+
+  if (credential.provider === 'glm') {
+    return credential.providerOptions?.endpointMode === 'coding'
+      ? 'GLM | Coding subscription'
+      : 'GLM | Standard API'
+  }
+
+  return providerLabel
 }
 
 function formatPricing(pricing) {
@@ -22,8 +45,25 @@ function mapCredentialToDraft(credential) {
     provider: credential.provider,
     secret: '',
     defaultModel: credential.defaultModel || '',
+    providerOptions: credential.providerOptions || getDefaultProviderOptions(credential.provider),
     isActive: Boolean(credential.isActive),
   }
+}
+
+function getSecretInputPlaceholder(draft, selectedCredential, providerChanged) {
+  if (!draft.id) {
+    return 'Paste the API key from your provider account'
+  }
+
+  if (providerChanged) {
+    return 'Enter a new API key because the provider changed'
+  }
+
+  if (selectedCredential && selectedCredential.secretReadable === false) {
+    return 'Enter the API key again to repair this saved connection'
+  }
+
+  return 'Leave blank to keep the current key'
 }
 
 export default function LlmSettingsPanel({
@@ -51,8 +91,12 @@ export default function LlmSettingsPanel({
     () => models?.[draft.provider] || [],
     [draft.provider, models],
   )
-  const providerOptions = useMemo(
+  const providerChoices = useMemo(
     () => providers.map((provider) => ({ value: provider.id, label: provider.label })),
+    [providers],
+  )
+  const providerLabelMap = useMemo(
+    () => new Map(providers.map((provider) => [provider.id, provider.label])),
     [providers],
   )
 
@@ -75,6 +119,7 @@ export default function LlmSettingsPanel({
     setDraft((current) => ({
       ...EMPTY_DRAFT,
       provider: providers[0]?.id || 'openrouter',
+      providerOptions: getDefaultProviderOptions(providers[0]?.id || 'openrouter'),
       name: current.id === null && current.name ? current.name : '',
     }))
   }, [providers, selectedCredential])
@@ -117,6 +162,7 @@ export default function LlmSettingsPanel({
               setDraft({
                 ...EMPTY_DRAFT,
                 provider: providers[0]?.id || 'openrouter',
+                providerOptions: getDefaultProviderOptions(providers[0]?.id || 'openrouter'),
               })
             }}
             className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25"
@@ -147,7 +193,7 @@ export default function LlmSettingsPanel({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="font-medium">{credential.name}</div>
-                    <div className="mt-1 text-xs text-white/45">{credential.provider}</div>
+                    <div className="mt-1 text-xs text-white/45">{formatProviderSummary(credential, providerLabelMap)}</div>
                   </div>
                   <div className={`rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] ${credential.isActive ? 'bg-emerald-300/12 text-emerald-100' : 'bg-white/8 text-white/55'}`}>
                     {credential.isActive ? 'Active' : 'Inactive'}
@@ -186,12 +232,15 @@ export default function LlmSettingsPanel({
                     ...current,
                     provider: nextProvider,
                     defaultModel: current.provider === nextProvider ? current.defaultModel : '',
+                    providerOptions: current.provider === nextProvider
+                      ? current.providerOptions
+                      : getDefaultProviderOptions(nextProvider),
                     secret: current.provider === nextProvider ? current.secret : '',
                   }))
                 }}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
               >
-                {providerOptions.map((provider) => (
+                {providerChoices.map((provider) => (
                   <option key={provider.value} value={provider.value}>
                     {provider.label}
                   </option>
@@ -211,6 +260,26 @@ export default function LlmSettingsPanel({
               />
             </label>
 
+            {draft.provider === 'glm' ? (
+              <label className="space-y-2">
+                <div className="text-xs uppercase tracking-[0.24em] text-white/45">GLM access mode</div>
+                <select
+                  value={draft.providerOptions?.endpointMode || 'standard'}
+                  onChange={(event) => setDraft((current) => ({
+                    ...current,
+                    providerOptions: {
+                      ...current.providerOptions,
+                      endpointMode: event.target.value,
+                    },
+                  }))}
+                  className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
+                >
+                  <option value="standard">Standard API</option>
+                  <option value="coding">Coding subscription</option>
+                </select>
+              </label>
+            ) : <div />}
+
             <label className="space-y-2">
               <div className="text-xs uppercase tracking-[0.24em] text-white/45">
                 {draft.id ? (providerChanged ? 'New provider API key' : 'Replace API key') : 'Provider API key'}
@@ -218,13 +287,7 @@ export default function LlmSettingsPanel({
               <input
                 value={draft.secret}
                 onChange={(event) => setDraft((current) => ({ ...current, secret: event.target.value }))}
-                placeholder={
-                  draft.id
-                    ? providerChanged
-                      ? 'Enter a new API key because the provider changed'
-                      : 'Leave blank to keep the current key'
-                    : 'Paste the API key from your provider account'
-                }
+                placeholder={getSecretInputPlaceholder(draft, selectedCredential, providerChanged)}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
               />
             </label>
@@ -241,23 +304,35 @@ export default function LlmSettingsPanel({
           </label>
 
           {selectedCredential ? (
-            <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-100">
-              {providerChanged
-                ? 'Provider changed. Enter a new API key before saving this connection.'
-                : `Saved key: ${selectedCredential.maskedSecret} | updated ${new Date(selectedCredential.updatedAt).toLocaleString()}`}
-            </div>
+            selectedCredential.secretReadable === false ? (
+              <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
+                {selectedCredential.secretWarning}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-100">
+                {providerChanged
+                  ? 'Provider changed. Enter a new API key before saving this connection.'
+                  : `Saved key: ${selectedCredential.maskedSecret} | ${formatProviderSummary(selectedCredential, providerLabelMap)} | updated ${new Date(selectedCredential.updatedAt).toLocaleString()}`}
+              </div>
+            )
           ) : (
             <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/60">
               This connection will be saved to your account as its own reusable entry.
             </div>
           )}
 
+          {draft.provider === 'glm' ? (
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/60">
+              Choose <span className="font-medium text-white/80">Standard API</span> for regular BigModel API keys, or <span className="font-medium text-white/80">Coding subscription</span> if this connection is meant to use BigModel&apos;s coding endpoint.
+            </div>
+          ) : null}
+
           <div className="space-y-3 rounded-2xl border border-white/10 bg-black/20 p-3">
             <div className="flex flex-wrap gap-2">
               <input
                 value={modelSearch}
                 onChange={(event) => setModelSearch(event.target.value)}
-                placeholder={`Search ${providerOptions.find((provider) => provider.value === draft.provider)?.label || 'provider'} models`}
+                placeholder={`Search ${providerChoices.find((provider) => provider.value === draft.provider)?.label || 'provider'} models`}
                 className="min-w-[180px] flex-1 rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
               />
               {draft.provider === 'openrouter' ? (
@@ -322,6 +397,7 @@ export default function LlmSettingsPanel({
                   name: draft.name,
                   provider: draft.provider,
                   defaultModel: draft.defaultModel,
+                  providerOptions: draft.providerOptions,
                   isActive: draft.isActive,
                 }
 

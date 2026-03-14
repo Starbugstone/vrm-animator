@@ -32,6 +32,9 @@ class LlmCredential
     #[ORM\Column(length: 255, nullable: true)]
     private ?string $defaultModel = null;
 
+    #[ORM\Column(type: Types::JSON)]
+    private array $providerOptions = [];
+
     #[ORM\Column(type: Types::BOOLEAN)]
     private bool $isActive = true;
 
@@ -104,6 +107,17 @@ class LlmCredential
     public function setDefaultModel(?string $defaultModel): static
     {
         $this->defaultModel = $defaultModel;
+        return $this;
+    }
+
+    public function getProviderOptions(): array
+    {
+        return $this->providerOptions;
+    }
+
+    public function setProviderOptions(array $providerOptions): static
+    {
+        $this->providerOptions = $providerOptions;
         return $this;
     }
 
