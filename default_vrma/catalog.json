@@ -17,6 +17,13 @@
       "emotionTags": ["playful", "cheeky", "happy"]
     },
     {
+      "file": "Blow-Kiss.vrma",
+      "label": "Blow Kiss",
+      "description": "Flirty kiss-blowing gesture with a wink, hand-to-mouth beat, and warm release.",
+      "keywords": ["gesture", "blow-kiss", "flirty", "affectionate", "playful"],
+      "emotionTags": ["playful", "flirty", "warm", "happy"]
+    },
+    {
       "file": "Holding Head.vrma",
       "label": "Holding Head",
       "description": "Head-holding gesture for overwhelmed, reflective, or self-conscious moments.",

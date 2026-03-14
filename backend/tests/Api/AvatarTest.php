@@ -69,6 +69,7 @@ class AvatarTest extends WebTestCase
         ], json_encode([
             'name' => 'Speech Avatar',
             'filename' => 'speech-avatar.vrm',
+            'presentationGender' => 'female',
             'speechVoiceGender' => 'female',
             'speechLanguage' => 'en-US',
         ]));
@@ -76,6 +77,7 @@ class AvatarTest extends WebTestCase
         $this->assertResponseStatusCodeSame(201);
 
         $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('female', $data['presentationGender']);
         $this->assertSame('female', $data['speechVoiceGender']);
         $this->assertSame('en-US', $data['speechLanguage']);
 
@@ -84,6 +86,7 @@ class AvatarTest extends WebTestCase
             'CONTENT_TYPE' => 'application/merge-patch+json',
             'HTTP_ACCEPT' => 'application/json',
         ], json_encode([
+            'presentationGender' => 'male',
             'speechVoiceGender' => 'male',
             'speechLanguage' => 'fr-FR',
         ]));
@@ -91,6 +94,7 @@ class AvatarTest extends WebTestCase
         $this->assertResponseStatusCodeSame(200);
 
         $updated = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('male', $updated['presentationGender']);
         $this->assertSame('male', $updated['speechVoiceGender']);
         $this->assertSame('fr-FR', $updated['speechLanguage']);
     }

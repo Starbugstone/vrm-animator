@@ -56,3 +56,6 @@ services:
     App\Service\Llm\LlmProviderResolver:
         arguments:
             $providers: !tagged_iterator app.llm_provider
+
+    App\Service\Tts\ElevenLabsClientInterface:
+        alias: App\Service\Tts\ElevenLabsClient

@@ -52,6 +52,7 @@ class AvatarAssetController extends AbstractController
             ->setName($name !== '' ? $name : 'Uploaded Avatar')
             ->setBackstory($this->normalizeNullableString($request->request->get('backstory')))
             ->setPersonality($this->normalizeNullableString($request->request->get('personality')))
+            ->setPresentationGender($this->normalizeGender($request->request->get('presentationGender')))
             ->setFilename($storedAsset->originalFilename)
             ->setStoredFilename($storedAsset->storedFilename)
             ->setMimeType($storedAsset->mimeType)
@@ -105,5 +106,16 @@ class AvatarAssetController extends AbstractController
 
         $trimmed = trim($value);
         return $trimmed !== '' ? $trimmed : null;
+    }
+
+    private function normalizeGender(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+
+        $trimmed = strtolower(trim($value));
+
+        return in_array($trimmed, ['female', 'male'], true) ? $trimmed : null;
     }
 }

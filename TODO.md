@@ -76,7 +76,10 @@ This baseline has been verified against the current repository. The next phase s
 ### 5. Voice and hologram path
 
 - keep the current browser-speech fallback usable through avatar-level speech language and voice preferences
-- add TTS after the text chat loop feels solid
+- harden the new ElevenLabs BYOK streaming TTS path now that avatar-level voice routing exists
+- keep the browser-speech fallback reliable whenever an avatar has no ElevenLabs voice selected or remote playback fails
+- improve ElevenLabs voice tagging, filtering, and selection UX so avatar sex defaults and explicit overrides stay understandable
+- decide whether more ElevenLabs controls should live at the credential level, avatar level, or stay hidden for first-time users
 - add STT after TTS
 - only then move toward dedicated hologram hardware output
 
@@ -107,6 +110,9 @@ Before closing a feature set, the minimum checks should be:
   - the stream transport now uses stall detection instead of a strict 60-second total timeout, can fall back to non-streamed completion when no usable streamed text arrives, and preserves partial viewer text on mid-stream failure
   - streamed cue events now include backend-resolved asset ids for movement and expression playback so the viewer no longer has to make the final streamed cue choice locally
   - viewer-side chat now consumes streamed text and cue events, plays movement and facial overlays from backend-resolved cues, and uses browser speech synthesis for spoken replies
+  - Manage now includes a dedicated `Voice & speech` section with backend-backed ElevenLabs BYOK credentials, per-avatar speech routing, avatar sex tags, voice overrides, and clear browser-speech fallback behavior
+  - avatars now persist `presentationGender` plus optional ElevenLabs voice attachment so shared starter avatars can default to a sensible voice filter without forcing a hard lock
+  - the viewer now prefers streamed ElevenLabs audio playback when an avatar has a saved remote voice, while falling back to browser speech if no remote voice is configured or playback fails
   - assistant replies may append long-term memory entries through the restricted inline `{memory:...}` bridge, persisted through the existing avatar memory revision flow
   - memory responses now include approximate prompt-footprint diagnostics, active provider/model details, and the exact memory-related prompt blocks shown in the Manage memory panel
   - the Manage memory panel can now trigger manual LLM-backed compression through `/api/avatars/{id}/memory/compress`, with the compressed result saved as a normal revision
@@ -119,7 +125,8 @@ Before closing a feature set, the minimum checks should be:
 
 ## Follow-Up After Initial Release
 
-- Add STT and TTS once text streaming is stable.
+- Expand beyond the first ElevenLabs voice flow only after the current TTS setup proves reliable in real use.
+- Add STT once TTS is stable.
 - Evaluate structured output in addition to inline cue tags if provider support is consistent.
 - Continue iterating on semantic memory summarization now that the first manual compression path exists.
 - Consider ephemeral provider sessions only if they preserve the same security guarantees as the backend proxy.

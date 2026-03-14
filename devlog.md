@@ -2,7 +2,7 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
-Latest implementation note: the memory system now distinguishes between `Relationship Memory` and `Long-Term Memory` instead of treating every saved fact as one undifferentiated bullet list. Chat rules and memory rules now instruct the model to only save memory for impactful moments, stable user preferences, meaningful relationship changes, promises, or durable life context, and to scope saved facts as either `{memory:relationship|...}` or `{memory:long-term|...}` when they are important enough to matter later. Backend memory responses now also estimate not just raw memory size but prompt pressure against the selected model, including approximate token counts, the configured provider/model, the reserved memory allowance, and an estimated share of the chat prompt consumed by memory. The Manage memory panel surfaces those diagnostics and now opens a warning popup when memory grows heavy for the chosen model so the user can compress before memory starts crowding out rules and history. Manual memory compression remains available through `/api/avatars/{id}/memory/compress`, and the compression path continues to preserve the authoritative avatar identity block so user-defined name, backstory, and personality are not lost. In the same implementation window, the old user-editable avatar `system prompt` path was removed from the main product surfaces and from prompt assembly; the backend now frames name, backstory, and personality explicitly as avatar chat context only, never as system authority, tool permissions, or executable instructions. The development guide also continues to treat Docker Compose as the source of truth for Node and PHP verification so frontend and backend checks run against the project runtime instead of the host machine.
+Latest implementation note: the app now has a first real backend-managed TTS path instead of relying only on browser speech synthesis. Users can save their own ElevenLabs API keys on a BYOK basis, Manage now includes a dedicated `Voice & speech` section, and each avatar can store its own speech language, avatar sex tag, optional voice-gender override, attached ElevenLabs credential, and selected ElevenLabs voice. Shared default avatars now include sex metadata so new personal copies can start with a sensible voice filter, but the voice choice can still be overridden intentionally. The viewer now prefers streamed ElevenLabs playback when an avatar has a saved remote voice and falls back automatically to the existing browser speech path when no remote voice is attached or remote playback fails. In the same pass, the configuration UX was tightened so avatar, AI, and speech setup behave more like one family of settings instead of isolated one-off forms. The development guide also continues to treat Docker Compose as the source of truth for Node and PHP verification so frontend and backend checks run against the project runtime instead of the host machine.
 
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 
@@ -532,7 +532,7 @@ If this idea becomes real, the safest approach would be to treat OpenClaw as ano
 - Chat is persisted and live viewer streaming now exists, but upstream provider-native streaming is still not finished.
 - Cue parsing exists and now drives live viewer playback, but the streaming event contract is not the final one yet.
 - Some animation-tag logic still exists in local catalog scaffolding and needs to become fully backend-authoritative.
-- Voice features are still future work.
+- Voice playback now exists with ElevenLabs plus browser fallback, but STT and guided setup polish are still future work.
 - The avatar still needs stronger personality consistency and memory-driven behavior to feel convincingly alive.
 - Multi-LLM orchestration is part of the long-term target, but the product is not there yet.
 - The hologram experience exists as a viewer path, but not yet as a full voice-first product mode or a hardware-output pipeline.
@@ -579,3 +579,39 @@ Implemented:
 - adjusted SSE response flushing so the streaming API test no longer trips BrowserKit output-buffer warnings
 - lowered expected test-only 404 exception logging to `info` in Symfony test config
 - switched the PHPUnit kernel to `APP_DEBUG=0` so API Platform does not emit false-positive `[error]` logs for expected exception-to-error-resource test paths
+
+### 18. Added a custom blow-kiss VRMA action
+
+This pass added a new shared expressive action for playful or affectionate replies.
+
+Implemented:
+
+- added `scripts/generate-blow-kiss-vrma.mjs` so the new motion can be regenerated from the existing shared VRMA skeleton instead of treating the binary as an opaque hand-edited asset
+- generated `default_vrma/Blow-Kiss.vrma` with a wink, a hand-to-mouth puckered beat, an outward kiss release, and a clean return to idle
+- layered mouth and eye expression tracks directly into the same VRMA so the body gesture and facial cue stay synchronized during playback
+- registered the new shared action in `default_vrma/catalog.json` with flirty/playful metadata so it can be selected like the rest of the curated library
+
+### 19. ElevenLabs BYOK speech configuration and streaming TTS landed
+
+This pass moved TTS from a browser-only stopgap into a real backend-managed provider flow while preserving the existing fallback.
+
+Implemented:
+
+- added encrypted per-user ElevenLabs credential storage plus backend endpoints for listing voices and streaming avatar speech audio
+- added per-avatar speech routing so each avatar can store its own sex tag, optional voice-gender override, speech language, attached ElevenLabs connection, and selected ElevenLabs voice
+- updated `default_vrm/catalog.json` so the shared starter avatars now carry sex metadata that can seed voice filtering when a user creates a personal copy
+- added a dedicated `Voice & speech` Manage section so TTS setup is no longer mixed into avatar identity fields, and aligned the new panel with the broader Manage configuration UX
+- refined the TTS setup flow so `Voice & speech` now behaves like `AI Connection`: reusable ElevenLabs endpoints are managed in their own section, while the selected avatar profile chooses which saved endpoint and voice to use
+- updated Viewer speech playback so saved ElevenLabs voices use streamed remote audio first, while browser speech remains the automatic fallback when no remote voice is configured or remote playback fails
+- added API coverage for ElevenLabs credential management, avatar TTS settings, and the avatar audio stream endpoint, plus frontend tests for the new voice-tag filtering helpers
+
+### 20. Voice selection now includes inline demo playback
+
+This pass tightened the last mile of the avatar voice-picking flow so users can audition voices before committing to one.
+
+Implemented:
+
+- added a reusable demo phrase field directly inside the avatar profile voice picker so the user can tweak the sample line while comparing voices
+- added per-voice `Play demo` and `Stop demo` actions so each listed ElevenLabs voice can be auditioned during selection instead of only after saving
+- extended the avatar TTS stream endpoint to accept temporary credential and voice overrides for secure preview playback without persisting a half-finished selection
+- added backend coverage for previewing a voice before it is saved onto the avatar record

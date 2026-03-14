@@ -6,6 +6,7 @@ import ChatAdminPanel from './ChatAdminPanel.jsx'
 import LlmSettingsPanel from './LlmSettingsPanel.jsx'
 import MemoryPanel from './MemoryPanel.jsx'
 import HelpPopover from './HelpPopover.jsx'
+import TtsSettingsPanel from './TtsSettingsPanel.jsx'
 import { createPersistedAvatarAsset } from '../lib/viewerAssets.js'
 
 const SECTIONS = [
@@ -13,6 +14,7 @@ const SECTIONS = [
   { id: 'vrm-library', label: 'Avatar Library' },
   { id: 'vrma-library', label: 'Animation Library' },
   { id: 'llm-config', label: 'AI Connection' },
+  { id: 'tts-config', label: 'Voice & Speech' },
   { id: 'chat', label: 'Conversation Test' },
 ]
 
@@ -38,6 +40,11 @@ const SECTION_HELP = {
 - Add credentials and keep at least one active
 - Pick a stable default model
 - Credentials are required before chat can send messages`,
+  'tts-config': `Connect ElevenLabs for spoken replies.
+
+- Each user brings their own ElevenLabs API key
+- Pick the avatar sex, optional voice override, and spoken language
+- If no ElevenLabs voice is selected, the browser speech fallback stays active`,
   chat: `Run safe conversation tests before switching back to Viewer.
 
 - Select an existing thread or start a new one
@@ -69,6 +76,12 @@ const SECTION_COPY = {
     title: 'Connect an AI provider',
     description:
       'Add one working API key, choose a default model, and keep it active so the avatar can reply.',
+  },
+  'tts-config': {
+    eyebrow: 'Voice & speech',
+    title: 'Connect ElevenLabs voice',
+    description:
+      'Attach an ElevenLabs key and voice to the selected avatar, or keep browser speech as the fallback when no remote voice is selected.',
   },
   chat: {
     eyebrow: 'Conversation test',
@@ -532,6 +545,9 @@ export default function ManagePage({ user, workspace }) {
     sharedAvatars,
     providers,
     credentials,
+    ttsProviders,
+    ttsCredentials,
+    ttsVoicesByCredential,
     providerModels,
     personasByAvatar,
     memoryByAvatar,
@@ -560,6 +576,11 @@ export default function ManagePage({ user, workspace }) {
     loadOpenRouterCatalog,
     saveCredential,
     removeCredential,
+    loadTtsVoiceCatalog,
+    saveTtsConnection,
+    removeTtsConnection,
+    saveAvatarTtsConfig,
+    previewAvatarTts,
     sendChatMessage,
     token,
   } = workspace
@@ -694,7 +715,7 @@ export default function ManagePage({ user, workspace }) {
             <section className="rounded-[32px] border border-white/10 bg-[rgba(6,10,20,0.82)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
               <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Setup</div>
               <div className="mt-3 text-3xl font-semibold tracking-tight text-white">Configuration</div>
-              <div className="mt-3 text-sm leading-6 text-white/62">Use the sections below to keep avatar, animations, AI connection, and chat setup organized.</div>
+              <div className="mt-3 text-sm leading-6 text-white/62">Use the sections below to keep avatar, animations, AI, voice, and chat setup organized.</div>
             </section>
 
             <section className="rounded-[32px] border border-white/10 bg-[rgba(6,10,20,0.82)] p-3 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
@@ -742,8 +763,13 @@ export default function ManagePage({ user, workspace }) {
                 <div className="mt-2 text-lg font-medium text-white">{selectedAvatar?.name || 'No avatar selected'}</div>
                 <div className="mt-2 text-sm text-white/58">
                   {effectivePersona?.llmProvider
-                    ? `Connected to ${effectivePersona.llmProvider}`
-                    : 'No AI connected yet'}
+                    ? `AI: ${effectivePersona.llmProvider}`
+                    : 'AI: not connected yet'}
+                </div>
+                <div className="mt-1 text-sm text-white/50">
+                  {selectedAvatar?.ttsVoiceName
+                    ? `Voice: ${selectedAvatar.ttsVoiceName}`
+                    : 'Voice: browser fallback'}
                 </div>
               </div>
             </div>
@@ -804,9 +830,22 @@ export default function ManagePage({ user, workspace }) {
                   avatar={selectedAvatar}
                   credentialId={effectivePersona?.llmCredentialId || ''}
                   credentials={credentials}
+                  ttsCredentials={ttsCredentials}
+                  ttsVoicesByCredential={ttsVoicesByCredential}
+                  onLoadTtsVoices={(credentialId) => loadTtsVoiceCatalog(credentialId)}
+                  onPreviewTts={(payload, options) => previewAvatarTts(selectedAvatar.id, payload, options)}
                   busy={busyKey === 'avatar-save'}
                   onSave={(payload) =>
-                    runAction('avatar-save', () => saveAvatarIdentity(selectedAvatar.id, payload), 'Avatar identity saved.')
+                    runAction('avatar-save', async () => {
+                      await saveAvatarIdentity(selectedAvatar.id, payload)
+                      await saveAvatarTtsConfig(selectedAvatar.id, {
+                        presentationGender: payload.presentationGender,
+                        speechVoiceGender: payload.speechVoiceGender,
+                        speechLanguage: payload.speechLanguage,
+                        ttsCredentialId: payload.ttsCredentialId,
+                        ttsVoiceId: payload.ttsVoiceId,
+                      })
+                    }, 'Avatar profile saved.')
                   }
                 />
 
@@ -882,6 +921,7 @@ export default function ManagePage({ user, workspace }) {
                         name: customAvatarDraft.name,
                         backstory: customAvatarDraft.backstory,
                         personality: customAvatarDraft.personality,
+                        presentationGender: baseAvatar.presentationGender || '',
                       })
 
                       await saveAvatarIdentity(createdAvatar.id, {
@@ -987,6 +1027,16 @@ export default function ManagePage({ user, workspace }) {
               onLoadModels={handleLoadProviderModels}
               onSaveCredential={(payload) => runAction('credential-save', () => saveCredential(payload), 'Credential saved.')}
               onDeleteCredential={(credentialId) => runAction('credential-delete', () => removeCredential(credentialId), 'Credential deleted.')}
+            />
+          ) : null}
+
+          {activeSection === 'tts-config' ? (
+            <TtsSettingsPanel
+              providers={ttsProviders}
+              credentials={ttsCredentials}
+              busy={busyKey === 'tts-credential-save' || busyKey === 'tts-credential-delete'}
+              onSaveCredential={(payload) => runAction('tts-credential-save', () => saveTtsConnection(payload), 'ElevenLabs connection saved.')}
+              onDeleteCredential={(credentialId) => runAction('tts-credential-delete', () => removeTtsConnection(credentialId), 'ElevenLabs connection deleted.')}
             />
           ) : null}
 

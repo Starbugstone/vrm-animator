@@ -13,6 +13,9 @@ import {
   sampleThinkingInjectionDelay,
 } from '../lib/viewerThinking.js'
 import { takeSpeakableSpeechChunk } from '../lib/viewerSpeech.js'
+import { playStreamedAudioResponse } from '../lib/streamingAudio.js'
+import { getEffectiveVoiceGender, hasRemoteTtsConfiguration } from '../lib/ttsVoices.js'
+import { streamAvatarTts } from '../api/tts.js'
 
 const VIEWER_OPTION_LABELS = {
   autoBlink: 'Auto blink',
@@ -251,6 +254,8 @@ export default function ViewerPage({ workspace }) {
   const speechSessionIdRef = useRef(0)
   const speechStopTimeoutRef = useRef(null)
   const speechMonitorIntervalRef = useRef(null)
+  const remoteAudioRef = useRef(typeof Audio !== 'undefined' ? new Audio() : null)
+  const remoteTtsAbortRef = useRef(null)
   const lastSpeechActivityAtRef = useRef(0)
   const streamingSpeechBufferRef = useRef('')
   const streamingSpeechCursorRef = useRef(0)
@@ -369,7 +374,22 @@ export default function ViewerPage({ workspace }) {
   )
   const hasConnectedAvatar = Boolean(selectedAvatar)
   const hasConnectedLlm = Boolean(effectivePersona?.llmCredentialId)
+  const hasRemoteTts = hasRemoteTtsConfiguration(selectedAvatar)
   const hasStartedChat = liveMessages.length > 0 || conversations.length > 0
+
+  const stopRemoteTtsPlayback = useCallback(() => {
+    remoteTtsAbortRef.current?.abort?.()
+    remoteTtsAbortRef.current = null
+
+    const audio = remoteAudioRef.current
+    if (!audio) {
+      return
+    }
+
+    audio.pause()
+    audio.removeAttribute('src')
+    audio.load?.()
+  }, [])
 
   useEffect(() => {
     if (!selectedAvatar || !workspace.token) {
@@ -394,6 +414,7 @@ export default function ViewerPage({ workspace }) {
         speechMonitorIntervalRef.current = null
       }
       speechSynthesisRef.current?.cancel?.()
+      stopRemoteTtsPlayback()
       stopOverlayAnimation({ immediate: false })
       return
     }
@@ -431,7 +452,7 @@ export default function ViewerPage({ workspace }) {
     return () => {
       cancelled = true
     }
-  }, [ensureConversationMessages, ensureConversations, ensurePersonas, selectedAvatar, setThinkingIndicatorEnabled, stopOverlayAnimation, workspace.token])
+  }, [ensureConversationMessages, ensureConversations, ensurePersonas, selectedAvatar, setThinkingIndicatorEnabled, stopOverlayAnimation, stopRemoteTtsPlayback, workspace.token])
 
   useEffect(() => () => {
     if (thinkingCycleTimeoutRef.current) {
@@ -570,9 +591,10 @@ export default function ViewerPage({ workspace }) {
       }
       speechSynthesis.removeEventListener?.('voiceschanged', primeVoices)
       speechSynthesisRef.current?.cancel?.()
+      stopRemoteTtsPlayback()
       stopOverlayAnimation({ immediate: false })
     }
-  }, [stopOverlayAnimation])
+  }, [stopOverlayAnimation, stopRemoteTtsPlayback])
 
   const playMovementCue = useCallback(async (movementTag) => {
     const asset = findMovementAssetByTag([...actionItems, ...idleItems], movementTag)
@@ -621,8 +643,9 @@ export default function ViewerPage({ workspace }) {
 
     activeEmotionRef.current = 'neutral'
     speechSynthesisRef.current?.cancel?.()
+    stopRemoteTtsPlayback()
     stopOverlayAnimation({ immediate: true })
-  }, [stopOverlayAnimation])
+  }, [stopOverlayAnimation, stopRemoteTtsPlayback])
 
   const playEmotionCue = useCallback(async (emotion, options = {}) => {
     const asset = pickExpressionAsset(expressionItems, emotion, options)
@@ -780,6 +803,58 @@ export default function ViewerPage({ workspace }) {
     resumeIdleMotion()
   }, [clearThinkingCycleTimer, resumeIdleMotion, setThinkingIndicatorEnabled, stopOverlayAnimation])
 
+  const playRemoteTts = useCallback(async (text, emotion, languageSamples = []) => {
+    const audio = remoteAudioRef.current
+    const cleanedText = String(text || '').trim()
+    if (!audio || !cleanedText || !selectedAvatar || !workspace.token || !hasRemoteTtsConfiguration(selectedAvatar)) {
+      return false
+    }
+
+    if (!speechSessionIdRef.current) {
+      speechSessionIdRef.current = 1
+    }
+
+    const sessionId = speechSessionIdRef.current
+    stopRemoteTtsPlayback()
+
+    const controller = new AbortController()
+    remoteTtsAbortRef.current = controller
+
+    const stopRemoteOverlay = () => {
+      if (sessionId !== speechSessionIdRef.current) {
+        return
+      }
+
+      stopOverlayAnimation({ immediate: false })
+    }
+
+    const response = await streamAvatarTts(workspace.token, selectedAvatar.id, {
+      text: cleanedText,
+      language: selectedAvatar.speechLanguage,
+      languageSamples,
+    })
+
+    try {
+      await playStreamedAudioResponse(response, audio, {
+        signal: controller.signal,
+        onStart: () => {
+          if (sessionId !== speechSessionIdRef.current) {
+            return
+          }
+
+          playEmotionCue(emotion || activeEmotionRef.current || 'neutral', { preferSpeech: true, loop: true })
+        },
+        onEnd: stopRemoteOverlay,
+      })
+    } finally {
+      if (remoteTtsAbortRef.current === controller) {
+        remoteTtsAbortRef.current = null
+      }
+    }
+
+    return true
+  }, [playEmotionCue, selectedAvatar, stopOverlayAnimation, stopRemoteTtsPlayback, workspace.token])
+
   const queueSpeechUtterance = useCallback((text, emotion, languageSamples = []) => {
     const speechSynthesis = speechSynthesisRef.current
     const cleanedText = String(text || '').trim()
@@ -795,10 +870,11 @@ export default function ViewerPage({ workspace }) {
     const locale = selectedAvatar?.speechLanguage && selectedAvatar.speechLanguage !== 'auto'
       ? selectedAvatar.speechLanguage
       : detectLanguageLocale(cleanedText, ...languageSamples)
+    const preferredVoiceGender = getEffectiveVoiceGender(selectedAvatar) || null
     const voice = pickSpeechVoiceWithPreference(
       speechSynthesis,
       locale,
-      selectedAvatar?.speechVoiceGender || null,
+      preferredVoiceGender,
     ) || pickSpeechVoice(speechSynthesis, locale)
 
     utterance.lang = locale
@@ -1067,7 +1143,7 @@ export default function ViewerPage({ workspace }) {
               stopThinkingPresence()
             }
             streamingSpeechBufferRef.current = `${streamingSpeechBufferRef.current}${delta}`
-            if (hasVisibleAssistantTextRef.current) {
+            if (hasVisibleAssistantTextRef.current && !hasRemoteTts) {
               flushStreamingSpeechBuffer({
                 final: false,
                 emotion: activeEmotionRef.current || 'neutral',
@@ -1140,11 +1216,23 @@ export default function ViewerPage({ workspace }) {
       if (completedText.length > streamingSpeechBufferRef.current.length) {
         streamingSpeechBufferRef.current = completedText
       }
-      flushStreamingSpeechBuffer({
-        final: true,
-        emotion: response.assistantMessage?.emotionTags?.[0] || activeEmotionRef.current || 'neutral',
-        languageSamples: [outgoingMessage],
-      })
+      const finalEmotion = response.assistantMessage?.emotionTags?.[0] || activeEmotionRef.current || 'neutral'
+      if (hasRemoteTts) {
+        void playRemoteTts(completedText, finalEmotion, [outgoingMessage]).catch((nextError) => {
+          setNotice(`${nextError.message || 'ElevenLabs playback failed.'} Falling back to browser speech.`)
+          flushStreamingSpeechBuffer({
+            final: true,
+            emotion: finalEmotion,
+            languageSamples: [outgoingMessage],
+          })
+        })
+      } else {
+        flushStreamingSpeechBuffer({
+          final: true,
+          emotion: finalEmotion,
+          languageSamples: [outgoingMessage],
+        })
+      }
     } catch (error) {
       stopThinkingPresence()
       setChatPhase('idle')
@@ -1168,10 +1256,11 @@ export default function ViewerPage({ workspace }) {
     appendPendingAssistantData,
     draftMessage,
     effectivePersona,
-    playEmotionCue,
     playEmotionCueByAssetId,
     playMovementCueByAssetId,
     flushStreamingSpeechBuffer,
+    hasRemoteTts,
+    playRemoteTts,
     resetSpeechRuntime,
     selectedAvatar,
     startThinkingPresence,

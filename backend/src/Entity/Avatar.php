@@ -77,9 +77,29 @@ class Avatar
     #[Groups(['avatar:read', 'avatar:write'])]
     private ?string $speechVoiceGender = null;
 
+    #[ORM\Column(length: 16, nullable: true)]
+    #[Groups(['avatar:read', 'avatar:write'])]
+    private ?string $presentationGender = null;
+
     #[ORM\Column(length: 16)]
     #[Groups(['avatar:read', 'avatar:write'])]
     private string $speechLanguage = 'auto';
+
+    #[ORM\ManyToOne(targetEntity: TtsCredential::class)]
+    #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
+    private ?TtsCredential $ttsCredential = null;
+
+    #[ORM\Column(length: 128, nullable: true)]
+    #[Groups(['avatar:read'])]
+    private ?string $ttsVoiceId = null;
+
+    #[ORM\Column(length: 255, nullable: true)]
+    #[Groups(['avatar:read'])]
+    private ?string $ttsVoiceName = null;
+
+    #[ORM\Column(length: 16, nullable: true)]
+    #[Groups(['avatar:read'])]
+    private ?string $ttsVoiceGenderTag = null;
 
     #[ORM\Column(length: 255)]
     #[Groups(['avatar:read', 'avatar:write', 'user:read'])]
@@ -186,6 +206,18 @@ class Avatar
         return $this;
     }
 
+    public function getPresentationGender(): ?string
+    {
+        return $this->presentationGender;
+    }
+
+    public function setPresentationGender(?string $presentationGender): static
+    {
+        $this->presentationGender = $presentationGender;
+
+        return $this;
+    }
+
     public function getSpeechLanguage(): string
     {
         return $this->speechLanguage;
@@ -194,6 +226,66 @@ class Avatar
     public function setSpeechLanguage(string $speechLanguage): static
     {
         $this->speechLanguage = $speechLanguage;
+
+        return $this;
+    }
+
+    public function getTtsCredential(): ?TtsCredential
+    {
+        return $this->ttsCredential;
+    }
+
+    public function setTtsCredential(?TtsCredential $ttsCredential): static
+    {
+        $this->ttsCredential = $ttsCredential;
+
+        return $this;
+    }
+
+    #[Groups(['avatar:read'])]
+    public function getTtsCredentialId(): ?int
+    {
+        return $this->ttsCredential?->getId();
+    }
+
+    #[Groups(['avatar:read'])]
+    public function getTtsProvider(): ?string
+    {
+        return $this->ttsCredential !== null ? 'elevenlabs' : null;
+    }
+
+    public function getTtsVoiceId(): ?string
+    {
+        return $this->ttsVoiceId;
+    }
+
+    public function setTtsVoiceId(?string $ttsVoiceId): static
+    {
+        $this->ttsVoiceId = $ttsVoiceId;
+
+        return $this;
+    }
+
+    public function getTtsVoiceName(): ?string
+    {
+        return $this->ttsVoiceName;
+    }
+
+    public function setTtsVoiceName(?string $ttsVoiceName): static
+    {
+        $this->ttsVoiceName = $ttsVoiceName;
+
+        return $this;
+    }
+
+    public function getTtsVoiceGenderTag(): ?string
+    {
+        return $this->ttsVoiceGenderTag;
+    }
+
+    public function setTtsVoiceGenderTag(?string $ttsVoiceGenderTag): static
+    {
+        $this->ttsVoiceGenderTag = $ttsVoiceGenderTag;
 
         return $this;
     }

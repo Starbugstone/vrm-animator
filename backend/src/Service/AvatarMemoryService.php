@@ -250,6 +250,7 @@ class AvatarMemoryService
             sprintf('- name: %s', $avatar->getName() ?: ''),
             sprintf('- backstory: %s', $avatar->getBackstory() ?: ''),
             sprintf('- personality: %s', $avatar->getPersonality() ?: ''),
+            sprintf('- presentation_gender: %s', $avatar->getPresentationGender() ?: ''),
             sprintf('- speech_voice_gender: %s', $avatar->getSpeechVoiceGender() ?: ''),
             sprintf('- speech_language: %s', $avatar->getSpeechLanguage()),
         ]);

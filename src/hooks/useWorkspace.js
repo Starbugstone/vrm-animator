@@ -43,6 +43,16 @@ import {
   listAvatarPersonas,
   updateAvatarPersona,
 } from '../api/personas.js'
+import {
+  createTtsCredential,
+  deleteTtsCredential,
+  listTtsCredentials,
+  listTtsProviders,
+  listTtsVoices,
+  streamAvatarTts,
+  updateAvatarTtsSettings,
+  updateTtsCredential,
+} from '../api/tts.js'
 
 const WORKSPACE_SELECTED_AVATAR_KEY = 'workspace.selectedAvatarId'
 
@@ -90,6 +100,9 @@ export default function useWorkspace(token) {
   const [sharedAnimations, setSharedAnimations] = useState([])
   const [providers, setProviders] = useState([])
   const [credentials, setCredentials] = useState([])
+  const [ttsProviders, setTtsProviders] = useState([])
+  const [ttsCredentials, setTtsCredentials] = useState([])
+  const [ttsVoicesByCredential, setTtsVoicesByCredential] = useState({})
   const [providerModels, setProviderModels] = useState({})
   const [personasByAvatar, setPersonasByAvatar] = useState({})
   const [memoryByAvatar, setMemoryByAvatar] = useState({})
@@ -121,6 +134,9 @@ export default function useWorkspace(token) {
     setSharedAnimations([])
     setProviders([])
     setCredentials([])
+    setTtsProviders([])
+    setTtsCredentials([])
+    setTtsVoicesByCredential({})
     setProviderModels({})
     setPersonasByAvatar({})
     setMemoryByAvatar({})
@@ -150,6 +166,8 @@ export default function useWorkspace(token) {
         { key: 'shared animations', request: () => listSharedAnimationAssets() },
         { key: 'LLM providers', request: () => listLlmProviders(token) },
         { key: 'LLM credentials', request: () => listLlmCredentials(token) },
+        { key: 'TTS providers', request: () => listTtsProviders(token) },
+        { key: 'TTS credentials', request: () => listTtsCredentials(token) },
       ]
 
       const results = await Promise.allSettled(
@@ -163,6 +181,8 @@ export default function useWorkspace(token) {
         sharedAnimationsResult,
         providersResult,
         credentialsResult,
+        ttsProvidersResult,
+        ttsCredentialsResult,
       ] = results
 
       setAvatars(avatarsResult.status === 'fulfilled' && Array.isArray(avatarsResult.value) ? avatarsResult.value : [])
@@ -171,6 +191,8 @@ export default function useWorkspace(token) {
       setSharedAnimations(sharedAnimationsResult.status === 'fulfilled' && Array.isArray(sharedAnimationsResult.value) ? sharedAnimationsResult.value : [])
       setProviders(providersResult.status === 'fulfilled' && Array.isArray(providersResult.value) ? providersResult.value : [])
       setCredentials(credentialsResult.status === 'fulfilled' && Array.isArray(credentialsResult.value) ? credentialsResult.value : [])
+      setTtsProviders(ttsProvidersResult.status === 'fulfilled' && Array.isArray(ttsProvidersResult.value) ? ttsProvidersResult.value : [])
+      setTtsCredentials(ttsCredentialsResult.status === 'fulfilled' && Array.isArray(ttsCredentialsResult.value) ? ttsCredentialsResult.value : [])
 
       const failures = results
         .map((result, index) => ({ result, key: workspaceRequests[index].key }))
@@ -274,6 +296,7 @@ export default function useWorkspace(token) {
     if (payload.name) formData.append('name', payload.name)
     if (payload.backstory) formData.append('backstory', payload.backstory)
     if (payload.personality) formData.append('personality', payload.personality)
+    if (payload.presentationGender) formData.append('presentationGender', payload.presentationGender)
 
     const avatar = await uploadAvatar(token, formData)
     setAvatars((current) => upsertById(current, avatar))
@@ -282,7 +305,21 @@ export default function useWorkspace(token) {
   }, [setSelectedAvatarId, token])
 
   const saveAvatarIdentity = useCallback(async (avatarId, payload) => {
-    const { llmCredentialId = null, ...avatarPayload } = payload
+    const {
+      llmCredentialId = null,
+      presentationGender,
+      speechVoiceGender,
+      speechLanguage,
+      ttsCredentialId,
+      ttsVoiceId,
+      ...avatarPayload
+    } = payload
+
+    void presentationGender
+    void speechVoiceGender
+    void speechLanguage
+    void ttsCredentialId
+    void ttsVoiceId
     const avatar = await updateAvatar(token, avatarId, avatarPayload)
     setAvatars((current) => upsertById(current, avatar))
 
@@ -353,6 +390,7 @@ export default function useWorkspace(token) {
       name: overrides.name || asset.label || asset.name,
       backstory: overrides.backstory ?? asset.backstory ?? asset.description ?? '',
       personality: overrides.personality ?? asset.personality ?? '',
+      presentationGender: overrides.presentationGender ?? asset.presentationGender ?? '',
     })
   }, [saveAvatarUpload])
 
@@ -430,6 +468,59 @@ export default function useWorkspace(token) {
     setCredentials((current) => removeById(current, credentialId))
   }, [token])
 
+  const loadTtsVoiceCatalog = useCallback(async (credentialId, options = {}) => {
+    if (!token || !credentialId) {
+      return []
+    }
+
+    if (!options.force && ttsVoicesByCredential[credentialId]) {
+      return ttsVoicesByCredential[credentialId]
+    }
+
+    const voices = await listTtsVoices(token, credentialId)
+    const normalizedVoices = Array.isArray(voices) ? voices : []
+
+    setTtsVoicesByCredential((current) => ({
+      ...current,
+      [credentialId]: normalizedVoices,
+    }))
+
+    return normalizedVoices
+  }, [token, ttsVoicesByCredential])
+
+  const saveTtsConnection = useCallback(async (payload) => {
+    const credential = payload.credentialId
+      ? await updateTtsCredential(token, payload.credentialId, payload)
+      : await createTtsCredential(token, payload)
+
+    setTtsCredentials((current) => upsertById(current, credential))
+    return credential
+  }, [token])
+
+  const removeTtsConnection = useCallback(async (credentialId) => {
+    await deleteTtsCredential(token, credentialId)
+    setTtsCredentials((current) => removeById(current, credentialId))
+    setTtsVoicesByCredential((current) => omitKey(current, credentialId))
+  }, [token])
+
+  const saveAvatarTtsConfig = useCallback(async (avatarId, payload) => {
+    const updatedConfig = await updateAvatarTtsSettings(token, avatarId, payload)
+    setAvatars((current) => current.map((entry) => (
+      entry.id !== avatarId
+        ? entry
+        : {
+          ...entry,
+          ...updatedConfig,
+        }
+    )))
+
+    return updatedConfig
+  }, [token])
+
+  const previewAvatarTts = useCallback((avatarId, payload, options = {}) => (
+    streamAvatarTts(token, avatarId, payload, options)
+  ), [token])
+
   const sendChatMessage = useCallback(async (avatarId, payload) => {
     const response = await sendAvatarChatMessage(token, avatarId, payload)
     const conversation = response.conversation
@@ -498,6 +589,9 @@ export default function useWorkspace(token) {
     sharedAnimationGroups,
     providers,
     credentials,
+    ttsProviders,
+    ttsCredentials,
+    ttsVoicesByCredential,
     providerModels,
     personasByAvatar,
     memoryByAvatar,
@@ -527,6 +621,11 @@ export default function useWorkspace(token) {
     loadOpenRouterCatalog,
     saveCredential,
     removeCredential,
+    loadTtsVoiceCatalog,
+    saveTtsConnection,
+    removeTtsConnection,
+    saveAvatarTtsConfig,
+    previewAvatarTts,
     sendChatMessage,
     streamChatMessage,
   }

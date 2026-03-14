@@ -82,6 +82,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Dev Log Discipline**: `devlog.md` must be updated whenever meaningful implementation progress, roadmap changes, or architectural decisions happen.
 - **Environment files**: When a local-only `.env.local` value is added or changed, update the corresponding committed `.env` template with a dummy placeholder value in the same key. Never copy or leak real values from `.env.local` into a committed `.env` file.
 - **User-first product thinking**: The app must stay easy to use, explicit, and understandable to non-technical users. Do not assume the user already understands avatar tooling, LLM setup, or hologram concepts.
+- **Configuration UX consistency**: Avatar, LLM, TTS, memory, and future provider setup surfaces must feel coherent with each other. Reuse interaction patterns, keep fallback behavior explicit, and avoid making users re-learn a different workflow for each settings panel.
 - **Docker-first verification**: Run Node/Vite/Vitest and PHP/PHPUnit verification through Docker Compose so checks use the project runtime, not the host machine. Prefer `docker compose exec -T node ...` and `docker compose exec -T php ...` when the services are already running.
 
 ### 3.2 Backend (Symfony)
@@ -96,6 +97,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **No server state in UI**: Do not rely on server-side sessions. Use JWT for auth; store token securely (e.g. memory or httpOnly cookie if backend supports it); send token on each API request.
 - **Separation**: Keep API calls in a dedicated layer (e.g. `src/api/` or services). Components should consume data via props/hooks, not raw fetch logic mixed with UI.
 - **State**: Prefer local component state or a small, explicit state layer for client-only state. Server state should be fetched/updated via the stateless API.
+- **Configuration surfaces**: Keep configurable options grouped by user goal, use plain-language labels, surface prerequisites early, and keep safe fallbacks visible so a missing provider setup does not feel like a dead end.
 
 ### 3.4 Frontend–Backend Contract
 
@@ -177,6 +179,9 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 
 - **Text-to-speech (TTS)**
   - Backend or a dedicated service converts LLM reply to speech; frontend plays it while avatar is “speaking.”
+  - The first supported provider is **ElevenLabs** on a per-user BYOK basis, attached per avatar from Manage.
+  - If no ElevenLabs voice is attached, the product must continue to fall back cleanly to the existing browser speech path instead of blocking spoken playback entirely.
+  - Voice selection should respect avatar sex tags by default while still allowing an explicit override, and the available voice list should expose that tagging clearly in the UI.
 
 - **Vocal commands**
   - User speaks; speech-to-text (STT) sends text to the same chat/message API. Flow: voice → STT → text → existing LLM + memory + animation pipeline → optional TTS and animation.
@@ -223,6 +228,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Chat**: `GET /api/avatars/{id}/conversations`, `GET /api/conversations/{id}`, `GET /api/conversations/{id}/messages`, `POST /api/avatars/{id}/chat`.
   - `POST /api/avatars/{id}/chat` supports normal JSON replies and streamed SSE replies when `stream: true` is sent in the JSON body.
 - **LLM Config**: `GET /api/llm/providers`, `GET /api/llm/providers/{provider}/models`, `GET/POST /api/llm/credentials`, `PATCH/DELETE /api/llm/credentials/{id}`.
+- **TTS Config**: `GET /api/tts/providers`, `GET/POST /api/tts/credentials`, `PATCH/DELETE /api/tts/credentials/{id}`, `GET /api/tts/credentials/{id}/voices`, `GET/PATCH /api/avatars/{id}/tts`, `POST /api/avatars/{id}/tts/stream`.
 - **Docs**: `GET /api/docs` (public).
 
 All API must remain **stateless** and use JWT for authentication.
