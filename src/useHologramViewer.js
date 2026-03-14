@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
+import { createThinkingBubbleService } from './lib/thinkingBubbleService.js'
 
 const STAGE_BASE_HEIGHT = 0.18
 const STAGE_BASE_Y = -0.1
@@ -148,6 +149,7 @@ export default function useHologramViewer(canvasRef) {
 
     const scene = new THREE.Scene()
     scene.fog = new THREE.Fog(0x040816, 12, 30)
+    const thinkingBubbleService = createThinkingBubbleService({ scene })
 
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100)
     const initialPolar = THREE.MathUtils.degToRad(DEFAULT_POLAR)
@@ -201,6 +203,7 @@ export default function useHologramViewer(canvasRef) {
     let lastIdleVariantCacheKey = null
     let autoBlinkEnabled = true
     let lookAtCameraEnabled = false
+    let thinkingIndicatorEnabled = false
     const motionCache = new Map()
     const blinkState = {
       phase: 'waiting',
@@ -884,6 +887,7 @@ export default function useHologramViewer(canvasRef) {
 
     const removeCurrentAvatar = () => {
       if (!currentVrm) return
+      thinkingBubbleService.setEnabled(false)
       applyBlinkWeight(0)
       stopCurrentAnimation({ resetPose: false })
       if (currentMixer) {
@@ -1302,6 +1306,11 @@ export default function useHologramViewer(canvasRef) {
       controls.update()
       camera.updateMatrixWorld(true)
       currentVrm?.update(dt)
+      thinkingBubbleService.update(
+        dt,
+        thinkingIndicatorEnabled ? currentVrm : null,
+        camera,
+      )
       renderer.render(scene, camera)
     }
 
@@ -1315,6 +1324,10 @@ export default function useHologramViewer(canvasRef) {
       playAnimationFile,
       playOverlayAnimationFile,
       stopOverlayAnimation: (options = {}) => stopOverlayMotion(options),
+      setThinkingIndicatorEnabled: (enabled) => {
+        thinkingIndicatorEnabled = Boolean(enabled)
+        thinkingBubbleService.setEnabled(thinkingIndicatorEnabled)
+      },
       setCommand: (nextCommand) => {
         stopCurrentAnimation({ resetPose: true })
         playbackMode = 'command'
@@ -1367,6 +1380,7 @@ export default function useHologramViewer(canvasRef) {
       if (currentAvatarUrl) {
         clearCurrentAvatarUrl()
       }
+      thinkingBubbleService.dispose()
       disposeObject3D(stage)
       renderer.dispose()
       internalsRef.current = null
@@ -1401,6 +1415,10 @@ export default function useHologramViewer(canvasRef) {
     return internalsRef.current?.stopOverlayAnimation?.(options) ?? false
   }, [])
 
+  const setThinkingIndicatorEnabled = useCallback((enabled) => {
+    internalsRef.current?.setThinkingIndicatorEnabled?.(enabled)
+  }, [])
+
   const setCommand = useCallback((command) => {
     internalsRef.current?.setCommand(command)
   }, [])
@@ -1421,6 +1439,7 @@ export default function useHologramViewer(canvasRef) {
     playAnimationFile,
     playOverlayAnimationFile,
     stopOverlayAnimation,
+    setThinkingIndicatorEnabled,
     setCommand,
     setFramingValue,
     setViewerOption,

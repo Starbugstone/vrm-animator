@@ -222,6 +222,7 @@ export default function ViewerPage({ workspace }) {
     playAnimationFile,
     playOverlayAnimationFile,
     stopOverlayAnimation,
+    setThinkingIndicatorEnabled,
     setFramingValue,
     setViewerOption,
     viewerOptions,
@@ -378,6 +379,7 @@ export default function ViewerPage({ workspace }) {
       setChatPhase('idle')
       hasVisibleAssistantTextRef.current = false
       thinkingRuntimeRef.current = false
+      setThinkingIndicatorEnabled(false)
       if (thinkingCycleTimeoutRef.current) {
         window.clearTimeout(thinkingCycleTimeoutRef.current)
         thinkingCycleTimeoutRef.current = null
@@ -429,7 +431,7 @@ export default function ViewerPage({ workspace }) {
     return () => {
       cancelled = true
     }
-  }, [ensureConversationMessages, ensureConversations, ensurePersonas, selectedAvatar, stopOverlayAnimation, workspace.token])
+  }, [ensureConversationMessages, ensureConversations, ensurePersonas, selectedAvatar, setThinkingIndicatorEnabled, stopOverlayAnimation, workspace.token])
 
   useEffect(() => () => {
     if (thinkingCycleTimeoutRef.current) {
@@ -736,6 +738,7 @@ export default function ViewerPage({ workspace }) {
     thinkingRuntimeRef.current = true
     clearThinkingCycleTimer()
     activeEmotionRef.current = 'thinking'
+    setThinkingIndicatorEnabled(true)
     stopOverlayAnimation({ immediate: true })
 
     const silentExpression = pickThinkingExpressionAsset(expressionItems, {
@@ -769,12 +772,13 @@ export default function ViewerPage({ workspace }) {
 
     thinkingRuntimeRef.current = false
     clearThinkingCycleTimer()
+    setThinkingIndicatorEnabled(false)
     if (activeEmotionRef.current === 'thinking') {
       activeEmotionRef.current = 'neutral'
     }
     stopOverlayAnimation({ immediate: false })
     resumeIdleMotion()
-  }, [clearThinkingCycleTimer, resumeIdleMotion, stopOverlayAnimation])
+  }, [clearThinkingCycleTimer, resumeIdleMotion, setThinkingIndicatorEnabled, stopOverlayAnimation])
 
   const queueSpeechUtterance = useCallback((text, emotion, languageSamples = []) => {
     const speechSynthesis = speechSynthesisRef.current
