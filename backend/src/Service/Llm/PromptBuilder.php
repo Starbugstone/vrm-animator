@@ -59,7 +59,7 @@ class PromptBuilder
         ChatModelPolicy $modelPolicy,
     ): string
     {
-        $movementAssets = array_values(array_filter($assets, static fn (CueAsset $asset): bool => $asset->isMovement()));
+        $movementAssets = array_values(array_filter($assets, static fn (CueAsset $asset): bool => $asset->isConversationMovement()));
         usort($movementAssets, static function (CueAsset $left, CueAsset $right): int {
             $sourcePriority = $left->source === $right->source ? 0 : ($left->source === 'user' ? -1 : 1);
             if ($sourcePriority !== 0) {
@@ -82,7 +82,7 @@ class PromptBuilder
         $availableEmotions = array_values(array_unique(array_filter($expressionEmotions)));
         sort($availableEmotions);
         if ($availableEmotions === []) {
-            $emotionLines[] = '- neutral, happy, sad, angry, playful, shouting, sleepy, surprised, thinking, calm';
+            $emotionLines[] = '- neutral, happy, sad, angry, playful, shouting, sleepy, surprised, thinking, calm, smile, wink';
         } else {
             $emotionLines[] = '- '.implode(', ', $availableEmotions);
         }

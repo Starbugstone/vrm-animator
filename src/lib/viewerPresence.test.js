@@ -20,6 +20,15 @@ describe('findThinkingMovementAsset', () => {
     expect(asset?.id).toBe('2')
   })
 
+  it('prefers an explicit thinking category over generic movement matches', () => {
+    const asset = findThinkingMovementAsset([
+      { id: '1', label: 'Look Around', keywords: ['thinking'], kind: 'idle' },
+      { id: '2', label: 'Focus', keywords: ['waiting'], kind: 'thinking' },
+    ])
+
+    expect(asset?.id).toBe('2')
+  })
+
   it('uses weight as a tie-breaker when multiple assets fit', () => {
     const asset = findThinkingMovementAsset([
       { id: '1', label: 'Think Left', keywords: ['thinking'], kind: 'action', weight: 2 },

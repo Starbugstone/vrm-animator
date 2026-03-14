@@ -73,6 +73,31 @@ class AssetUploadTest extends WebTestCase
         $this->assertSame('wave.vrma', $data['filename']);
     }
 
+    public function testAnimationUploadAcceptsThinkingKind(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'thinking-upload@example.com');
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'vrma-think');
+        file_put_contents($tmpPath, 'dummy vrma content');
+        $file = new UploadedFile($tmpPath, 'focus.vrma', 'application/octet-stream', null, true);
+
+        $client->request('POST', '/api/animations/upload', [
+            'name' => 'Focus',
+            'kind' => 'thinking',
+        ], [
+            'file' => $file,
+        ], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(201);
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('Focus', $data['name']);
+        $this->assertSame('thinking', $data['kind']);
+    }
+
     public function testAnimationUploadCanPersistMetadataAndAvatarBinding(): void
     {
         $client = static::createClient();

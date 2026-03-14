@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pickExpressionAsset, pickSilentExpressionAsset } from './viewerExpressions.js'
+import { isExpressionAssetAllowed, pickExpressionAsset, pickSilentExpressionAsset, pickThinkingExpressionAsset } from './viewerExpressions.js'
 
 describe('pickExpressionAsset', () => {
   it('prefers speech-tagged overlays for spoken replies when requested', () => {
@@ -31,5 +31,52 @@ describe('pickExpressionAsset', () => {
     })
 
     expect(asset?.id).toBe('2')
+  })
+
+  it('supports smile and wink as explicit expression cues', () => {
+    const smile = pickExpressionAsset([
+      { id: '1', label: 'Happy Talk', tags: ['speech', 'happy'], channels: ['mouth', 'eyes', 'face'], weight: 1 },
+      { id: '2', label: 'Smile', tags: ['smile', 'happy', 'reaction'], channels: ['eyes', 'face'], weight: 3 },
+    ], 'smile')
+
+    const wink = pickExpressionAsset([
+      { id: '1', label: 'Playful Talk', tags: ['speech', 'playful'], channels: ['mouth', 'eyes', 'face'], weight: 1 },
+      { id: '2', label: 'Wink', tags: ['wink', 'playful', 'reaction'], channels: ['eyes', 'face'], weight: 3 },
+    ], 'wink')
+
+    expect(smile?.id).toBe('2')
+    expect(wink?.id).toBe('2')
+  })
+
+  it('rejects direct speech overlays during silent thinking playback', () => {
+    const allowed = isExpressionAssetAllowed(
+      { id: '1', label: 'Thinking Mouth', tags: ['speech', 'thinking'], channels: ['mouth', 'eyes'] },
+      {
+        preferSpeech: false,
+        allowSpeechFallback: false,
+        excludedChannels: ['mouth'],
+      },
+    )
+
+    expect(allowed).toBe(false)
+  })
+
+  it('only auto-picks explicitly tagged thinking expressions for the waiting state', () => {
+    const noConfiguredThinking = pickThinkingExpressionAsset([
+      { id: '1', label: 'Calm Eyes', emotionTags: ['calm'], channels: ['eyes', 'face'] },
+      { id: '2', label: 'Neutral Speech', tags: ['speech', 'neutral'], channels: ['mouth', 'eyes'] },
+    ], {
+      excludedChannels: ['mouth'],
+    })
+
+    const configuredThinking = pickThinkingExpressionAsset([
+      { id: '1', label: 'Calm Eyes', emotionTags: ['calm'], channels: ['eyes', 'face'] },
+      { id: '2', label: 'Thinking Eyes', emotionTags: ['thinking'], channels: ['eyes', 'face'] },
+    ], {
+      excludedChannels: ['mouth'],
+    })
+
+    expect(noConfiguredThinking).toBeNull()
+    expect(configuredThinking?.id).toBe('2')
   })
 })

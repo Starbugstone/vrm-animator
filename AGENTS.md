@@ -82,6 +82,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Dev Log Discipline**: `devlog.md` must be updated whenever meaningful implementation progress, roadmap changes, or architectural decisions happen.
 - **Environment files**: When a local-only `.env.local` value is added or changed, update the corresponding committed `.env` template with a dummy placeholder value in the same key. Never copy or leak real values from `.env.local` into a committed `.env` file.
 - **User-first product thinking**: The app must stay easy to use, explicit, and understandable to non-technical users. Do not assume the user already understands avatar tooling, LLM setup, or hologram concepts.
+- **Docker-first verification**: Run Node/Vite/Vitest and PHP/PHPUnit verification through Docker Compose so checks use the project runtime, not the host machine. Prefer `docker compose exec -T node ...` and `docker compose exec -T php ...` when the services are already running.
 
 ### 3.2 Backend (Symfony)
 

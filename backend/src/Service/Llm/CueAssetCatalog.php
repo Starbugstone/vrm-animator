@@ -97,7 +97,7 @@ final class CueAssetCatalog
      */
     public function listMovementAssets(array $assets): array
     {
-        return array_values(array_filter($assets, static fn (CueAsset $asset): bool => $asset->isMovement()));
+        return array_values(array_filter($assets, static fn (CueAsset $asset): bool => $asset->isConversationMovement()));
     }
 
     /**

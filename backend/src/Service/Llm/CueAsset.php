@@ -30,6 +30,16 @@ final readonly class CueAsset
         return $this->kind !== 'expression';
     }
 
+    public function isThinking(): bool
+    {
+        return $this->kind === 'thinking';
+    }
+
+    public function isConversationMovement(): bool
+    {
+        return $this->isMovement() && !$this->isThinking();
+    }
+
     public function isExpression(): bool
     {
         return $this->kind === 'expression';

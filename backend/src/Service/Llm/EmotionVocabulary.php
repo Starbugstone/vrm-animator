@@ -18,6 +18,8 @@ final class EmotionVocabulary
         'surprised',
         'thinking',
         'calm',
+        'smile',
+        'wink',
     ];
 
     /**
@@ -49,6 +51,9 @@ final class EmotionVocabulary
         'thoughtful' => 'thinking',
         'confident' => 'calm',
         'soft' => 'calm',
+        'grin' => 'smile',
+        'smiling' => 'smile',
+        'winking' => 'wink',
     ];
 
     /**

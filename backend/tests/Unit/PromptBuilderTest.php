@@ -112,6 +112,53 @@ class PromptBuilderTest extends TestCase
         $this->assertStringContainsString('…', $messages[1]['content']);
     }
 
+    public function testItDoesNotExposeThinkingOnlyAnimationsAsReplyMovements(): void
+    {
+        $avatar = (new Avatar())
+            ->setName('Guide')
+            ->setFilename('guide.vrm');
+
+        $thinking = new CueAsset(
+            'thinking:user:1',
+            'Focus',
+            'Focus',
+            'thinking',
+            'Waiting pose',
+            ['thinking', 'waiting'],
+            ['thinking'],
+            'user',
+            ['thinking', 'waiting'],
+        );
+        $action = new CueAsset(
+            'action:user:2',
+            'Wave',
+            'Wave',
+            'action',
+            'Greeting motion',
+            ['wave'],
+            ['happy'],
+            'user',
+            ['wave', 'happy'],
+        );
+
+        $kernel = $this->createMock(KernelInterface::class);
+        $kernel->method('getProjectDir')->willReturn(dirname(__DIR__, 2));
+
+        $builder = new PromptBuilder(new PromptRulesProvider($kernel));
+        $messages = $builder->buildMessages(
+            $avatar,
+            null,
+            '',
+            [$thinking, $action],
+            [],
+            'Current user question',
+            $this->defaultPolicy(),
+        );
+
+        $this->assertStringContainsString('Wave | kind: action', $messages[0]['content']);
+        $this->assertStringNotContainsString('Focus | kind: thinking', $messages[0]['content']);
+    }
+
     private function defaultPolicy(): ChatModelPolicy
     {
         return new ChatModelPolicy(131072, 1100, 5, 5, 1400, 260, 650);

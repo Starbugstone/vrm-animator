@@ -457,7 +457,7 @@ function AnimationUploadCard({ busy, draft, onChange, onSubmit }) {
   return (
     <section className="rounded-[28px] border border-white/10 bg-[rgba(8,14,28,0.8)] p-5 shadow-[0_24px_80px_rgba(3,7,18,0.35)]">
       <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Upload animation</div>
-      <div className="mt-2 text-sm text-white/60">Upload a personal VRMA into your library. All of your avatars can use it.</div>
+      <div className="mt-2 text-sm text-white/60">Upload a personal VRMA into your library. All of your avatars can use it, and thinking clips are reserved for the LLM waiting state.</div>
 
       <div className="mt-4 space-y-3">
         <input
@@ -473,6 +473,7 @@ function AnimationUploadCard({ busy, draft, onChange, onSubmit }) {
         >
           <option value="action">Action</option>
           <option value="idle">Idle</option>
+          <option value="thinking">Thinking / waiting</option>
           <option value="expression">Expression</option>
         </select>
         <input

@@ -3,15 +3,19 @@ import FloatingWindow from './FloatingWindow.jsx'
 export default function AnimationPopover({
   idleItems,
   actionItems,
+  thinkingItems,
   expressionItems,
   selectedIdleId,
   selectedActionId,
+  selectedThinkingId,
   selectedExpressionId,
   onIdleSelect,
   onActionSelect,
+  onThinkingSelect,
   onExpressionSelect,
   onSetIdle,
   onPlayAction,
+  onPlayThinking,
   onPlayExpression,
 }) {
   return (
@@ -38,6 +42,14 @@ export default function AnimationPopover({
           onChange={onActionSelect}
           onAction={onPlayAction}
           actionLabel="Play action"
+        />
+        <AnimationSection
+          title="Thinking"
+          items={thinkingItems}
+          value={selectedThinkingId}
+          onChange={onThinkingSelect}
+          onAction={onPlayThinking}
+          actionLabel="Preview waiting"
         />
         <AnimationSection
           title="Expression"

@@ -116,7 +116,7 @@ class SharedAssetCatalog
             $absolutePath = $fileInfo->getPathname();
             $relativePath = str_replace($rootPath.DIRECTORY_SEPARATOR, '', $absolutePath);
             $groupPath = trim(str_replace(DIRECTORY_SEPARATOR, ' / ', dirname($relativePath)), '. /');
-            $items[] = [
+            $baseItem = [
                 'id' => sprintf('%s:%s', $catalog, str_replace(DIRECTORY_SEPARATOR, '/', $relativePath)),
                 'catalog' => $catalog,
                 'type' => $entry['type'],
@@ -132,7 +132,9 @@ class SharedAssetCatalog
                     rawurlencode($catalog),
                     rawurlencode(str_replace(DIRECTORY_SEPARATOR, '/', $relativePath)),
                 ),
-            ] + ($manifestEntries[str_replace(DIRECTORY_SEPARATOR, '/', $relativePath)] ?? $manifestEntries[basename($relativePath)] ?? []);
+            ];
+            $manifestItem = $manifestEntries[str_replace(DIRECTORY_SEPARATOR, '/', $relativePath)] ?? $manifestEntries[basename($relativePath)] ?? [];
+            $items[] = array_replace($baseItem, is_array($manifestItem) ? $manifestItem : []);
         }
 
         usort($items, static function (array $left, array $right): int {

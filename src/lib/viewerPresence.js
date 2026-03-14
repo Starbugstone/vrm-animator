@@ -1,6 +1,7 @@
 const THINKING_MOVEMENT_HINTS = [
   'thinking',
   'think',
+  'thoughtful',
   'ponder',
   'pondering',
   'curious',
@@ -40,7 +41,9 @@ export function findThinkingMovementAsset(items) {
         }
       }
 
-      if (item?.kind === 'action') {
+      if (item?.kind === 'thinking') {
+        score += 18
+      } else if (item?.kind === 'action') {
         score += 3
       } else if (item?.kind === 'idle') {
         score += 1

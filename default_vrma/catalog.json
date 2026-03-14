@@ -17,6 +17,20 @@
       "emotionTags": ["playful", "cheeky", "happy"]
     },
     {
+      "file": "Holding Head.vrma",
+      "label": "Holding Head",
+      "description": "Head-holding gesture for overwhelmed, reflective, or self-conscious moments.",
+      "keywords": ["gesture", "holding-head", "reflective", "overwhelmed", "pondering"],
+      "emotionTags": ["thinking", "concerned", "uneasy"]
+    },
+    {
+      "file": "Jump.vrma",
+      "label": "Jump",
+      "description": "Quick hop for excited, surprised, or emphatic moments.",
+      "keywords": ["jump", "excited", "emphasis"],
+      "emotionTags": ["excited", "happy", "surprised"]
+    },
+    {
       "file": "Hand-on-hip.vrma",
       "label": "Hand on Hip",
       "description": "Confident stance for bold or self-assured responses.",
@@ -29,6 +43,13 @@
       "description": "Soft greeting motion for friendly introductions.",
       "keywords": ["greeting", "wave", "welcome"],
       "emotionTags": ["happy", "warm", "friendly"]
+    },
+    {
+      "file": "Macarena Dance.vrma",
+      "label": "Macarena Dance",
+      "description": "Playful dance routine for goofy celebratory replies.",
+      "keywords": ["dance", "celebrate", "goofy"],
+      "emotionTags": ["playful", "happy", "excited"]
     },
     {
       "file": "Spin.vrma",
@@ -45,6 +66,13 @@
       "emotionTags": ["neutral", "calm", "friendly"]
     },
     {
+      "file": "Taunt.vrma",
+      "label": "Taunt",
+      "description": "Bold teasing gesture for cheeky or challenging moments.",
+      "keywords": ["taunt", "teasing", "bold"],
+      "emotionTags": ["playful", "confident", "cheeky"]
+    },
+    {
       "file": "Victory-fingers.vrma",
       "label": "Victory Fingers",
       "description": "Celebration pose for successful or positive replies.",
@@ -58,6 +86,30 @@
       "description": "Gentle breathing loop for calm waiting moments.",
       "keywords": ["idle", "breathing", "calm", "waiting"],
       "emotionTags": ["neutral", "calm"]
+    },
+    {
+      "file": "idle/Dwarf Idle (1).vrma",
+      "label": "Dwarf Idle Alt",
+      "kind": "idle",
+      "description": "Alternate grounded idle loop for steady resting presence.",
+      "keywords": ["idle", "grounded", "steady", "waiting"],
+      "emotionTags": ["neutral", "calm", "steady"]
+    },
+    {
+      "file": "idle/Dwarf Idle.vrma",
+      "label": "Dwarf Idle",
+      "kind": "idle",
+      "description": "Grounded sturdy idle stance for heavier resting beats.",
+      "keywords": ["idle", "grounded", "sturdy", "calm"],
+      "emotionTags": ["neutral", "calm"]
+    },
+    {
+      "file": "idle/Happy Idle.vrma",
+      "label": "Happy Idle",
+      "kind": "idle",
+      "description": "Upbeat idle loop for warm and positive background presence.",
+      "keywords": ["idle", "happy", "warm", "upbeat"],
+      "emotionTags": ["happy", "warm", "playful"]
     },
     {
       "file": "idle/Hand-on-hip.vrma",
@@ -100,12 +152,44 @@
       "emotionTags": ["neutral", "confident"]
     },
     {
+      "file": "idle/Yawn.vrma",
+      "label": "Yawn",
+      "kind": "idle",
+      "description": "Sleepy idle reaction for tired or low-energy beats.",
+      "keywords": ["idle", "yawn", "sleepy", "tired"],
+      "emotionTags": ["sleepy", "calm"]
+    },
+    {
       "file": "idle/idle_main.vrma",
       "label": "Idle Main",
       "kind": "idle",
       "description": "Primary idle loop for extended background presence.",
       "keywords": ["idle", "main", "default", "background"],
       "emotionTags": ["neutral", "calm"]
+    },
+    {
+      "file": "thinking/Thankful.vrma",
+      "label": "Thankful",
+      "kind": "thinking",
+      "description": "Warm reflective waiting motion with a softer appreciative feel.",
+      "keywords": ["thinking", "thankful", "warm", "waiting"],
+      "emotionTags": ["thinking", "happy", "warm"]
+    },
+    {
+      "file": "thinking/Thinking.vrma",
+      "label": "Thinking",
+      "kind": "thinking",
+      "description": "Primary reflective waiting loop for the pre-response state.",
+      "keywords": ["thinking", "reflective", "pondering", "waiting"],
+      "emotionTags": ["thinking", "calm"]
+    },
+    {
+      "file": "thinking/Thoughtful Head Nod.vrma",
+      "label": "Thoughtful Head Nod",
+      "kind": "thinking",
+      "description": "Subtle nodding wait motion for thoughtful processing moments.",
+      "keywords": ["thinking", "thoughtful", "nod", "waiting"],
+      "emotionTags": ["thinking", "calm", "curious"]
     }
   ]
 }

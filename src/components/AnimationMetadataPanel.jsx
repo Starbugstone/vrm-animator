@@ -6,6 +6,7 @@ function toKeywordString(keywords) {
 
 export default function AnimationMetadataPanel({ animation, busy, onSave }) {
   const [draft, setDraft] = useState({
+    kind: 'action',
     name: '',
     description: '',
     keywords: '',
@@ -14,6 +15,7 @@ export default function AnimationMetadataPanel({ animation, busy, onSave }) {
 
   useEffect(() => {
     setDraft({
+      kind: animation?.kind || 'action',
       name: animation?.name || '',
       description: animation?.description || '',
       keywords: toKeywordString(animation?.keywords),
@@ -60,6 +62,7 @@ export default function AnimationMetadataPanel({ animation, busy, onSave }) {
           type="button"
           onClick={() =>
             onSave({
+              kind: draft.kind,
               name: draft.name,
               description: draft.description,
               keywords: keywordPreview,
@@ -74,6 +77,16 @@ export default function AnimationMetadataPanel({ animation, busy, onSave }) {
       </div>
 
       <div className="space-y-3">
+        <select
+          value={draft.kind}
+          onChange={(event) => setDraft((current) => ({ ...current, kind: event.target.value }))}
+          className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
+        >
+          <option value="action">Action</option>
+          <option value="idle">Idle</option>
+          <option value="thinking">Thinking / waiting</option>
+          <option value="expression">Expression</option>
+        </select>
         <input
           value={draft.name}
           onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}

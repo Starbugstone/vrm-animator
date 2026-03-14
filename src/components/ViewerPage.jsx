@@ -7,8 +7,12 @@ import {
   createPersistedAnimationAsset,
   createPersistedAvatarAsset,
 } from '../lib/viewerAssets.js'
-import { pickExpressionAsset, pickSilentExpressionAsset } from '../lib/viewerExpressions.js'
-import { findThinkingMovementAsset } from '../lib/viewerPresence.js'
+import { isExpressionAssetAllowed, pickExpressionAsset, pickThinkingExpressionAsset } from '../lib/viewerExpressions.js'
+import {
+  pickThinkingInjectionAsset,
+  sampleThinkingInjectionDelay,
+} from '../lib/viewerThinking.js'
+import { takeSpeakableSpeechChunk } from '../lib/viewerSpeech.js'
 
 const VIEWER_OPTION_LABELS = {
   autoBlink: 'Auto blink',
@@ -18,7 +22,6 @@ const VIEWER_OPTION_LABELS = {
 const SPEECH_LANGUAGE_FALLBACK = 'en-US'
 const SPEECH_OVERLAY_RELEASE_MS = 220
 const SPEECH_BOUNDARY_RELEASE_MS = 180
-
 const LANGUAGE_PROFILES = [
   {
     code: 'en',
@@ -214,6 +217,7 @@ export default function ViewerPage({ workspace }) {
   const {
     loadFile,
     setIdleAnimation,
+    resumeIdleMotion,
     setIdleVariantPool,
     playAnimationFile,
     playOverlayAnimationFile,
@@ -230,11 +234,13 @@ export default function ViewerPage({ workspace }) {
   const [selectedViewerAvatarId, setSelectedViewerAvatarId] = useState('')
   const [selectedIdleId, setSelectedIdleId] = useState('')
   const [selectedActionId, setSelectedActionId] = useState('')
+  const [selectedThinkingId, setSelectedThinkingId] = useState('')
   const [selectedExpressionId, setSelectedExpressionId] = useState('')
   const [activeConversationId, setActiveConversationId] = useState(null)
   const [draftMessage, setDraftMessage] = useState('')
   const [notice, setNotice] = useState('')
   const [isChatBusy, setIsChatBusy] = useState(false)
+  const [chatPhase, setChatPhase] = useState('idle')
   const [isContextLoading, setIsContextLoading] = useState(false)
   const [loadedAvatarName, setLoadedAvatarName] = useState('No avatar loaded')
   const [pendingMessages, setPendingMessages] = useState([])
@@ -245,7 +251,13 @@ export default function ViewerPage({ workspace }) {
   const speechStopTimeoutRef = useRef(null)
   const speechMonitorIntervalRef = useRef(null)
   const lastSpeechActivityAtRef = useRef(0)
+  const streamingSpeechBufferRef = useRef('')
+  const streamingSpeechCursorRef = useRef(0)
+  const streamingSpeechSamplesRef = useRef([])
+  const hasVisibleAssistantTextRef = useRef(false)
   const thinkingRuntimeRef = useRef(false)
+  const thinkingCycleTimeoutRef = useRef(null)
+  const lastThinkingAssetIdRef = useRef('')
 
   const personalAvatarItems = useMemo(
     () => avatars.map((entry) => ({ ...createPersistedAvatarAsset(entry, workspace.token), scope: 'personal' })),
@@ -316,6 +328,10 @@ export default function ViewerPage({ workspace }) {
     () => sharedAnimationGroups.action.map((entry) => normalizeSharedAsset(entry, 'action')),
     [sharedAnimationGroups.action],
   )
+  const sharedThinkingItems = useMemo(
+    () => sharedAnimationGroups.thinking.map((entry) => normalizeSharedAsset(entry, 'thinking')),
+    [sharedAnimationGroups.thinking],
+  )
   const sharedExpressionItems = useMemo(
     () => sharedAnimationGroups.expression.map((entry) => normalizeSharedAsset(entry, 'expression')),
     [sharedAnimationGroups.expression],
@@ -328,18 +344,27 @@ export default function ViewerPage({ workspace }) {
     () => [...animationItems.filter((entry) => entry.kind === 'action'), ...sharedActionItems],
     [animationItems, sharedActionItems],
   )
+  const thinkingItems = useMemo(
+    () => [...animationItems.filter((entry) => entry.kind === 'thinking'), ...sharedThinkingItems],
+    [animationItems, sharedThinkingItems],
+  )
   const expressionItems = useMemo(
     () => [...animationItems.filter((entry) => entry.kind === 'expression'), ...sharedExpressionItems],
     [animationItems, sharedExpressionItems],
   )
   const selectedIdle = useMemo(() => idleItems.find((entry) => entry.id === selectedIdleId) || idleItems[0] || null, [idleItems, selectedIdleId])
   const selectedAction = useMemo(() => actionItems.find((entry) => entry.id === selectedActionId) || actionItems[0] || null, [actionItems, selectedActionId])
+  const selectedThinking = useMemo(() => thinkingItems.find((entry) => entry.id === selectedThinkingId) || thinkingItems[0] || null, [thinkingItems, selectedThinkingId])
   const selectedExpression = useMemo(() => expressionItems.find((entry) => entry.id === selectedExpressionId) || expressionItems[0] || null, [expressionItems, selectedExpressionId])
   const conversations = selectedAvatar ? conversationsByAvatar[selectedAvatar.id] || [] : []
   const messages = activeConversationId ? messagesByConversation[activeConversationId] || [] : []
   const liveMessages = useMemo(
     () => (pendingMessages.length > 0 ? [...messages, ...pendingMessages] : messages),
     [messages, pendingMessages],
+  )
+  const displayMessages = useMemo(
+    () => [...liveMessages].reverse(),
+    [liveMessages],
   )
   const hasConnectedAvatar = Boolean(selectedAvatar)
   const hasConnectedLlm = Boolean(effectivePersona?.llmCredentialId)
@@ -350,6 +375,13 @@ export default function ViewerPage({ workspace }) {
       setActiveConversationId(null)
       setPendingMessages([])
       setIsContextLoading(false)
+      setChatPhase('idle')
+      hasVisibleAssistantTextRef.current = false
+      thinkingRuntimeRef.current = false
+      if (thinkingCycleTimeoutRef.current) {
+        window.clearTimeout(thinkingCycleTimeoutRef.current)
+        thinkingCycleTimeoutRef.current = null
+      }
       activeEmotionRef.current = 'neutral'
       if (speechStopTimeoutRef.current) {
         window.clearTimeout(speechStopTimeoutRef.current)
@@ -399,6 +431,13 @@ export default function ViewerPage({ workspace }) {
     }
   }, [ensureConversationMessages, ensureConversations, ensurePersonas, selectedAvatar, stopOverlayAnimation, workspace.token])
 
+  useEffect(() => () => {
+    if (thinkingCycleTimeoutRef.current) {
+      window.clearTimeout(thinkingCycleTimeoutRef.current)
+      thinkingCycleTimeoutRef.current = null
+    }
+  }, [])
+
   useEffect(() => {
     if (idleItems.length === 0) {
       setSelectedIdleId('')
@@ -412,12 +451,18 @@ export default function ViewerPage({ workspace }) {
       setSelectedActionId(actionItems[0].id)
     }
 
+    if (thinkingItems.length === 0) {
+      setSelectedThinkingId('')
+    } else if (!thinkingItems.some((entry) => entry.id === selectedThinkingId)) {
+      setSelectedThinkingId(thinkingItems[0].id)
+    }
+
     if (expressionItems.length === 0) {
       setSelectedExpressionId('')
     } else if (!expressionItems.some((entry) => entry.id === selectedExpressionId)) {
       setSelectedExpressionId(expressionItems[0].id)
     }
-  }, [actionItems, expressionItems, idleItems, selectedActionId, selectedExpressionId, selectedIdleId])
+  }, [actionItems, expressionItems, idleItems, selectedActionId, selectedExpressionId, selectedIdleId, selectedThinkingId, thinkingItems])
 
   useEffect(() => {
     if (!selectedAvatarAsset) return
@@ -557,6 +602,10 @@ export default function ViewerPage({ workspace }) {
   const resetSpeechRuntime = useCallback(() => {
     speechSessionIdRef.current += 1
     lastSpeechActivityAtRef.current = 0
+    streamingSpeechBufferRef.current = ''
+    streamingSpeechCursorRef.current = 0
+    streamingSpeechSamplesRef.current = []
+    hasVisibleAssistantTextRef.current = false
 
     if (speechStopTimeoutRef.current) {
       window.clearTimeout(speechStopTimeoutRef.current)
@@ -570,7 +619,7 @@ export default function ViewerPage({ workspace }) {
 
     activeEmotionRef.current = 'neutral'
     speechSynthesisRef.current?.cancel?.()
-    stopOverlayAnimation({ immediate: false })
+    stopOverlayAnimation({ immediate: true })
   }, [stopOverlayAnimation])
 
   const playEmotionCue = useCallback(async (emotion, options = {}) => {
@@ -593,7 +642,10 @@ export default function ViewerPage({ workspace }) {
   }, [expressionItems, playOverlayAnimationFile, stopOverlayAnimation])
 
   const playEmotionCueByAssetId = useCallback(async (assetId, fallbackEmotion = '', options = {}) => {
-    const asset = findAssetById(expressionItems, assetId) || pickExpressionAsset(expressionItems, fallbackEmotion, options)
+    const directAsset = findAssetById(expressionItems, assetId)
+    const asset = directAsset && isExpressionAssetAllowed(directAsset, options)
+      ? directAsset
+      : pickExpressionAsset(expressionItems, fallbackEmotion, options)
     if (!asset) {
       if (options.stopOnMiss) {
         stopOverlayAnimation()
@@ -611,15 +663,82 @@ export default function ViewerPage({ workspace }) {
     })
   }, [expressionItems, playOverlayAnimationFile, stopOverlayAnimation])
 
+  const pickThinkingMovementAsset = useCallback(() => {
+    const next = pickThinkingInjectionAsset({
+      thinkingItems,
+      idleItems,
+      actionItems,
+      lastAssetId: lastThinkingAssetIdRef.current,
+    })
+
+    if (next) {
+      lastThinkingAssetIdRef.current = next.id
+    }
+
+    return next
+  }, [actionItems, idleItems, thinkingItems])
+
+  const clearThinkingCycleTimer = useCallback(() => {
+    if (thinkingCycleTimeoutRef.current) {
+      window.clearTimeout(thinkingCycleTimeoutRef.current)
+      thinkingCycleTimeoutRef.current = null
+    }
+  }, [])
+
+  const playThinkingMovementAsset = useCallback(async (asset) => {
+    if (!asset) {
+      return
+    }
+
+    const file = await assetToFile(asset)
+    if (!file || !thinkingRuntimeRef.current) {
+      return
+    }
+
+    playAnimationFile(file, asset.label, {
+      cacheKey: `${asset.id}:thinking`,
+      kind: 'thinking',
+      loop: false,
+      returnToDefault: true,
+      stripExpressionTracks: true,
+    })
+  }, [playAnimationFile])
+
+  const queueNextThinkingInjection = useCallback(() => {
+    clearThinkingCycleTimer()
+    if (!thinkingRuntimeRef.current || thinkingItems.length === 0 || typeof window === 'undefined') {
+      return
+    }
+
+    thinkingCycleTimeoutRef.current = window.setTimeout(async () => {
+      if (!thinkingRuntimeRef.current) {
+        return
+      }
+
+      const nextAsset = pickThinkingMovementAsset()
+      if (!nextAsset) {
+        return
+      }
+
+      await playThinkingMovementAsset(nextAsset)
+
+      if (thinkingRuntimeRef.current) {
+        queueNextThinkingInjection()
+      }
+    }, sampleThinkingInjectionDelay())
+  }, [clearThinkingCycleTimer, pickThinkingMovementAsset, playThinkingMovementAsset, thinkingItems.length])
+
   const startThinkingPresence = useCallback(async () => {
     if (thinkingRuntimeRef.current) {
       return
     }
 
     thinkingRuntimeRef.current = true
+    clearThinkingCycleTimer()
     activeEmotionRef.current = 'thinking'
+    stopOverlayAnimation({ immediate: true })
 
-    const silentExpression = pickSilentExpressionAsset(expressionItems, ['thinking', 'calm', 'neutral'], {
+    const silentExpression = pickThinkingExpressionAsset(expressionItems, {
       excludedChannels: ['mouth'],
     })
     if (silentExpression) {
@@ -633,21 +752,15 @@ export default function ViewerPage({ workspace }) {
       }
     }
 
-    const asset = findThinkingMovementAsset([...actionItems, ...idleItems])
-    if (!asset) {
-      return
+    resumeIdleMotion()
+
+    const asset = pickThinkingMovementAsset()
+    if (asset) {
+      await playThinkingMovementAsset(asset)
     }
 
-    const file = await assetToFile(asset)
-    if (!file || !thinkingRuntimeRef.current) {
-      return
-    }
-
-    playAnimationFile(file, asset.label, {
-      cacheKey: `${asset.id}:thinking`,
-      kind: asset.kind || 'action',
-    })
-  }, [actionItems, expressionItems, idleItems, playAnimationFile, playOverlayAnimationFile])
+    queueNextThinkingInjection()
+  }, [clearThinkingCycleTimer, expressionItems, pickThinkingMovementAsset, playOverlayAnimationFile, playThinkingMovementAsset, queueNextThinkingInjection, resumeIdleMotion])
 
   const stopThinkingPresence = useCallback(() => {
     if (!thinkingRuntimeRef.current) {
@@ -655,33 +768,25 @@ export default function ViewerPage({ workspace }) {
     }
 
     thinkingRuntimeRef.current = false
+    clearThinkingCycleTimer()
     if (activeEmotionRef.current === 'thinking') {
       activeEmotionRef.current = 'neutral'
     }
     stopOverlayAnimation({ immediate: false })
-  }, [stopOverlayAnimation])
+    resumeIdleMotion()
+  }, [clearThinkingCycleTimer, resumeIdleMotion, stopOverlayAnimation])
 
-  const speakAssistantReply = useCallback(async (text, emotion, languageSamples = []) => {
+  const queueSpeechUtterance = useCallback((text, emotion, languageSamples = []) => {
     const speechSynthesis = speechSynthesisRef.current
     const cleanedText = String(text || '').trim()
     if (!speechSynthesis || !cleanedText || typeof window === 'undefined' || !('SpeechSynthesisUtterance' in window)) {
-      return
+      return false
+    }
+    if (!speechSessionIdRef.current) {
+      speechSessionIdRef.current = 1
     }
 
-    if (speechStopTimeoutRef.current) {
-      window.clearTimeout(speechStopTimeoutRef.current)
-      speechStopTimeoutRef.current = null
-    }
-    if (speechMonitorIntervalRef.current) {
-      window.clearInterval(speechMonitorIntervalRef.current)
-      speechMonitorIntervalRef.current = null
-    }
-
-    speechSessionIdRef.current += 1
     const sessionId = speechSessionIdRef.current
-    lastSpeechActivityAtRef.current = 0
-    stopOverlayAnimation({ immediate: true })
-    speechSynthesis.cancel()
     const utterance = new window.SpeechSynthesisUtterance(cleanedText)
     const locale = selectedAvatar?.speechLanguage && selectedAvatar.speechLanguage !== 'auto'
       ? selectedAvatar.speechLanguage
@@ -740,6 +845,15 @@ export default function ViewerPage({ workspace }) {
     utterance.onstart = () => {
       if (sessionId !== speechSessionIdRef.current) {
         return
+      }
+
+      if (speechStopTimeoutRef.current) {
+        window.clearTimeout(speechStopTimeoutRef.current)
+        speechStopTimeoutRef.current = null
+      }
+      if (speechMonitorIntervalRef.current) {
+        window.clearInterval(speechMonitorIntervalRef.current)
+        speechMonitorIntervalRef.current = null
       }
 
       markSpeechActivity()
@@ -801,7 +915,31 @@ export default function ViewerPage({ workspace }) {
       scheduleSpeechOverlayStop()
     }
     speechSynthesis.speak(utterance)
+    return true
   }, [playEmotionCue, selectedAvatar, stopOverlayAnimation])
+
+  const flushStreamingSpeechBuffer = useCallback((options = {}) => {
+    const final = Boolean(options.final)
+    const emotion = options.emotion || activeEmotionRef.current || 'neutral'
+    const languageSamples = options.languageSamples?.length
+      ? options.languageSamples
+      : streamingSpeechSamplesRef.current
+
+    while (true) {
+      const nextChunk = takeSpeakableSpeechChunk(
+        streamingSpeechBufferRef.current,
+        streamingSpeechCursorRef.current,
+        { final },
+      )
+
+      if (!nextChunk) {
+        return
+      }
+
+      streamingSpeechCursorRef.current = nextChunk.nextIndex
+      queueSpeechUtterance(nextChunk.chunk, emotion, languageSamples)
+    }
+  }, [queueSpeechUtterance])
 
   const appendPendingAssistantData = useCallback((updater) => {
     setPendingMessages((current) => current.map((message) => (
@@ -837,6 +975,19 @@ export default function ViewerPage({ workspace }) {
     playAnimationFile(file, selectedAction.label, { cacheKey: selectedAction.id })
   }, [playAnimationFile, selectedAction])
 
+  const handlePlayThinking = useCallback(async () => {
+    if (!selectedThinking) return
+    const file = await assetToFile(selectedThinking)
+    if (!file) return
+    playAnimationFile(file, selectedThinking.label, {
+      cacheKey: `${selectedThinking.id}:thinking-preview`,
+      kind: 'thinking',
+      loop: true,
+      returnToDefault: false,
+      stripExpressionTracks: true,
+    })
+  }, [playAnimationFile, selectedThinking])
+
   const handlePlayExpression = useCallback(async () => {
     if (!selectedExpression) return
     const file = await assetToFile(selectedExpression)
@@ -853,6 +1004,8 @@ export default function ViewerPage({ workspace }) {
     setIsChatBusy(true)
     setNotice('')
     setDraftMessage('')
+    setChatPhase('waiting')
+    hasVisibleAssistantTextRef.current = false
     setPendingMessages([
       {
         id: `temp-user-${tempBaseId}`,
@@ -870,6 +1023,7 @@ export default function ViewerPage({ workspace }) {
       },
     ])
     resetSpeechRuntime()
+    streamingSpeechSamplesRef.current = [outgoingMessage]
     let receivedAssistantText = false
 
     try {
@@ -889,18 +1043,33 @@ export default function ViewerPage({ workspace }) {
           }
 
           if (event?.phase === 'prepare' || event?.phase === 'provider') {
+            setChatPhase('waiting')
             startThinkingPresence()
             return
           }
 
           if (event?.phase === 'stream') {
-            stopThinkingPresence()
+            setNotice(event?.message || 'Reply started.')
           }
         },
         onTextDelta: (event) => {
           const delta = event?.delta || ''
           if (delta) {
             receivedAssistantText = true
+            const hasVisibleDelta = delta.trim() !== ''
+            if (hasVisibleDelta && !hasVisibleAssistantTextRef.current) {
+              hasVisibleAssistantTextRef.current = true
+              setChatPhase('streaming')
+              stopThinkingPresence()
+            }
+            streamingSpeechBufferRef.current = `${streamingSpeechBufferRef.current}${delta}`
+            if (hasVisibleAssistantTextRef.current) {
+              flushStreamingSpeechBuffer({
+                final: false,
+                emotion: activeEmotionRef.current || 'neutral',
+                languageSamples: [outgoingMessage],
+              })
+            }
           }
           appendPendingAssistantData((message) => ({
             ...message,
@@ -913,6 +1082,7 @@ export default function ViewerPage({ workspace }) {
           const assetId = event?.assetId
 
           if (!value) return
+          if (!hasVisibleAssistantTextRef.current) return
 
           if (cueType === 'emotion') {
             activeEmotionRef.current = value
@@ -920,7 +1090,14 @@ export default function ViewerPage({ workspace }) {
               ...message,
               emotionTags: Array.from(new Set([...(message.emotionTags || []), value])),
             }))
-            playEmotionCueByAssetId(assetId, value, { stopOnMiss: true })
+            playEmotionCueByAssetId(assetId, value, thinkingRuntimeRef.current
+              ? {
+                stopOnMiss: true,
+                preferSpeech: false,
+                allowSpeechFallback: false,
+                excludedChannels: ['mouth'],
+              }
+              : { stopOnMiss: true })
             return
           }
 
@@ -940,6 +1117,7 @@ export default function ViewerPage({ workspace }) {
       })
 
       stopThinkingPresence()
+      setChatPhase('idle')
       setPendingMessages([])
       setActiveConversationId(response.conversation.id)
       const firstDeltaMs = response?.timing?.firstDeltaMs
@@ -950,13 +1128,21 @@ export default function ViewerPage({ workspace }) {
           ? `Reply received via ${providerLabel}${modelLabel}. First text in ${firstDeltaMs} ms.`
           : `Reply received via ${providerLabel}${modelLabel}.`,
       )
-      await speakAssistantReply(
-        response.assistantMessage?.content || '',
-        response.assistantMessage?.emotionTags?.[0] || activeEmotionRef.current || 'neutral',
-        [outgoingMessage],
-      )
+      const completedText = response.assistantMessage?.content || ''
+      if (completedText.trim() !== '') {
+        hasVisibleAssistantTextRef.current = true
+      }
+      if (completedText.length > streamingSpeechBufferRef.current.length) {
+        streamingSpeechBufferRef.current = completedText
+      }
+      flushStreamingSpeechBuffer({
+        final: true,
+        emotion: response.assistantMessage?.emotionTags?.[0] || activeEmotionRef.current || 'neutral',
+        languageSamples: [outgoingMessage],
+      })
     } catch (error) {
       stopThinkingPresence()
+      setChatPhase('idle')
       if (!receivedAssistantText) {
         setPendingMessages([])
         setDraftMessage(outgoingMessage)
@@ -969,6 +1155,7 @@ export default function ViewerPage({ workspace }) {
       )
     } finally {
       stopThinkingPresence()
+      setChatPhase('idle')
       setIsChatBusy(false)
     }
   }, [
@@ -979,9 +1166,9 @@ export default function ViewerPage({ workspace }) {
     playEmotionCue,
     playEmotionCueByAssetId,
     playMovementCueByAssetId,
+    flushStreamingSpeechBuffer,
     resetSpeechRuntime,
     selectedAvatar,
-    speakAssistantReply,
     startThinkingPresence,
     stopThinkingPresence,
     streamChatMessage,
@@ -1039,7 +1226,7 @@ export default function ViewerPage({ workspace }) {
             {notice ? <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-100">{notice}</div> : null}
 
             <div className="mt-4 max-h-[320px] space-y-2 overflow-y-auto rounded-3xl border border-white/10 bg-black/25 p-3">
-              {isChatBusy ? (
+              {chatPhase === 'waiting' ? (
                 <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-3 text-sm text-cyan-100">
                   <span className="inline-flex items-center gap-2">
                     <span className="h-3.5 w-3.5 rounded-full border-2 border-cyan-100/30 border-t-cyan-100 animate-spin" />
@@ -1047,7 +1234,7 @@ export default function ViewerPage({ workspace }) {
                   </span>
                 </div>
               ) : null}
-              {liveMessages.length === 0 ? (
+              {displayMessages.length === 0 ? (
                 <div className="rounded-2xl bg-black/30 px-3 py-3 text-sm text-white/60">
                   {chatDisabled
                     ? !selectedAvatar
@@ -1056,7 +1243,7 @@ export default function ViewerPage({ workspace }) {
                     : 'Start a conversation with the selected avatar.'}
                 </div>
               ) : null}
-              {liveMessages.map((message) => (
+              {displayMessages.map((message) => (
                 <div
                   key={message.id}
                   className={`rounded-2xl px-3 py-3 text-sm ${
@@ -1156,15 +1343,19 @@ export default function ViewerPage({ workspace }) {
             <AnimationPopover
               idleItems={idleItems}
               actionItems={actionItems}
+              thinkingItems={thinkingItems}
               expressionItems={expressionItems}
               selectedIdleId={selectedIdleId}
               selectedActionId={selectedActionId}
+              selectedThinkingId={selectedThinkingId}
               selectedExpressionId={selectedExpressionId}
               onIdleSelect={setSelectedIdleId}
               onActionSelect={setSelectedActionId}
+              onThinkingSelect={setSelectedThinkingId}
               onExpressionSelect={setSelectedExpressionId}
               onSetIdle={() => selectedIdle && assetToFile(selectedIdle).then((file) => file && setIdleAnimation(file, selectedIdle.label, { cacheKey: selectedIdle.id }))}
               onPlayAction={handlePlayAction}
+              onPlayThinking={handlePlayThinking}
               onPlayExpression={handlePlayExpression}
             />
 

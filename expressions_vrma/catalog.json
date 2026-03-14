@@ -55,6 +55,13 @@
       "weight": 3
     },
     {
+      "file": "Smile.vrma",
+      "label": "Smile",
+      "tags": ["smile", "happy", "warm", "friendly", "reaction"],
+      "channels": ["eyes", "face"],
+      "weight": 3
+    },
+    {
       "file": "Sad Talk.vrma",
       "label": "Sad Talk",
       "tags": ["speech", "sad", "melancholy", "downcast"],
@@ -95,6 +102,13 @@
       "tags": ["reaction", "surprised", "startled", "shocked"],
       "channels": ["mouth", "eyes", "face"],
       "weight": 2
+    },
+    {
+      "file": "Wink.vrma",
+      "label": "Wink",
+      "tags": ["wink", "playful", "teasing", "flirty", "reaction"],
+      "channels": ["eyes", "face"],
+      "weight": 3
     }
   ]
 }

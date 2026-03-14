@@ -479,6 +479,7 @@ export default function useWorkspace(token) {
   const sharedAnimationGroups = useMemo(() => ({
     idle: sharedAnimations.filter((entry) => entry.kind === 'idle'),
     action: sharedAnimations.filter((entry) => entry.kind === 'action'),
+    thinking: sharedAnimations.filter((entry) => entry.kind === 'thinking'),
     expression: sharedAnimations.filter((entry) => entry.kind === 'expression'),
   }), [sharedAnimations])
 

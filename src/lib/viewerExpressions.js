@@ -9,6 +9,8 @@ const CANONICAL_EMOTIONS = new Set([
   'surprised',
   'thinking',
   'calm',
+  'smile',
+  'wink',
 ])
 
 function normalizeEntries(values) {
@@ -31,6 +33,23 @@ function collectAssetChannels(asset) {
   return normalizeEntries(asset?.channels)
 }
 
+export function isExpressionAssetAllowed(asset, options = {}) {
+  const channels = collectAssetChannels(asset)
+  const blockedChannels = normalizeEntries(options.excludedChannels)
+  const tags = collectAssetTags(asset)
+  const hasSpeechTag = tags.includes('speech') || tags.includes('fallback')
+
+  if (blockedChannels.some((channel) => channels.includes(channel))) {
+    return false
+  }
+
+  if (options.preferSpeech === false && hasSpeechTag && options.allowSpeechFallback === false) {
+    return false
+  }
+
+  return true
+}
+
 function scoreExpressionAssetForEmotion(
   asset,
   emotion,
@@ -45,7 +64,11 @@ function scoreExpressionAssetForEmotion(
   const blockedChannels = normalizeEntries(excludedChannels)
   const hasSpeechTag = tags.includes('speech') || tags.includes('fallback')
 
-  if (blockedChannels.some((channel) => channels.includes(channel))) {
+  if (!isExpressionAssetAllowed(asset, {
+    preferSpeech,
+    allowSpeechFallback,
+    excludedChannels,
+  })) {
     return 0
   }
 
@@ -82,6 +105,20 @@ export function pickExpressionAsset(items, emotion, options = {}) {
     .sort((left, right) => right.score - left.score)
 
   return ranked[0]?.item || null
+}
+
+export function pickThinkingExpressionAsset(items, options = {}) {
+  const explicitThinkingItems = items.filter((item) => collectAssetTags(item).includes('thinking'))
+
+  if (explicitThinkingItems.length === 0) {
+    return null
+  }
+
+  return pickExpressionAsset(explicitThinkingItems, 'thinking', {
+    ...options,
+    preferSpeech: false,
+    allowSpeechFallback: false,
+  })
 }
 
 export function pickSilentExpressionAsset(items, emotions = ['thinking', 'calm', 'neutral'], options = {}) {

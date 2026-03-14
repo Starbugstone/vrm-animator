@@ -19,7 +19,7 @@ use Symfony\Component\Routing\Attribute\Route;
 class AnimationAssetController extends AbstractController
 {
     private const MAX_ANIMATION_SIZE_BYTES = 50 * 1024 * 1024;
-    private const ALLOWED_KINDS = ['action', 'idle', 'expression'];
+    private const ALLOWED_KINDS = ['action', 'idle', 'thinking', 'expression'];
 
     #[Route('/api/animations/upload', name: 'api_animation_upload', methods: ['POST'])]
     public function upload(

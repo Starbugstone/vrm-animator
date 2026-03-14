@@ -50,6 +50,21 @@ const IDLE_VARIANT_INTERVAL_MAX_SECONDS = 24
 const MOTION_LAYER_BASE = 'base'
 const MOTION_LAYER_OVERLAY = 'overlay'
 
+function isAmbientMotionKind(kind) {
+  return kind === 'idle' || kind === 'thinking'
+}
+
+function formatBaseMotionStatus(kind, label) {
+  if (kind === 'idle') {
+    return `Idle: ${label}`
+  }
+  if (kind === 'thinking') {
+    return `Thinking: ${label}`
+  }
+
+  return `Playing action: ${label}`
+}
+
 function buildMotionCacheKey(file, label = 'VRMA action') {
   if (!file) return label
   return `${label}::${file.name || 'unnamed'}::${file.size || 0}::${file.lastModified || 0}`
@@ -306,7 +321,9 @@ export default function useHologramViewer(canvasRef) {
 
     const updateMotionStatus = () => {
       if (activeOverlayMotion && activeBaseMotion) {
-        const prefix = activeBaseMotion.kind === 'idle' ? 'Idle + mouth' : 'Playing action + mouth'
+        const prefix = isAmbientMotionKind(activeBaseMotion.kind)
+          ? `${activeBaseMotion.kind === 'thinking' ? 'Thinking' : 'Idle'} + mouth`
+          : 'Playing action + mouth'
         setViewerStatus(`${prefix}: ${activeBaseMotion.label} + ${activeOverlayMotion.label}`)
         return
       }
@@ -317,7 +334,7 @@ export default function useHologramViewer(canvasRef) {
       }
 
       if (activeBaseMotion) {
-        setViewerStatus(`${activeBaseMotion.kind === 'idle' ? 'Idle' : 'Playing action'}: ${activeBaseMotion.label}`)
+        setViewerStatus(formatBaseMotionStatus(activeBaseMotion.kind, activeBaseMotion.label))
         return
       }
 
@@ -387,7 +404,7 @@ export default function useHologramViewer(canvasRef) {
 
     const resolveBlendDuration = (fromMotion, toMotion) => {
       const preferred =
-        fromMotion?.kind === 'idle' && toMotion?.kind === 'idle'
+        isAmbientMotionKind(fromMotion?.kind) && isAmbientMotionKind(toMotion?.kind)
           ? DEFAULT_IDLE_BLEND_SECONDS
           : DEFAULT_ACTION_BLEND_SECONDS
       const fromDuration = Math.max(MIN_BLEND_SECONDS, fromMotion?.duration || preferred)
@@ -415,6 +432,27 @@ export default function useHologramViewer(canvasRef) {
       }
 
       return new THREE.AnimationClip(`${clip.name || 'expression-overlay'}:expressions`, clip.duration, expressionTracks)
+    }
+
+    const createBodyOnlyClip = (clip) => {
+      const expressionManager = currentVrm?.expressionManager
+      if (!clip || !expressionManager) return clip
+
+      const expressionTrackNames = new Set(
+        Object.keys(expressionManager.expressionMap || {})
+          .map((expressionName) => expressionManager.getExpressionTrackName?.(expressionName))
+          .filter(Boolean),
+      )
+
+      if (expressionTrackNames.size === 0) {
+        return clip
+      }
+
+      const bodyTracks = clip.tracks
+        .filter((track) => !expressionTrackNames.has(track.name))
+        .map((track) => track.clone())
+
+      return new THREE.AnimationClip(`${clip.name || 'body-motion'}:body`, clip.duration, bodyTracks)
     }
 
     const loadMotionClip = (motion) => {
@@ -449,7 +487,11 @@ export default function useHologramViewer(canvasRef) {
 
             try {
               const sourceClip = createVRMAnimationClip(vrmAnimation, currentVrm)
-              const clip = motion.expressionOnly ? createExpressionOnlyClip(sourceClip) : sourceClip
+              const clip = motion.expressionOnly
+                ? createExpressionOnlyClip(sourceClip)
+                : motion.stripExpressionTracks
+                  ? createBodyOnlyClip(sourceClip)
+                  : sourceClip
               if (!clip) {
                 reject(new Error('Expression clip has no supported facial tracks'))
                 return
@@ -603,7 +645,7 @@ export default function useHologramViewer(canvasRef) {
       const loadingLabel =
         layer === MOTION_LAYER_OVERLAY
           ? `Loading mouth: ${motion.label}`
-          : `${motion.kind === 'idle' ? 'Loading idle' : 'Loading action'}: ${motion.label}`
+          : `${motion.kind === 'thinking' ? 'Loading thinking' : motion.kind === 'idle' ? 'Loading idle' : 'Loading action'}: ${motion.label}`
 
       setViewerStatus(loadingLabel)
 
@@ -626,9 +668,11 @@ export default function useHologramViewer(canvasRef) {
           setViewerStatus(
             layer === MOTION_LAYER_OVERLAY
               ? 'Mouth load failed'
-              : motion.kind === 'idle'
-                ? 'Idle load failed'
-                : 'Action load failed',
+              : motion.kind === 'thinking'
+                ? 'Thinking load failed'
+                : motion.kind === 'idle'
+                  ? 'Idle load failed'
+                  : 'Action load failed',
           )
         })
 
@@ -946,11 +990,24 @@ export default function useHologramViewer(canvasRef) {
         return true
       }
 
-      if (playbackMode !== 'motion' || !activeBaseMotion || activeBaseMotion.kind === 'idle') {
+      if (playbackMode !== 'motion' || !activeBaseMotion || isAmbientMotionKind(activeBaseMotion.kind)) {
         return requestMotion(nextIdleMotion)
       }
 
       return true
+    }
+
+    const resumeIdleMotion = () => {
+      if (!defaultIdleMotion?.file) {
+        return false
+      }
+
+      return requestMotion({
+        ...defaultIdleMotion,
+        kind: 'idle',
+        loop: true,
+        returnToDefault: false,
+      })
     }
 
     const setIdleVariantPool = (motions) => {
@@ -984,6 +1041,7 @@ export default function useHologramViewer(canvasRef) {
         layer: options.layer || MOTION_LAYER_BASE,
         cacheKey: options.cacheKey || buildMotionCacheKey(file, label),
         loop: options.loop ?? false,
+        stripExpressionTracks: Boolean(options.stripExpressionTracks),
         returnToDefault: options.layer === MOTION_LAYER_OVERLAY ? false : (options.returnToDefault ?? true),
       })
     }
@@ -1252,6 +1310,7 @@ export default function useHologramViewer(canvasRef) {
     internalsRef.current = {
       loadFile: loadAvatarFromFile,
       setIdleAnimation,
+      resumeIdleMotion,
       setIdleVariantPool,
       playAnimationFile,
       playOverlayAnimationFile,
@@ -1322,6 +1381,10 @@ export default function useHologramViewer(canvasRef) {
     return internalsRef.current?.setIdleAnimation(file, label, options) ?? false
   }, [])
 
+  const resumeIdleMotion = useCallback(() => {
+    return internalsRef.current?.resumeIdleMotion?.() ?? false
+  }, [])
+
   const setIdleVariantPool = useCallback((motions) => {
     return internalsRef.current?.setIdleVariantPool(motions) ?? 0
   }, [])
@@ -1353,6 +1416,7 @@ export default function useHologramViewer(canvasRef) {
   return {
     loadFile,
     setIdleAnimation,
+    resumeIdleMotion,
     setIdleVariantPool,
     playAnimationFile,
     playOverlayAnimationFile,
