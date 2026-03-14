@@ -4,14 +4,16 @@ export function listLlmProviders(token) {
   return apiRequest('/api/llm/providers', { token }).then((data) => data.providers || [])
 }
 
-export function listOpenRouterModels(token, options = {}) {
+export function listProviderModels(token, provider, options = {}) {
   const params = new URLSearchParams()
   if (options.search) params.set('search', options.search)
-  if (options.billing) params.set('billing', options.billing)
+  if (provider === 'openrouter') {
+    params.set('billing', options.billing || 'free')
+  }
 
   const query = params.toString()
 
-  return apiRequest(`/api/llm/providers/openrouter/models${query ? `?${query}` : ''}`, { token })
+  return apiRequest(`/api/llm/providers/${provider}/models${query ? `?${query}` : ''}`, { token })
     .then((data) => data.models || [])
 }
 

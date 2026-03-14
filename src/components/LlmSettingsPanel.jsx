@@ -6,7 +6,30 @@ const EMPTY_DRAFT = {
   provider: 'openrouter',
   secret: '',
   defaultModel: '',
+  providerOptions: {},
   isActive: true,
+}
+
+function getDefaultProviderOptions(provider) {
+  if (provider === 'glm') {
+    return {
+      endpointMode: 'standard',
+    }
+  }
+
+  return {}
+}
+
+function formatProviderSummary(credential, providerLabelMap) {
+  const providerLabel = providerLabelMap.get(credential.provider) || credential.provider
+
+  if (credential.provider === 'glm') {
+    return credential.providerOptions?.endpointMode === 'coding'
+      ? 'GLM | Coding subscription'
+      : 'GLM | Standard API'
+  }
+
+  return providerLabel
 }
 
 function formatPricing(pricing) {
@@ -22,8 +45,25 @@ function mapCredentialToDraft(credential) {
     provider: credential.provider,
     secret: '',
     defaultModel: credential.defaultModel || '',
+    providerOptions: credential.providerOptions || getDefaultProviderOptions(credential.provider),
     isActive: Boolean(credential.isActive),
   }
+}
+
+function getSecretInputPlaceholder(draft, selectedCredential, providerChanged) {
+  if (!draft.id) {
+    return 'Paste the API key from your provider account'
+  }
+
+  if (providerChanged) {
+    return 'Enter a new API key because the provider changed'
+  }
+
+  if (selectedCredential && selectedCredential.secretReadable === false) {
+    return 'Enter the API key again to repair this saved connection'
+  }
+
+  return 'Leave blank to keep the current key'
 }
 
 export default function LlmSettingsPanel({
@@ -38,23 +78,37 @@ export default function LlmSettingsPanel({
 }) {
   const [selectedCredentialId, setSelectedCredentialId] = useState('')
   const [draft, setDraft] = useState(EMPTY_DRAFT)
-  const [billingFilter, setBillingFilter] = useState('all')
+  const [isCreatingNew, setIsCreatingNew] = useState(false)
+  const [billingFilter, setBillingFilter] = useState('free')
   const [modelSearch, setModelSearch] = useState('')
 
   const selectedCredential = useMemo(
     () => credentials.find((entry) => String(entry.id) === selectedCredentialId) || null,
     [credentials, selectedCredentialId],
   )
-  const providerOptions = useMemo(
+  const providerChanged = Boolean(selectedCredential && draft.provider !== selectedCredential.provider)
+  const providerModels = useMemo(
+    () => models?.[draft.provider] || [],
+    [draft.provider, models],
+  )
+  const providerChoices = useMemo(
     () => providers.map((provider) => ({ value: provider.id, label: provider.label })),
+    [providers],
+  )
+  const providerLabelMap = useMemo(
+    () => new Map(providers.map((provider) => [provider.id, provider.label])),
     [providers],
   )
 
   useEffect(() => {
+    if (isCreatingNew) {
+      return
+    }
+
     if (!selectedCredentialId && credentials[0]?.id) {
       setSelectedCredentialId(String(credentials[0].id))
     }
-  }, [credentials, selectedCredentialId])
+  }, [credentials, isCreatingNew, selectedCredentialId])
 
   useEffect(() => {
     if (selectedCredential) {
@@ -65,16 +119,20 @@ export default function LlmSettingsPanel({
     setDraft((current) => ({
       ...EMPTY_DRAFT,
       provider: providers[0]?.id || 'openrouter',
+      providerOptions: getDefaultProviderOptions(providers[0]?.id || 'openrouter'),
       name: current.id === null && current.name ? current.name : '',
     }))
   }, [providers, selectedCredential])
 
   useEffect(() => {
-    if (draft.provider !== 'openrouter') {
-      return
+    if (selectedCredentialId) {
+      setIsCreatingNew(false)
     }
+  }, [selectedCredentialId])
 
+  useEffect(() => {
     onLoadModels({
+      provider: draft.provider,
       search: modelSearch,
       billing: billingFilter,
     })
@@ -99,10 +157,12 @@ export default function LlmSettingsPanel({
           <button
             type="button"
             onClick={() => {
+              setIsCreatingNew(true)
               setSelectedCredentialId('')
               setDraft({
                 ...EMPTY_DRAFT,
                 provider: providers[0]?.id || 'openrouter',
+                providerOptions: getDefaultProviderOptions(providers[0]?.id || 'openrouter'),
               })
             }}
             className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25"
@@ -120,7 +180,10 @@ export default function LlmSettingsPanel({
               <button
                 key={credential.id}
                 type="button"
-                onClick={() => setSelectedCredentialId(String(credential.id))}
+                onClick={() => {
+                  setIsCreatingNew(false)
+                  setSelectedCredentialId(String(credential.id))
+                }}
                 className={`block w-full rounded-2xl border px-3 py-3 text-left text-sm transition ${
                   selectedCredentialId === String(credential.id)
                     ? 'border-cyan-300/35 bg-cyan-300/12 text-cyan-100'
@@ -130,7 +193,7 @@ export default function LlmSettingsPanel({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="font-medium">{credential.name}</div>
-                    <div className="mt-1 text-xs text-white/45">{credential.provider}</div>
+                    <div className="mt-1 text-xs text-white/45">{formatProviderSummary(credential, providerLabelMap)}</div>
                   </div>
                   <div className={`rounded-full px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] ${credential.isActive ? 'bg-emerald-300/12 text-emerald-100' : 'bg-white/8 text-white/55'}`}>
                     {credential.isActive ? 'Active' : 'Inactive'}
@@ -163,10 +226,21 @@ export default function LlmSettingsPanel({
               <div className="text-xs uppercase tracking-[0.24em] text-white/45">Provider</div>
               <select
                 value={draft.provider}
-                onChange={(event) => setDraft((current) => ({ ...current, provider: event.target.value }))}
+                onChange={(event) => {
+                  const nextProvider = event.target.value
+                  setDraft((current) => ({
+                    ...current,
+                    provider: nextProvider,
+                    defaultModel: current.provider === nextProvider ? current.defaultModel : '',
+                    providerOptions: current.provider === nextProvider
+                      ? current.providerOptions
+                      : getDefaultProviderOptions(nextProvider),
+                    secret: current.provider === nextProvider ? current.secret : '',
+                  }))
+                }}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
               >
-                {providerOptions.map((provider) => (
+                {providerChoices.map((provider) => (
                   <option key={provider.value} value={provider.value}>
                     {provider.label}
                   </option>
@@ -186,14 +260,34 @@ export default function LlmSettingsPanel({
               />
             </label>
 
+            {draft.provider === 'glm' ? (
+              <label className="space-y-2">
+                <div className="text-xs uppercase tracking-[0.24em] text-white/45">GLM access mode</div>
+                <select
+                  value={draft.providerOptions?.endpointMode || 'standard'}
+                  onChange={(event) => setDraft((current) => ({
+                    ...current,
+                    providerOptions: {
+                      ...current.providerOptions,
+                      endpointMode: event.target.value,
+                    },
+                  }))}
+                  className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
+                >
+                  <option value="standard">Standard API</option>
+                  <option value="coding">Coding subscription</option>
+                </select>
+              </label>
+            ) : <div />}
+
             <label className="space-y-2">
               <div className="text-xs uppercase tracking-[0.24em] text-white/45">
-                {draft.id ? 'Replace API key' : 'Provider API key'}
+                {draft.id ? (providerChanged ? 'New provider API key' : 'Replace API key') : 'Provider API key'}
               </div>
               <input
                 value={draft.secret}
                 onChange={(event) => setDraft((current) => ({ ...current, secret: event.target.value }))}
-                placeholder={draft.id ? 'Leave blank to keep the current key' : 'Paste the API key from your provider account'}
+                placeholder={getSecretInputPlaceholder(draft, selectedCredential, providerChanged)}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
               />
             </label>
@@ -210,24 +304,38 @@ export default function LlmSettingsPanel({
           </label>
 
           {selectedCredential ? (
-            <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-100">
-              Saved key: {selectedCredential.maskedSecret} | updated {new Date(selectedCredential.updatedAt).toLocaleString()}
-            </div>
+            selectedCredential.secretReadable === false ? (
+              <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-100">
+                {selectedCredential.secretWarning}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-100">
+                {providerChanged
+                  ? 'Provider changed. Enter a new API key before saving this connection.'
+                  : `Saved key: ${selectedCredential.maskedSecret} | ${formatProviderSummary(selectedCredential, providerLabelMap)} | updated ${new Date(selectedCredential.updatedAt).toLocaleString()}`}
+              </div>
+            )
           ) : (
             <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/60">
               This connection will be saved to your account as its own reusable entry.
             </div>
           )}
 
-          {draft.provider === 'openrouter' ? (
-            <div className="space-y-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-              <div className="flex flex-wrap gap-2">
-                <input
-                  value={modelSearch}
-                  onChange={(event) => setModelSearch(event.target.value)}
-                  placeholder="Search OpenRouter models"
-                  className="min-w-[180px] flex-1 rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
-                />
+          {draft.provider === 'glm' ? (
+            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/60">
+              Choose <span className="font-medium text-white/80">Standard API</span> for regular BigModel API keys, or <span className="font-medium text-white/80">Coding subscription</span> if this connection is meant to use BigModel&apos;s coding endpoint.
+            </div>
+          ) : null}
+
+          <div className="space-y-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+            <div className="flex flex-wrap gap-2">
+              <input
+                value={modelSearch}
+                onChange={(event) => setModelSearch(event.target.value)}
+                placeholder={`Search ${providerChoices.find((provider) => provider.value === draft.provider)?.label || 'provider'} models`}
+                className="min-w-[180px] flex-1 rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40"
+              />
+              {draft.provider === 'openrouter' ? (
                 <select
                   value={billingFilter}
                   onChange={(event) => setBillingFilter(event.target.value)}
@@ -237,56 +345,75 @@ export default function LlmSettingsPanel({
                   <option value="free">Free only</option>
                   <option value="paid">Paid only</option>
                 </select>
-              </div>
+              ) : null}
+            </div>
 
-              <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
-                {modelsBusy ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/60">Loading models...</div>
-                ) : null}
-                {!modelsBusy && models.length === 0 ? (
-                  <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/60">No models match the current filter.</div>
-                ) : null}
-                {models.map((model) => (
-                  <button
-                    key={model.id}
-                    type="button"
-                    onClick={() => setDraft((current) => ({ ...current, defaultModel: model.id }))}
-                    className={`block w-full rounded-2xl border px-3 py-2 text-left text-sm transition ${
-                      draft.defaultModel === model.id
-                        ? 'border-cyan-300/40 bg-cyan-300/15 text-cyan-100'
-                        : 'border-white/10 bg-black/25 text-white/75 hover:border-cyan-300/20 hover:bg-white/10'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-medium">{model.name}</div>
+            <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
+              {modelsBusy ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/60">Loading models...</div>
+              ) : null}
+              {!modelsBusy && providerModels.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/60">No models match the current filter.</div>
+              ) : null}
+              {providerModels.map((model) => (
+                <button
+                  key={model.id}
+                  type="button"
+                  onClick={() => setDraft((current) => ({ ...current, defaultModel: model.id }))}
+                  className={`block w-full rounded-2xl border px-3 py-2 text-left text-sm transition ${
+                    draft.defaultModel === model.id
+                      ? 'border-cyan-300/40 bg-cyan-300/15 text-cyan-100'
+                      : 'border-white/10 bg-black/25 text-white/75 hover:border-cyan-300/20 hover:bg-white/10'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium">{model.name}</div>
+                    {typeof model.isFree === 'boolean' ? (
                       <div className={`text-[11px] uppercase tracking-[0.18em] ${model.isFree ? 'text-emerald-200/80' : 'text-amber-200/80'}`}>
                         {model.isFree ? 'Free' : 'Paid'}
                       </div>
-                    </div>
-                    <div className="mt-1 break-all text-xs text-white/45">{model.id}</div>
-                    <div className="mt-1 text-xs text-white/55">{model.description || 'No description provided.'}</div>
-                    <div className="mt-1 text-[11px] text-white/40">
-                      Context {model.contextLength.toLocaleString()} | {formatPricing(model.pricing)}
-                    </div>
-                  </button>
-                ))}
-              </div>
+                    ) : model.isRecommended ? (
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-200/80">Recommended</div>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 break-all text-xs text-white/45">{model.id}</div>
+                  <div className="mt-1 text-xs text-white/55">{model.description || 'No description provided.'}</div>
+                  <div className="mt-1 text-[11px] text-white/40">
+                    {typeof model.contextLength === 'number' ? `Context ${model.contextLength.toLocaleString()}` : 'Context n/a'}
+                    {model.pricing ? ` | ${formatPricing(model.pricing)}` : ''}
+                    {model.releasedAt ? ` | ${model.releasedAt}` : ''}
+                  </div>
+                </button>
+              ))}
             </div>
-          ) : null}
+          </div>
 
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() =>
-                onSaveCredential({
+              onClick={async () => {
+                const payload = {
                   credentialId: draft.id,
                   name: draft.name,
                   provider: draft.provider,
-                  secret: draft.secret,
                   defaultModel: draft.defaultModel,
+                  providerOptions: draft.providerOptions,
                   isActive: draft.isActive,
-                })
-              }
+                }
+
+                const trimmedSecret = draft.secret.trim()
+                if (!draft.id || trimmedSecret) {
+                  payload.secret = trimmedSecret
+                }
+
+                const savedCredential = await onSaveCredential(payload)
+
+                if (savedCredential?.id) {
+                  setIsCreatingNew(false)
+                  setSelectedCredentialId(String(savedCredential.id))
+                  setDraft((current) => ({ ...current, secret: '' }))
+                }
+              }}
               disabled={busy}
               className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
             >

@@ -11,7 +11,6 @@ services:
       - ./default_vrm:/workspace-assets/default_vrm:ro
       - ./default_vrma:/workspace-assets/default_vrma:ro
       - ./expressions_vrma:/workspace-assets/expressions_vrma:ro
-      - ./idle:/workspace-assets/idle:ro
     depends_on:
       database:
         condition: service_healthy

@@ -2,7 +2,7 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
-Latest implementation note: the frontend layout has been refocused for clarity and responsiveness, and auth validation errors are now surfaced cleanly in the frontend. Oversized checklist/help blocks were removed from Manage and Viewer, spacing was increased, explicit loading spinners and disabled states were added while avatar context, chat history, and save actions sync with the API, and backend `422` responses like duplicate-email or invalid-email validation now display the real backend message instead of a generic status-code failure.
+Latest implementation note: the viewer thinking state now starts with a silent pause instead of reusing mouth/speech overlays, so avatars no longer appear to talk while the backend is still thinking. GLM can now be configured per saved AI connection for either the standard API endpoint or the Coding subscription endpoint instead of forcing one global choice, shared body-motion assets are now consolidated under `default_vrma/`, with idle clips moved into `default_vrma/idle/` and a new `default_vrma/thinking/` folder ready for curated waiting animations, the AI Connection system now also supports OpenAI, Gemini, and DeepSeek alongside OpenRouter, MiniMax, and GLM, and saved AI connections now stay visible with a repair warning if the local credential encryption key changes and older secrets can no longer be decrypted.
 
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 
@@ -61,7 +61,8 @@ To make the viewer usable without user uploads, shared example assets were added
 
 - default VRM avatars in `default_vrm/`
 - default body animations in `default_vrma/`
-- idle motion clips in `idle/`
+- idle motion clips in `default_vrma/idle/`
+- dedicated thinking motion drop zone in `default_vrma/thinking/`
 - expression and mouth overlays in `expressions_vrma/`
 
 This created the first practical out-of-the-box experience: pick an avatar, pick a motion, and see it animate.
@@ -134,7 +135,7 @@ The backend already contains the first real LLM integration layer rather than ju
 What exists now:
 
 - provider catalog endpoints
-- OpenRouter, MiniMax, and GLM provider support
+- OpenRouter, OpenAI, Gemini, DeepSeek, MiniMax, and GLM provider support
 - encrypted per-user credential storage
 - default model selection
 - avatar chat endpoint
@@ -211,6 +212,142 @@ That pass added:
 - viewer-side playback that now prefers backend-resolved asset ids for streamed chat cues instead of picking the final streamed cue locally
 
 This matters because it moves the product closer to backend-authoritative character behavior: the LLM is told more clearly how to emit cues, the backend validates and resolves them, and the viewer acts on that authoritative result rather than reinterpreting the final cue on its own.
+
+### 14. Provider-native streaming replaced buffered SSE replay
+
+The next implementation pass fixed the biggest responsiveness gap in chat.
+
+That pass added:
+
+- a provider streaming contract in the backend LLM layer
+- live upstream streaming for the OpenAI-compatible providers already used by OpenRouter, MiniMax, and GLM
+- controller-side SSE emission driven by real provider deltas instead of replaying a finished message afterward
+- incremental cue parsing so visible text can stream immediately while completed inline cue tags are still intercepted and emitted as structured events
+- final assistant persistence that still stores parsed text, raw provider payload, cue tags, and memory updates once the stream completes
+- OpenRouter catalog ordering based on provider `created` timestamps, with the default picker biased to the free list first
+
+This matters because chat responsiveness is now tied to real model output timing. The avatar can start replying as tokens arrive instead of waiting for the whole upstream completion before the frontend sees anything useful.
+
+### 15. Provider model catalogs were unified across OpenRouter, GLM, and MiniMax
+
+The next pass improved AI setup ergonomics so users no longer need to remember raw model ids for every provider.
+
+That pass added:
+
+- dedicated backend model catalog files for GLM and MiniMax under `backend/config/llm_models/`
+- a backend generic provider-model endpoint so the frontend can request model options consistently
+- frontend AI Connection model browsing for all supported providers, not just OpenRouter
+- recommended-vs-legacy hints for the static provider lists while keeping OpenRouter live and filterable
+- updated recommended provider defaults in the backend provider catalog
+
+This matters because provider setup is now much more approachable for non-technical users, and future model refreshes for GLM and MiniMax can be handled by editing a single provider-specific config file instead of hunting through UI code.
+
+### 16. Stream transport and fallback handling were hardened for real providers
+
+The next pass focused on reliability rather than adding new product surface.
+
+That pass added:
+
+- upstream streaming transport tuned for long-lived SSE replies, using connection timeout plus stall detection instead of a strict 60-second total cutoff
+- broader completion extraction so OpenAI-compatible providers with slightly different response shapes are less likely to produce false “empty streamed completion” failures
+- controller-side fallback to a normal completion when a provider stream fails before yielding usable assistant text
+- clearer timeout and stream-stall error messages for the user
+- viewer-side preservation of partial streamed text when a provider fails after text has already started arriving
+
+This matters because chat streaming is the core interaction loop. The app now fails more gracefully, preserves more useful feedback for the user, and should behave better across slower or slightly inconsistent provider streams.
+
+### 17. MiniMax stream compatibility was tightened
+
+The next small pass checked MiniMax specifically against its current OpenAI-compatible streaming docs.
+
+That pass added:
+
+- MiniMax request payload support for `reasoning_split`
+- stream delta normalization so cumulative content snapshots do not duplicate text
+- compatibility improvements that apply safely to other OpenAI-compatible providers too
+
+This matters because MiniMax’s stream shape is close to OpenAI’s but not identical in every client example. The backend is now more defensive about those differences instead of assuming every provider emits strictly incremental text deltas.
+
+### 18. Prompt budgets now adapt to the selected model
+
+The next pass addressed the growing mismatch between one-size-fits-all prompt limits and the different context windows offered by GLM, MiniMax, and OpenRouter models.
+
+That pass added:
+
+- a dedicated backend chat model policy object and resolver
+- per-model prompt and completion budgets derived from the selected model metadata instead of a single global cap
+- policy-aware limits for recent history count, history message size, avatar profile size, memory size, movement-catalog size, and completion tokens
+- tighter defaults for explicitly fast models such as Flash and Highspeed variants so latency-sensitive models stay lean
+- policy lookup for OpenRouter based on the fetched live model catalog, plus in-process caching so chat-time policy resolution does not repeatedly refetch the catalog
+- policy lookup for GLM and MiniMax based on the same static backend model config files used to populate the AI Connection picker
+
+This matters because the app now treats model selection as an operational setting rather than only a label. Smaller or speed-focused models get a deliberately lighter prompt, while larger-context models can keep a bit more memory and history without immediately pushing into context-limit failures.
+
+### 19. AI connection edits now guard against cross-provider secret reuse
+
+The next small pass tightened a misleading credential-edit edge case in AI Connection.
+
+That pass added:
+
+- backend validation that now requires a fresh API key when an existing credential is switched to a different provider
+- frontend form behavior that clears the default model when the provider changes
+- provider-change guidance in the API key field so the user is told to enter a new key instead of assuming the existing hidden one will still work
+
+This matters because silently keeping an old encrypted secret while switching from OpenRouter to MiniMax or GLM could look like a provider outage, when the real issue was a mismatched key-provider pair.
+
+### 20. Avatar chat now respects the assigned LLM and parses looser cue formats
+
+The next pass fixed a chat-orchestration bug and a parser rigidity issue that showed up with real GLM and MiniMax replies.
+
+That pass added:
+
+- provider/model precedence fixes so the resolved credential now wins over stale conversation metadata when determining which backend provider path to call
+- model-aware viewer status text that now names the exact provider and model being contacted during streaming
+- cue parsing support for bracket-style cue bundles such as `[emotion:happy | anim:Hand-on-hip | memory:...]` in addition to the original brace tokens
+- clearer MiniMax auth error translation for the known token-invalid response instead of only surfacing the raw Chinese string
+- regression coverage for switching providers on an existing conversation and for bracketed cue-bundle parsing
+
+This matters because one avatar is meant to be attached to one chosen LLM connection at a time. Chat now follows that assignment more reliably, and the app is more tolerant of provider outputs that are directionally correct but not perfectly formatted to the original prompt contract.
+
+### 21. Provider plumbing was cleaned up for future LLM additions
+
+The next pass focused on reducing hardcoded provider assumptions before more models and providers are added later.
+
+That pass added:
+
+- provider labels now come from the shared provider catalog instead of a controller-local hardcoded match block
+- MiniMax-specific auth error translation now lives in the MiniMax provider class instead of leaking into the generic OpenAI-compatible base class
+- static backend model catalogs now auto-discover `backend/config/llm_models/*.php` files instead of enumerating only GLM and MiniMax manually
+
+This matters because future provider work should not require hunting through unrelated streaming or controller code just to keep labels, model catalogs, and provider-specific error handling consistent.
+
+### 22. LLM and streaming regression coverage was expanded
+
+The next pass focused on test depth rather than shipping new user-facing behavior.
+
+That pass added:
+
+- backend API coverage for credential edits that keep the same provider without replacing the secret
+- backend API coverage for rejecting provider changes that do not include a fresh secret
+- backend API coverage for switching credentials on an existing conversation without reusing stale provider/model metadata
+- unit coverage for bracket-style cue bundles in both full parsing and streamed delta parsing
+- unit coverage for provider catalog labels, MiniMax auth error translation, static model-catalog loading, and the updated prompt-builder compaction rules
+- a full repository verification run across PHPUnit, frontend unit tests, and the production frontend build after the recent LLM and streaming refactors
+
+This matters because the recent chat, prompt-budget, provider-selection, and cue-parsing changes now have direct regression coverage instead of relying mostly on manual retesting.
+
+### 23. Viewer waiting states now drive a temporary thinking presence
+
+The next post-commit TODO pass improved avatar believability during chat latency instead of only focusing on transport and provider stability.
+
+That pass added:
+
+- viewer-side activation of a temporary thinking emotion overlay during the `prepare` and `provider` stream phases
+- metadata-driven selection of a matching thinking-style movement from the current avatar’s available action and idle catalogs
+- cleanup so the temporary waiting emotion is removed again once text starts streaming, the turn completes, or the turn fails
+- frontend unit coverage for the thinking-movement selector so future metadata or catalog changes do not quietly break the waiting-state behavior
+
+This matters because the app now gives the avatar a more believable “I am processing this” state while the model is still responding, which supports the broader product goal of making the character feel alive instead of just loading behind a spinner.
 
 ## Current State On 2026-03-12
 

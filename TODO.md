@@ -1,6 +1,6 @@
 ## TODO
 
-Updated: 2026-03-13
+Updated: 2026-03-14
 
 This file is intentionally short. `devlog.md` holds the product narrative and end goal; this file is the working task list for the next implementation window.
 
@@ -34,16 +34,19 @@ This baseline has been verified against the current repository. The next phase s
 - improve persona consistency
 - improve memory use in prompt assembly
 - improve cue quality so avatar reactions feel intentional
-- add a core “thinking” movement and emotion VRMA set so avatars visibly reflect reasoning while waiting for replies
+- continue curating a core “thinking” movement and emotion VRMA set; the viewer now triggers a metadata-driven thinking presence while waiting for replies, and `default_vrma/thinking/` is the dedicated drop zone for those launch-ready clips
 - keep expression overlays facial-only and emotionally coherent
 - define and polish the two launch starter avatars from the default asset pool so they feel production-ready
 
 ### 2. LLM orchestration
 
-- improve provider-native upstream streaming instead of backend chunking after completion
+- continue hardening the new provider-native upstream streaming path and fallback behavior with real-provider testing
+- keep validating provider-specific stream quirks like MiniMax cumulative deltas and reasoning fields against real accounts
 - harden the streamed event contract for text, cue, memory, and completion events
 - continue tightening cue validation against allowed avatar animation metadata
 - harden retries, timeouts, and provider failure handling
+- keep provider model catalogs current as OpenAI, Gemini, DeepSeek, GLM, and MiniMax release new models
+- keep model-specific prompt budgets aligned with provider model metadata as catalogs evolve
 - make the starter avatars usable immediately once credentials are connected, without extra hidden setup
 
 ### 3. Memory tool
@@ -92,6 +95,11 @@ Before closing a feature set, the minimum checks should be:
   - backend prompt rules now come from `backend/prompts/chat_rules.md`
   - backend prompt rules now explicitly instruct the LLM to place allowed `{emotion:...}` and `{anim:...}` tags inline when the reply tone or body language calls for them
   - `/api/avatars/{id}/chat` now supports streamed SSE playback when `stream: true`
+  - streamed SSE playback now uses provider-native upstream deltas instead of replaying a buffered final completion
+  - AI Connection now loads selectable model catalogs for OpenRouter, OpenAI, Gemini, DeepSeek, GLM, and MiniMax, with curated non-OpenRouter lists maintained in `backend/config/llm_models/`
+  - GLM connections now store their own access mode so each saved credential can target either the standard API endpoint or the Coding subscription endpoint
+  - chat prompt assembly now adapts to the selected model, with model-aware limits for history, memory, profile text, movement catalog size, and completion tokens
+  - the stream transport now uses stall detection instead of a strict 60-second total timeout, can fall back to non-streamed completion when no usable streamed text arrives, and preserves partial viewer text on mid-stream failure
   - streamed cue events now include backend-resolved asset ids for movement and expression playback so the viewer no longer has to make the final streamed cue choice locally
   - viewer-side chat now consumes streamed text and cue events, plays movement and facial overlays from backend-resolved cues, and uses browser speech synthesis for spoken replies
   - assistant replies may append long-term memory entries through the restricted inline `{memory:...}` bridge, persisted through the existing avatar memory revision flow

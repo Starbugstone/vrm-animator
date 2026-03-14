@@ -23,6 +23,7 @@ The repo currently includes:
 - backend-served shared asset libraries
 - avatar identity, persona, and memory editing
 - encrypted LLM credential storage
+- AI connections for OpenRouter, OpenAI, Gemini, DeepSeek, MiniMax, and GLM
 - persisted conversations and parsed assistant cues
 - streamed chat events for live text and cue playback
 - a working avatar viewer with idle, action, and expression playback
@@ -68,8 +69,15 @@ VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 Create or update `./backend/.env.local`:
 
 ```env
+# Uncomment only if Symfony runs on the host instead of inside Docker.
+# DATABASE_URL="mysql://vrm_user:vrm_pass@127.0.0.1:3307/vrm_animator?serverVersion=11.4.0-MariaDB"
+
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+LLM_CREDENTIAL_ENCRYPTION_KEY=replace-this-with-a-long-random-local-secret
 ```
+
+The frontend `VITE_GOOGLE_CLIENT_ID` and backend `GOOGLE_CLIENT_ID` intentionally use the same public Google OAuth client id. The browser needs it to start Google Sign-In, and the backend needs it to validate the returned token audience.
+Keep `LLM_CREDENTIAL_ENCRYPTION_KEY` stable once you have saved AI connections. Changing it later will make older stored provider keys unreadable until you enter them again.
 
 Do not commit real secrets from local env files into the tracked `.env` templates.
 
@@ -78,11 +86,12 @@ Do not commit real secrets from local env files into the tracked `.env` template
 Shared example assets are served by the backend from:
 
 - `default_vrm/`
-- `default_vrma/`
+- `default_vrma/` including nested `idle/` and `thinking/` folders for shared body-motion categories
 - `expressions_vrma/`
-- `idle/`
 
 User uploads are stored privately by the backend under per-user storage directories and are only downloadable by the owning user.
+
+Thinking body motions now belong in `default_vrma/thinking/`, while facial and mouth overlays remain in `expressions_vrma/`. The viewer treats thinking as a silent waiting state, so curated thinking clips should avoid speech-style mouth motion unless that behavior is intentional.
 
 ## Main Frontend Surfaces
 
@@ -102,6 +111,8 @@ User uploads are stored privately by the backend under per-user storage director
 - edits avatar identity and system prompt
 - edits avatar memory and reviews memory revisions
 - stores and updates LLM credentials
+- lets each saved GLM connection choose between the standard API and the Coding subscription endpoint
+- browses provider model catalogs directly in the AI Connection panel
 - reviews saved conversations
 
 ## Current API Surface
@@ -160,11 +171,27 @@ User uploads are stored privately by the backend under per-user storage director
 ### LLM configuration
 
 - `GET /api/llm/providers`
-- `GET /api/llm/providers/openrouter/models`
+- `GET /api/llm/providers/{provider}/models`
 - `GET /api/llm/credentials`
 - `POST /api/llm/credentials`
 - `PATCH /api/llm/credentials/{id}`
 - `DELETE /api/llm/credentials/{id}`
+
+Supported AI connection providers in the current app are:
+
+- `OpenRouter`
+- `OpenAI`
+- `Gemini`
+- `DeepSeek`
+- `MiniMax`
+- `GLM`
+
+OpenRouter models are fetched live and can be filtered by free or paid billing. The other providers currently use curated backend model catalogs under `backend/config/llm_models/`.
+
+For GLM, each saved credential can choose its own endpoint mode in the AI Connection panel:
+
+- `Standard API` uses `https://open.bigmodel.cn/api/paas/v4`
+- `Coding subscription` uses `https://open.bigmodel.cn/api/coding/paas/v4`
 
 API docs are available at `http://localhost:8080/api/docs`.
 
@@ -196,7 +223,7 @@ The backend test suite uses a separate `vrm_animator_test` database on the same 
 The files in `default_vrm/` and `default_vrma/` are included as example/demo assets only. This repository does not claim ownership of those files.
 
 - Example VRM avatars were sourced from `https://hub.vroid.com/en/users/121271631`.
-- Example VRMA motions were sourced from `https://vroid.booth.pm/items/5512385`.
+- Example VRMA motions, including the bundled idle variants now stored under `default_vrma/idle/`, were sourced from `https://vroid.booth.pm/items/5512385`.
 - VRMA credit text: `Animation credits to pixiv Inc.'s VRoid Project`.
 
 Ownership, copyright, and license terms remain with the original creators and publishers. Reuse, redistribution, and downstream usage must follow the original terms provided by those creators. See `default_vrm/source.txt`, `default_vrma/source.txt`, and the bundled upstream readme files in `default_vrma/` for the relevant notices.

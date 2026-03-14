@@ -27,7 +27,7 @@ import {
   deleteLlmCredential,
   listLlmCredentials,
   listLlmProviders,
-  listOpenRouterModels,
+  listProviderModels,
   updateLlmCredential,
 } from '../api/llmCredentials.js'
 import {
@@ -90,7 +90,7 @@ export default function useWorkspace(token) {
   const [sharedAnimations, setSharedAnimations] = useState([])
   const [providers, setProviders] = useState([])
   const [credentials, setCredentials] = useState([])
-  const [openRouterModels, setOpenRouterModels] = useState([])
+  const [providerModels, setProviderModels] = useState({})
   const [personasByAvatar, setPersonasByAvatar] = useState({})
   const [memoryByAvatar, setMemoryByAvatar] = useState({})
   const [memoryRevisionsByAvatar, setMemoryRevisionsByAvatar] = useState({})
@@ -121,7 +121,7 @@ export default function useWorkspace(token) {
     setSharedAnimations([])
     setProviders([])
     setCredentials([])
-    setOpenRouterModels([])
+    setProviderModels({})
     setPersonasByAvatar({})
     setMemoryByAvatar({})
     setMemoryRevisionsByAvatar({})
@@ -385,16 +385,30 @@ export default function useWorkspace(token) {
     return memory
   }, [token])
 
-  const loadOpenRouterCatalog = useCallback(async (options = {}) => {
+  const loadProviderModelCatalog = useCallback(async (provider, options = {}) => {
+    if (!token || !provider) {
+      return []
+    }
+
     setIsModelsLoading(true)
     try {
-      const models = await listOpenRouterModels(token, options)
-      setOpenRouterModels(Array.isArray(models) ? models : [])
-      return Array.isArray(models) ? models : []
+      const models = await listProviderModels(token, provider, options)
+      const normalizedModels = Array.isArray(models) ? models : []
+
+      setProviderModels((current) => ({
+        ...current,
+        [provider]: normalizedModels,
+      }))
+
+      return normalizedModels
     } finally {
       setIsModelsLoading(false)
     }
   }, [token])
+
+  const loadOpenRouterCatalog = useCallback(async (options = {}) => (
+    loadProviderModelCatalog('openrouter', options)
+  ), [loadProviderModelCatalog])
 
   const saveCredential = useCallback(async (payload) => {
     const credential = payload.credentialId
@@ -477,7 +491,7 @@ export default function useWorkspace(token) {
     sharedAnimationGroups,
     providers,
     credentials,
-    openRouterModels,
+    providerModels,
     personasByAvatar,
     memoryByAvatar,
     memoryRevisionsByAvatar,
@@ -501,6 +515,7 @@ export default function useWorkspace(token) {
     removeAnimation,
     saveMemory,
     resetMemory,
+    loadProviderModelCatalog,
     loadOpenRouterCatalog,
     saveCredential,
     removeCredential,

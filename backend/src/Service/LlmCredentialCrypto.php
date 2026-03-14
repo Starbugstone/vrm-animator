@@ -51,6 +51,26 @@ class LlmCredentialCrypto
         return sprintf('****%s', $visibleSuffix);
     }
 
+    public function canDecrypt(string $encryptedPayload): bool
+    {
+        try {
+            $this->decrypt($encryptedPayload);
+
+            return true;
+        } catch (\RuntimeException) {
+            return false;
+        }
+    }
+
+    public function tryMask(string $encryptedPayload, string $fallback = 'Stored key unavailable'): string
+    {
+        try {
+            return $this->mask($encryptedPayload);
+        } catch (\RuntimeException) {
+            return $fallback;
+        }
+    }
+
     private function deriveKey(): string
     {
         $rawKey = trim($this->llmCredentialEncryptionKey);

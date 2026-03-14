@@ -50,6 +50,62 @@
       "description": "Celebration pose for successful or positive replies.",
       "keywords": ["victory", "celebrate", "positive"],
       "emotionTags": ["happy", "celebrate", "excited"]
+    },
+    {
+      "file": "idle/Breathing Idle.vrma",
+      "label": "Breathing Idle",
+      "kind": "idle",
+      "description": "Gentle breathing loop for calm waiting moments.",
+      "keywords": ["idle", "breathing", "calm", "waiting"],
+      "emotionTags": ["neutral", "calm"]
+    },
+    {
+      "file": "idle/Hand-on-hip.vrma",
+      "label": "Hand on Hip Idle",
+      "kind": "idle",
+      "description": "Confident idle stance for poised resting moments.",
+      "keywords": ["idle", "stance", "confident", "rest"],
+      "emotionTags": ["neutral", "calm", "confident"]
+    },
+    {
+      "file": "idle/Idle.vrma",
+      "label": "Idle",
+      "kind": "idle",
+      "description": "Simple neutral idle loop for baseline presence.",
+      "keywords": ["idle", "neutral", "baseline", "waiting"],
+      "emotionTags": ["neutral", "calm"]
+    },
+    {
+      "file": "idle/LookAround.vrma",
+      "label": "Look Around",
+      "kind": "idle",
+      "description": "Curious idle loop with gentle scanning movement.",
+      "keywords": ["idle", "look", "curious", "observing"],
+      "emotionTags": ["neutral", "thinking", "curious"]
+    },
+    {
+      "file": "idle/Relax.vrma",
+      "label": "Relax",
+      "kind": "idle",
+      "description": "Relaxed idle loop for softer low-energy moments.",
+      "keywords": ["idle", "relaxed", "soft", "calm"],
+      "emotionTags": ["calm", "neutral"]
+    },
+    {
+      "file": "idle/Warrior Idle.vrma",
+      "label": "Warrior Idle",
+      "kind": "idle",
+      "description": "Steady ready stance for stronger alert resting moments.",
+      "keywords": ["idle", "ready", "steady", "stance"],
+      "emotionTags": ["neutral", "confident"]
+    },
+    {
+      "file": "idle/idle_main.vrma",
+      "label": "Idle Main",
+      "kind": "idle",
+      "description": "Primary idle loop for extended background presence.",
+      "keywords": ["idle", "main", "default", "background"],
+      "emotionTags": ["neutral", "calm"]
     }
   ]
 }

@@ -7,24 +7,13 @@ import {
   createPersistedAnimationAsset,
   createPersistedAvatarAsset,
 } from '../lib/viewerAssets.js'
+import { pickExpressionAsset, pickSilentExpressionAsset } from '../lib/viewerExpressions.js'
+import { findThinkingMovementAsset } from '../lib/viewerPresence.js'
 
 const VIEWER_OPTION_LABELS = {
   autoBlink: 'Auto blink',
   lookAtCamera: 'Eyes follow camera',
 }
-
-const CANONICAL_EMOTIONS = new Set([
-  'neutral',
-  'happy',
-  'sad',
-  'angry',
-  'playful',
-  'shouting',
-  'sleepy',
-  'surprised',
-  'thinking',
-  'calm',
-])
 
 const SPEECH_LANGUAGE_FALLBACK = 'en-US'
 const SPEECH_OVERLAY_RELEASE_MS = 220
@@ -173,24 +162,6 @@ function estimateSpeechDurationMs(text, rate = 1) {
   return Math.max(1800, Math.ceil(minutes * 60_000) + 1200)
 }
 
-function collectAssetTags(asset) {
-  const tags = []
-
-  if (Array.isArray(asset?.emotionTags)) {
-    tags.push(...asset.emotionTags)
-  }
-
-  if (Array.isArray(asset?.keywords)) {
-    tags.push(...asset.keywords)
-  }
-
-  if (Array.isArray(asset?.tags)) {
-    tags.push(...asset.tags)
-  }
-
-  return Array.from(new Set(tags.map((entry) => String(entry).trim().toLowerCase()).filter(Boolean)))
-}
-
 function findMovementAssetByTag(items, tag) {
   const normalizedTag = normalizeToken(tag)
   if (!normalizedTag) return null
@@ -211,44 +182,6 @@ function findAssetById(items, assetId) {
   if (!normalizedAssetId) return null
 
   return items.find((item) => String(item.id) === normalizedAssetId) || null
-}
-
-function scoreExpressionAssetForEmotion(asset, emotion, { preferSpeech = false, allowSpeechFallback = false } = {}) {
-  const tags = collectAssetTags(asset)
-  const hasSpeechTag = tags.includes('speech') || tags.includes('fallback')
-  let score = 0
-
-  if (tags.includes(emotion)) {
-    score += 8
-  }
-
-  if (preferSpeech && hasSpeechTag) {
-    score += 4
-  }
-
-  if (!preferSpeech && !hasSpeechTag) {
-    score += 2
-  }
-
-  if (!preferSpeech && hasSpeechTag && !allowSpeechFallback) {
-    return 0
-  }
-
-  if (asset.weight) {
-    score += Number(asset.weight) * 0.2
-  }
-
-  return score
-}
-
-function pickExpressionAsset(items, emotion, options = {}) {
-  const normalizedEmotion = CANONICAL_EMOTIONS.has(emotion) ? emotion : 'neutral'
-  const ranked = items
-    .map((item) => ({ item, score: scoreExpressionAssetForEmotion(item, normalizedEmotion, options) }))
-    .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score)
-
-  return ranked[0]?.item || null
 }
 
 function normalizeSharedAsset(asset, fallbackType) {
@@ -312,6 +245,7 @@ export default function ViewerPage({ workspace }) {
   const speechStopTimeoutRef = useRef(null)
   const speechMonitorIntervalRef = useRef(null)
   const lastSpeechActivityAtRef = useRef(0)
+  const thinkingRuntimeRef = useRef(false)
 
   const personalAvatarItems = useMemo(
     () => avatars.map((entry) => ({ ...createPersistedAvatarAsset(entry, workspace.token), scope: 'personal' })),
@@ -677,6 +611,56 @@ export default function ViewerPage({ workspace }) {
     })
   }, [expressionItems, playOverlayAnimationFile, stopOverlayAnimation])
 
+  const startThinkingPresence = useCallback(async () => {
+    if (thinkingRuntimeRef.current) {
+      return
+    }
+
+    thinkingRuntimeRef.current = true
+    activeEmotionRef.current = 'thinking'
+
+    const silentExpression = pickSilentExpressionAsset(expressionItems, ['thinking', 'calm', 'neutral'], {
+      excludedChannels: ['mouth'],
+    })
+    if (silentExpression) {
+      const file = await assetToFile(silentExpression)
+      if (file && thinkingRuntimeRef.current) {
+        playOverlayAnimationFile(file, silentExpression.label, {
+          cacheKey: `${silentExpression.id}:thinking`,
+          expressionOnly: true,
+          loop: true,
+        })
+      }
+    }
+
+    const asset = findThinkingMovementAsset([...actionItems, ...idleItems])
+    if (!asset) {
+      return
+    }
+
+    const file = await assetToFile(asset)
+    if (!file || !thinkingRuntimeRef.current) {
+      return
+    }
+
+    playAnimationFile(file, asset.label, {
+      cacheKey: `${asset.id}:thinking`,
+      kind: asset.kind || 'action',
+    })
+  }, [actionItems, expressionItems, idleItems, playAnimationFile, playOverlayAnimationFile])
+
+  const stopThinkingPresence = useCallback(() => {
+    if (!thinkingRuntimeRef.current) {
+      return
+    }
+
+    thinkingRuntimeRef.current = false
+    if (activeEmotionRef.current === 'thinking') {
+      activeEmotionRef.current = 'neutral'
+    }
+    stopOverlayAnimation({ immediate: false })
+  }, [stopOverlayAnimation])
+
   const speakAssistantReply = useCallback(async (text, emotion, languageSamples = []) => {
     const speechSynthesis = speechSynthesisRef.current
     const cleanedText = String(text || '').trim()
@@ -885,7 +869,8 @@ export default function ViewerPage({ workspace }) {
         createdAt: new Date().toISOString(),
       },
     ])
-    speechSynthesisRef.current?.cancel?.()
+    resetSpeechRuntime()
+    let receivedAssistantText = false
 
     try {
       const response = await streamChatMessage(selectedAvatar.id, {
@@ -898,8 +883,25 @@ export default function ViewerPage({ workspace }) {
             setActiveConversationId(event.conversation.id)
           }
         },
+        onStatus: (event) => {
+          if (event?.message) {
+            setNotice(event.message)
+          }
+
+          if (event?.phase === 'prepare' || event?.phase === 'provider') {
+            startThinkingPresence()
+            return
+          }
+
+          if (event?.phase === 'stream') {
+            stopThinkingPresence()
+          }
+        },
         onTextDelta: (event) => {
           const delta = event?.delta || ''
+          if (delta) {
+            receivedAssistantText = true
+          }
           appendPendingAssistantData((message) => ({
             ...message,
             content: `${message.content || ''}${delta}`,
@@ -937,19 +939,36 @@ export default function ViewerPage({ workspace }) {
         },
       })
 
+      stopThinkingPresence()
       setPendingMessages([])
       setActiveConversationId(response.conversation.id)
-      setNotice(`Reply received via ${response.conversation.provider}.`)
+      const firstDeltaMs = response?.timing?.firstDeltaMs
+      const providerLabel = response?.conversation?.provider || 'provider'
+      const modelLabel = response?.conversation?.model ? ` / ${response.conversation.model}` : ''
+      setNotice(
+        typeof firstDeltaMs === 'number'
+          ? `Reply received via ${providerLabel}${modelLabel}. First text in ${firstDeltaMs} ms.`
+          : `Reply received via ${providerLabel}${modelLabel}.`,
+      )
       await speakAssistantReply(
         response.assistantMessage?.content || '',
         response.assistantMessage?.emotionTags?.[0] || activeEmotionRef.current || 'neutral',
         [outgoingMessage],
       )
     } catch (error) {
-      setPendingMessages([])
-      setDraftMessage(outgoingMessage)
-      setNotice(error.message || 'Chat failed.')
+      stopThinkingPresence()
+      if (!receivedAssistantText) {
+        setPendingMessages([])
+        setDraftMessage(outgoingMessage)
+      }
+
+      setNotice(
+        receivedAssistantText
+          ? `${error.message || 'Chat failed.'} Partial reply kept on screen, but this turn was not saved.`
+          : (error.message || 'Chat failed.'),
+      )
     } finally {
+      stopThinkingPresence()
       setIsChatBusy(false)
     }
   }, [
@@ -960,8 +979,11 @@ export default function ViewerPage({ workspace }) {
     playEmotionCue,
     playEmotionCueByAssetId,
     playMovementCueByAssetId,
+    resetSpeechRuntime,
     selectedAvatar,
     speakAssistantReply,
+    startThinkingPresence,
+    stopThinkingPresence,
     streamChatMessage,
   ])
 

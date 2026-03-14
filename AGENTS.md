@@ -39,9 +39,8 @@ vrm-animator/
 │   ├── useHologramViewer.js      # VRM/VRMA viewer hook
 │   └── (future: api/, components/, hooks/, etc.)
 ├── default_vrm/                  # Third-party example VRM avatars (.vrm, .glb)
-├── default_vrma/                 # Third-party example VRMA motions (.vrma)
+├── default_vrma/                 # Third-party example VRMA motions (.vrma), including nested idle/ and thinking/ folders
 ├── expressions_vrma/             # Project facial and mouth VRMA overlays (.vrma)
-├── idle/                         # Bundled idle clips (.vrma)
 ├── docker-compose.yml
 ├── package.json                  # Node (React, Vite, Three.js, @pixiv/three-vrm*)
 ├── vite.config.js
@@ -56,7 +55,7 @@ vrm-animator/
 
 - **Backend**: All persistent data, auth, and business rules. No UI. API-only.
 - **Frontend**: All UI and client-side state. Communicates with backend only via HTTP/JSON and JWT.
-- **Assets**: Example avatars/animations live in `default_vrm/` and `default_vrma/`; shared overlays live in `expressions_vrma/` and `idle/`; user-uploaded avatars and animations are stored in backend-managed per-user directories and served only to the owning user.
+- **Assets**: Example avatars/animations live in `default_vrm/` and `default_vrma/` (including nested `idle/` and `thinking/` subfolders for shared body-motion categories); shared overlays live in `expressions_vrma/`; user-uploaded avatars and animations are stored in backend-managed per-user directories and served only to the owning user.
 
 ---
 
@@ -126,7 +125,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
   - Ensure frontend has a proper login/register flow and stores/uses JWT for all API calls; no session dependency.
 
 - **Default avatars and animations**
-  - Backend exposes or references a **curated set of default avatars and animations** (e.g. from `default_vrm/`, `default_vrma/`, `expressions_vrma/`, and `idle/` or from a DB seed). Frontend can list “default” assets and use them without requiring uploads.
+  - Backend exposes or references a **curated set of default avatars and animations** (e.g. from `default_vrm/`, `default_vrma/` with nested `idle/` and `thinking/` groups, and `expressions_vrma/`, or from a DB seed). Frontend can list “default” assets and use them without requiring uploads.
   - Option: backend serves default asset list (and optionally files) so one source of truth.
   - For launch, curate at least two ready-to-go starter avatars from that default set:
     - one male-presenting avatar
@@ -145,7 +144,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 ### Phase 2: LLM Integration and Text Chat
 
 - **Avatar wired to an LLM**
-  - Integrate with **OpenRouter, MiniMax, and GLM** first; design so other LLM providers can be added (adapter/strategy pattern).
+  - Integrate with **OpenRouter, OpenAI, Gemini, DeepSeek, MiniMax, and GLM** first; design so other LLM providers can be added (adapter/strategy pattern).
   - Backend: LLM adapter layer, configurable per user or per avatar (e.g. API keys via env or user settings). No API keys in frontend.
   - The launch-ready starter avatars must be compatible with this flow so that once a user plugs in valid credentials, they can immediately chat with either starter avatar.
 
@@ -222,7 +221,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Personas and Memory**: `GET/POST /api/avatars/{id}/personas`, `PATCH/DELETE /api/avatar-personas/{id}`, `GET/PATCH /api/avatars/{id}/memory`, `GET /api/avatars/{id}/memory/revisions`.
 - **Chat**: `GET /api/avatars/{id}/conversations`, `GET /api/conversations/{id}`, `GET /api/conversations/{id}/messages`, `POST /api/avatars/{id}/chat`.
   - `POST /api/avatars/{id}/chat` supports normal JSON replies and streamed SSE replies when `stream: true` is sent in the JSON body.
-- **LLM Config**: `GET /api/llm/providers`, `GET /api/llm/providers/openrouter/models`, `GET/POST /api/llm/credentials`, `PATCH/DELETE /api/llm/credentials/{id}`.
+- **LLM Config**: `GET /api/llm/providers`, `GET /api/llm/providers/{provider}/models`, `GET/POST /api/llm/credentials`, `PATCH/DELETE /api/llm/credentials/{id}`.
 - **Docs**: `GET /api/docs` (public).
 
 All API must remain **stateless** and use JWT for authentication.

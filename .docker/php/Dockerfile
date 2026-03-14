@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y \
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Enable Apache mod_rewrite
-RUN a2enmod rewrite
+# Enable Apache modules needed by Symfony and live SSE responses
+RUN a2enmod rewrite headers
 
 # Copy custom vhost
 COPY .docker/php/vhost.conf /etc/apache2/sites-available/000-default.conf

@@ -263,4 +263,79 @@ class ConversationTest extends WebTestCase
 
         $this->assertResponseStatusCodeSame(404);
     }
+
+    public function testExplicitCredentialOverrideBeatsExistingConversationProvider(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'conversation-provider-switch@example.com');
+
+        $client->request('POST', '/api/avatars', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'Switcher Avatar',
+            'filename' => 'switcher-avatar.vrm',
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $avatarData = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('POST', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'GLM Main',
+            'provider' => 'glm',
+            'secret' => 'glm-secret-token',
+            'defaultModel' => 'glm-4.7',
+            'isActive' => true,
+        ]));
+        $this->assertResponseStatusCodeSame(201);
+        $glmCredential = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('POST', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'MiniMax Main',
+            'provider' => 'minimax',
+            'secret' => 'minimax-secret-token',
+            'defaultModel' => 'MiniMax-M2.5',
+            'isActive' => true,
+        ]));
+        $this->assertResponseStatusCodeSame(201);
+        $minimaxCredential = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('POST', '/api/avatars/'.$avatarData['id'].'/chat', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'message' => 'First turn with GLM',
+            'credentialId' => $glmCredential['id'],
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+        $firstChat = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('glm', $firstChat['conversation']['provider']);
+        $this->assertSame('glm-4.7', $firstChat['conversation']['model']);
+
+        $client->request('POST', '/api/avatars/'.$avatarData['id'].'/chat', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'message' => 'Second turn with MiniMax',
+            'conversationId' => $firstChat['conversation']['id'],
+            'credentialId' => $minimaxCredential['id'],
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+        $secondChat = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('minimax', $secondChat['conversation']['provider']);
+        $this->assertSame('MiniMax-M2.5', $secondChat['conversation']['model']);
+    }
 }

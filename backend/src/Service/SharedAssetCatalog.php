@@ -37,14 +37,6 @@ class SharedAssetCatalog
                 'extensions' => ['vrma'],
                 'kind' => 'expression',
             ],
-            'idle' => [
-                'type' => 'animation',
-                'source' => 'project',
-                'sourceLabel' => 'Shared idle',
-                'root' => 'idle',
-                'extensions' => ['vrma'],
-                'kind' => 'idle',
-            ],
         ];
     }
 
@@ -64,7 +56,6 @@ class SharedAssetCatalog
         return array_merge(
             $this->listCatalog('default_vrma'),
             $this->listCatalog('expressions_vrma'),
-            $this->listCatalog('idle'),
         );
     }
 

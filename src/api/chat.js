@@ -46,6 +46,8 @@ function dispatchStreamBlock(block, handlers, setCompletionPayload) {
 
   if (parsed.event === 'conversation') {
     handlers.onConversation?.(parsed.data)
+  } else if (parsed.event === 'status') {
+    handlers.onStatus?.(parsed.data)
   } else if (parsed.event === 'text.delta') {
     handlers.onTextDelta?.(parsed.data)
   } else if (parsed.event === 'cue') {

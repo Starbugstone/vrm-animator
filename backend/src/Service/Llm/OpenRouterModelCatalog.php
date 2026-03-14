@@ -4,6 +4,19 @@ namespace App\Service\Llm;
 
 class OpenRouterModelCatalog
 {
+    /**
+     * @var list<array{
+     *   id:string,
+     *   name:string,
+     *   description:string,
+     *   createdAt:int,
+     *   contextLength:int,
+     *   pricing:array{prompt:string,completion:string,image:string,request:string},
+     *   isFree:bool
+     * }>|null
+     */
+    private static ?array $cachedModels = null;
+
     public function __construct(
         private bool $llmTestMode = false,
     ) {
@@ -14,6 +27,7 @@ class OpenRouterModelCatalog
      *   id:string,
      *   name:string,
      *   description:string,
+     *   createdAt:int,
      *   contextLength:int,
      *   pricing:array{prompt:string,completion:string,image:string,request:string},
      *   isFree:bool
@@ -52,6 +66,10 @@ class OpenRouterModelCatalog
                 return $left['isFree'] ? -1 : 1;
             }
 
+            if (($left['createdAt'] ?? 0) !== ($right['createdAt'] ?? 0)) {
+                return ($right['createdAt'] ?? 0) <=> ($left['createdAt'] ?? 0);
+            }
+
             return $left['name'] <=> $right['name'];
         });
 
@@ -59,10 +77,33 @@ class OpenRouterModelCatalog
     }
 
     /**
+     * @return array{
+     *   id:string,
+     *   name:string,
+     *   description:string,
+     *   createdAt:int,
+     *   contextLength:int,
+     *   pricing:array{prompt:string,completion:string,image:string,request:string},
+     *   isFree:bool
+     * }|null
+     */
+    public function findModel(string $modelId): ?array
+    {
+        foreach ($this->llmTestMode ? $this->getFixtureModels() : $this->fetchModels() as $model) {
+            if (($model['id'] ?? null) === $modelId) {
+                return $model;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @return list<array{
      *   id:string,
      *   name:string,
      *   description:string,
+     *   createdAt:int,
      *   contextLength:int,
      *   pricing:array{prompt:string,completion:string,image:string,request:string},
      *   isFree:bool
@@ -70,6 +111,10 @@ class OpenRouterModelCatalog
      */
     private function fetchModels(): array
     {
+        if (self::$cachedModels !== null) {
+            return self::$cachedModels;
+        }
+
         $context = stream_context_create([
             'http' => [
                 'method' => 'GET',
@@ -103,10 +148,12 @@ class OpenRouterModelCatalog
             return [];
         }
 
-        return array_values(array_filter(array_map(
+        self::$cachedModels = array_values(array_filter(array_map(
             fn (mixed $model): ?array => is_array($model) ? $this->normalizeModel($model) : null,
             $models,
         )));
+
+        return self::$cachedModels;
     }
 
     /**
@@ -114,6 +161,7 @@ class OpenRouterModelCatalog
      *   id:string,
      *   name:string,
      *   description:string,
+     *   createdAt:int,
      *   contextLength:int,
      *   pricing:array{prompt:string,completion:string,image:string,request:string},
      *   isFree:bool
@@ -137,6 +185,7 @@ class OpenRouterModelCatalog
             'id' => $id,
             'name' => trim((string) ($model['name'] ?? $id)),
             'description' => trim((string) ($model['description'] ?? '')),
+            'createdAt' => max(0, (int) ($model['created'] ?? $model['created_at'] ?? 0)),
             'contextLength' => max(0, (int) ($model['context_length'] ?? 0)),
             'pricing' => $pricing,
             'isFree' => $this->isFreePricing($pricing),
@@ -185,6 +234,7 @@ class OpenRouterModelCatalog
      *   id:string,
      *   name:string,
      *   description:string,
+     *   createdAt:int,
      *   contextLength:int,
      *   pricing:array{prompt:string,completion:string,image:string,request:string},
      *   isFree:bool
@@ -197,6 +247,7 @@ class OpenRouterModelCatalog
                 'id' => 'moonshotai/kimi-k2:free',
                 'name' => 'Kimi K2 Free',
                 'description' => 'Test free model fixture',
+                'createdAt' => 1710000002,
                 'contextLength' => 131072,
                 'pricing' => [
                     'prompt' => '0',
@@ -210,6 +261,7 @@ class OpenRouterModelCatalog
                 'id' => 'openai/gpt-4.1-mini',
                 'name' => 'GPT-4.1 Mini',
                 'description' => 'Test paid model fixture',
+                'createdAt' => 1710000001,
                 'contextLength' => 128000,
                 'pricing' => [
                     'prompt' => '0.0000004',
@@ -218,6 +270,20 @@ class OpenRouterModelCatalog
                     'request' => '0',
                 ],
                 'isFree' => false,
+            ],
+            [
+                'id' => 'anthropic/claude-3-haiku:free',
+                'name' => 'Claude 3 Haiku Free',
+                'description' => 'Older free model fixture',
+                'createdAt' => 1700000000,
+                'contextLength' => 200000,
+                'pricing' => [
+                    'prompt' => '0',
+                    'completion' => '0',
+                    'image' => '0',
+                    'request' => '0',
+                ],
+                'isFree' => true,
             ],
         ];
     }
