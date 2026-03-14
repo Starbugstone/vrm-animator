@@ -182,7 +182,7 @@ class AvatarChatService
         $this->entityManager->flush();
 
         if ($parsedAssistant['memoryEntries'] !== []) {
-            $this->avatarMemoryService->appendRelationshipMemory($preparedTurn->avatar, $parsedAssistant['memoryEntries'], 'assistant');
+            $this->avatarMemoryService->appendMemoryEntries($preparedTurn->avatar, $parsedAssistant['memoryEntries'], 'assistant');
         }
 
         return new ChatTurnResult(

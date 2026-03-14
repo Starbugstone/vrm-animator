@@ -1115,7 +1115,8 @@ export default function ViewerPage({ workspace }) {
         },
         onMemory: (event) => {
           if (event?.entry) {
-            setNotice(`Memory updated: ${event.entry}`)
+            const scopeLabel = event?.scope === 'long-term' ? 'long-term memory' : 'relationship memory'
+            setNotice(`Updated ${scopeLabel}: ${event.entry}`)
           }
         },
       })

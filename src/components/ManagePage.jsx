@@ -85,7 +85,6 @@ const EMPTY_AVATAR_UPLOAD = {
   name: '',
   backstory: '',
   personality: '',
-  systemPrompt: '',
 }
 
 const EMPTY_ANIMATION_UPLOAD = {
@@ -102,7 +101,6 @@ const EMPTY_CUSTOM_AVATAR = {
   name: '',
   backstory: '',
   personality: '',
-  systemPrompt: '',
   memory: '',
 }
 
@@ -140,7 +138,6 @@ function buildSharedAvatarDraft(sharedAvatar) {
     name: sharedAvatar.label || '',
     backstory: sharedAvatar.backstory || sharedAvatar.description || '',
     personality: sharedAvatar.personality || '',
-    systemPrompt: sharedAvatar.systemPrompt || '',
   }
 }
 
@@ -372,13 +369,6 @@ function SharedAvatarBuilder({
           className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
         />
         <textarea
-          value={draft.systemPrompt}
-          onChange={(event) => onChange('systemPrompt', event.target.value)}
-          placeholder="System prompt"
-          rows={4}
-          className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
-        />
-        <textarea
           value={draft.memory}
           onChange={(event) => onChange('memory', event.target.value)}
           placeholder="Initial memory.md content"
@@ -431,13 +421,6 @@ function AvatarUploadCard({ busy, draft, onChange, onSubmit }) {
           onChange={(event) => onChange('personality', event.target.value)}
           placeholder="Personality"
           rows={3}
-          className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
-        />
-        <textarea
-          value={draft.systemPrompt}
-          onChange={(event) => onChange('systemPrompt', event.target.value)}
-          placeholder="System prompt"
-          rows={4}
           className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
         />
         <button
@@ -572,6 +555,7 @@ export default function ManagePage({ user, workspace }) {
     removeAnimation,
     saveMemory,
     resetMemory,
+    compressMemory,
     loadProviderModelCatalog,
     loadOpenRouterCatalog,
     saveCredential,
@@ -829,8 +813,13 @@ export default function ManagePage({ user, workspace }) {
                 <MemoryPanel
                   memory={memory}
                   revisions={memoryRevisions}
-                  busy={busyKey === 'memory-save' || busyKey === 'memory-reset'}
+                  busy={busyKey === 'memory-save' || busyKey === 'memory-reset' || busyKey === 'memory-compress'}
                   onSave={(payload) => runAction('memory-save', () => saveMemory(selectedAvatar.id, payload), 'Memory updated.')}
+                  onCompress={() => runAction(
+                    'memory-compress',
+                    () => compressMemory(selectedAvatar.id, { revision: memory.revision }),
+                    'Memory compressed with the avatar AI connection.',
+                  )}
                   onReset={() => runAction('memory-reset', async () => {
                     const result = await resetMemory(selectedAvatar.id)
 
@@ -893,14 +882,12 @@ export default function ManagePage({ user, workspace }) {
                         name: customAvatarDraft.name,
                         backstory: customAvatarDraft.backstory,
                         personality: customAvatarDraft.personality,
-                        systemPrompt: customAvatarDraft.systemPrompt,
                       })
 
                       await saveAvatarIdentity(createdAvatar.id, {
                         name: customAvatarDraft.name || createdAvatar.name,
                         backstory: customAvatarDraft.backstory,
                         personality: customAvatarDraft.personality,
-                        systemPrompt: customAvatarDraft.systemPrompt,
                         llmCredentialId: null,
                       })
 
@@ -935,7 +922,6 @@ export default function ManagePage({ user, workspace }) {
                         name: avatarUpload.name || avatar.name,
                         backstory: avatarUpload.backstory,
                         personality: avatarUpload.personality,
-                        systemPrompt: avatarUpload.systemPrompt,
                         llmCredentialId: null,
                       })
                       setAvatarUpload(EMPTY_AVATAR_UPLOAD)

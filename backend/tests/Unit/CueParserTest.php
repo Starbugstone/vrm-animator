@@ -91,7 +91,10 @@ class CueParserTest extends TestCase
         $this->assertSame('Putting my hands on my hips', $parsed['text']);
         $this->assertSame(['happy'], $parsed['emotionTags']);
         $this->assertSame(['Hand-on-hip'], $parsed['animationTags']);
-        $this->assertSame(['User has a friend named Scott'], $parsed['memoryEntries']);
+        $this->assertSame([[
+            'scope' => 'relationship',
+            'value' => 'User has a friend named Scott',
+        ]], $parsed['memoryEntries']);
     }
 
     public function testItParsesBracketedCueBundlesDuringStreaming(): void
@@ -136,5 +139,20 @@ class CueParserTest extends TestCase
         $this->assertSame('animation', $parsed['timeline'][2]['type']);
         $this->assertSame('Hand-on-hip', $parsed['timeline'][2]['value']);
         $this->assertSame('memory', $parsed['timeline'][3]['type']);
+        $this->assertSame('relationship', $parsed['timeline'][3]['scope']);
+    }
+
+    public function testItParsesScopedMemoryEntries(): void
+    {
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parse(
+            'Important note {memory:long-term|The user is planning a move next month}',
+            [],
+        );
+
+        $this->assertSame([[
+            'scope' => 'long-term',
+            'value' => 'The user is planning a move next month',
+        ]], $parsed['memoryEntries']);
     }
 }

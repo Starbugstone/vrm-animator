@@ -52,7 +52,6 @@ class AvatarAssetController extends AbstractController
             ->setName($name !== '' ? $name : 'Uploaded Avatar')
             ->setBackstory($this->normalizeNullableString($request->request->get('backstory')))
             ->setPersonality($this->normalizeNullableString($request->request->get('personality')))
-            ->setSystemPrompt($this->normalizeNullableString($request->request->get('systemPrompt')))
             ->setFilename($storedAsset->originalFilename)
             ->setStoredFilename($storedAsset->storedFilename)
             ->setMimeType($storedAsset->mimeType)

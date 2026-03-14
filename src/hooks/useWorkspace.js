@@ -31,6 +31,7 @@ import {
   updateLlmCredential,
 } from '../api/llmCredentials.js'
 import {
+  compressAvatarMemory,
   fetchAvatarMemory,
   fetchAvatarMemoryRevisions,
   resetAvatarMemory,
@@ -71,7 +72,6 @@ function buildPersonaPayloadFromAvatar(avatar, llmCredentialId = null) {
     name: avatar?.name || 'Avatar',
     description: avatar?.backstory || '',
     personality: avatar?.personality || '',
-    systemPrompt: avatar?.systemPrompt || '',
     llmCredentialId,
     isPrimary: true,
   }
@@ -274,7 +274,6 @@ export default function useWorkspace(token) {
     if (payload.name) formData.append('name', payload.name)
     if (payload.backstory) formData.append('backstory', payload.backstory)
     if (payload.personality) formData.append('personality', payload.personality)
-    if (payload.systemPrompt) formData.append('systemPrompt', payload.systemPrompt)
 
     const avatar = await uploadAvatar(token, formData)
     setAvatars((current) => upsertById(current, avatar))
@@ -354,7 +353,6 @@ export default function useWorkspace(token) {
       name: overrides.name || asset.label || asset.name,
       backstory: overrides.backstory ?? asset.backstory ?? asset.description ?? '',
       personality: overrides.personality ?? asset.personality ?? '',
-      systemPrompt: overrides.systemPrompt ?? asset.systemPrompt ?? '',
     })
   }, [saveAvatarUpload])
 
@@ -379,6 +377,14 @@ export default function useWorkspace(token) {
 
   const resetMemory = useCallback(async (avatarId) => {
     const memory = await resetAvatarMemory(token, avatarId)
+    const revisions = await fetchAvatarMemoryRevisions(token, avatarId)
+    setMemoryByAvatar((current) => ({ ...current, [avatarId]: memory }))
+    setMemoryRevisionsByAvatar((current) => ({ ...current, [avatarId]: Array.isArray(revisions) ? revisions : [] }))
+    return memory
+  }, [token])
+
+  const compressMemory = useCallback(async (avatarId, payload) => {
+    const memory = await compressAvatarMemory(token, avatarId, payload)
     const revisions = await fetchAvatarMemoryRevisions(token, avatarId)
     setMemoryByAvatar((current) => ({ ...current, [avatarId]: memory }))
     setMemoryRevisionsByAvatar((current) => ({ ...current, [avatarId]: Array.isArray(revisions) ? revisions : [] }))
@@ -516,6 +522,7 @@ export default function useWorkspace(token) {
     removeAnimation,
     saveMemory,
     resetMemory,
+    compressMemory,
     loadProviderModelCatalog,
     loadOpenRouterCatalog,
     saveCredential,

@@ -2,7 +2,7 @@
 
 This file is the live project recap and the current end-goal reference for VRM Animator.
 
-Latest implementation note: the shared expression library now includes generated `Smile` and `Wink` facial overlays in addition to the existing speech/reaction set, and `smile` / `wink` are now recognized as first-class emotion cues across the backend prompt vocabulary and frontend expression picker. In the same implementation window, shared VRMA metadata was expanded to recognize dedicated `thinking` animations alongside action, idle, and expression categories, the viewer waiting state was updated to keep the configured main idle running as the baseline, trigger one thinking motion as soon as the backend enters its waiting phase, and then occasionally inject additional thinking motions if the provider is still taking time before blending cleanly back into the normal idle flow once text starts arriving. Thinking-state emotion cues are now also blocked from using mouth/speech overlays even when a direct expression asset id is suggested, any lingering speech overlay is cut immediately when a new waiting phase begins, and thinking body motions now strip facial tracks on load so mouth animation cannot leak in from a VRMA itself. Waiting is now expressionless by default unless an expression is explicitly tagged for thinking, and streamed reply cues are ignored until visible assistant text actually begins so speech overlays like `Happy Talk` cannot start during the pure waiting phase. A dedicated `thinkingBubbleService` now also renders a fully 3D hologram-style cartoon thought bubble in the scene, anchored to the avatar’s head and looping through trailing bubbles plus an animated three-dot cloud while the wait state is active; its final display has been refined into a cleaner filled cloud silhouette, its anchor offsets were widened so the cloud sits farther from the avatar instead of clipping into the model, it now follows avatar-relative world space instead of billboard-facing a single camera so multi-camera hologram views can see it correctly from all sides, and the cloud body uses the shaped extruded silhouette rather than the later spherical puff experiment so the hologram keeps the cleaner comic-cloud look while still having enough body depth to read from side angles. Speech playback now also starts during streamed replies instead of waiting for the full message to finish: incoming text deltas are buffered until a full paragraph is available, queued paragraph by paragraph, and the remainder is flushed when the stream completes. The viewer chat history now renders newest-first so the latest assistant and user turns stay visible at the top without forcing a scroll to the bottom. The shared motion catalog was also adjusted so the former `Focus` waiting clip now lives in the main action set as `Holding Head`, with tags for reflective or overwhelmed beats instead of being reserved for LLM waiting. The animation editor and uploader also support `thinking` as a first-class custom kind, while the backend prompt builder keeps those waiting-only clips out of the LLM’s normal reply-motion catalog so they are not suggested as spoken-response gestures. The development guide now also treats Docker Compose as the source of truth for Node and PHP verification so frontend and backend checks run against the project runtime instead of the host machine.
+Latest implementation note: the memory system now distinguishes between `Relationship Memory` and `Long-Term Memory` instead of treating every saved fact as one undifferentiated bullet list. Chat rules and memory rules now instruct the model to only save memory for impactful moments, stable user preferences, meaningful relationship changes, promises, or durable life context, and to scope saved facts as either `{memory:relationship|...}` or `{memory:long-term|...}` when they are important enough to matter later. Backend memory responses now also estimate not just raw memory size but prompt pressure against the selected model, including approximate token counts, the configured provider/model, the reserved memory allowance, and an estimated share of the chat prompt consumed by memory. The Manage memory panel surfaces those diagnostics and now opens a warning popup when memory grows heavy for the chosen model so the user can compress before memory starts crowding out rules and history. Manual memory compression remains available through `/api/avatars/{id}/memory/compress`, and the compression path continues to preserve the authoritative avatar identity block so user-defined name, backstory, and personality are not lost. In the same implementation window, the old user-editable avatar `system prompt` path was removed from the main product surfaces and from prompt assembly; the backend now frames name, backstory, and personality explicitly as avatar chat context only, never as system authority, tool permissions, or executable instructions. The development guide also continues to treat Docker Compose as the source of truth for Node and PHP verification so frontend and backend checks run against the project runtime instead of the host machine.
 
 It is based on the repository history, the current codebase, the existing roadmap in `AGENTS.md`, and the active task list in `TODO.md`. It is not a full meeting log; it is the best code-backed summary of what has happened so far and what the project is driving toward.
 
@@ -257,6 +257,37 @@ That pass added:
 This matters because chat streaming is the core interaction loop. The app now fails more gracefully, preserves more useful feedback for the user, and should behave better across slower or slightly inconsistent provider streams.
 
 ### 17. MiniMax stream compatibility was tightened
+
+### 18. Memory diagnostics and compression became first-class
+
+The next pass focused on the part of the product that will carry avatar personality over time: long-term memory.
+
+That pass added:
+
+- richer memory prompt guidance in `backend/prompts/memory_rules.md`
+- a dedicated memory compression prompt in `backend/prompts/memory_compression_rules.md`
+- backend memory diagnostics for raw versus compacted memory size and approximate token footprint
+- backend reporting of the configured avatar provider, model, prompt budget, and memory-related request preview
+- a manual memory compression endpoint that runs through the avatar’s configured LLM connection
+- normalization of compressed memory so core sections and avatar identity cannot drift
+- frontend memory-panel visibility into prompt blocks, request parameters, and reply handling
+
+This matters because memory is one of the core systems behind personality consistency. The project now has a first usable answer to the “memory will grow until it breaks the context window” problem, and it also gives us a clear inspection surface for iterating on the memory prompts next.
+
+### 19. Memory buckets and prompt hardening replaced the old loose memory flow
+
+The next pass tightened both memory semantics and prompt security.
+
+That pass added:
+
+- separate `Relationship Memory` and `Long-Term Memory` sections in the stored markdown
+- scoped memory-tag handling so backend parsing can route important facts to the right section
+- stronger prompt instructions that only allow memory saves for impactful or durable details
+- model-pressure diagnostics and a Manage-page warning popup when memory gets heavy for the chosen model
+- removal of the user-facing avatar `system prompt` editor from the main setup flow
+- stronger prompt framing that treats avatar name, backstory, and personality as chat-only character data, not as executable instructions or authority changes
+
+This matters because the project needs personality without opening avoidable prompt-injection surface area. The avatar can still be shaped by identity and memory, but the real system instructions now stay backend-owned and the memory model is better aligned with how believable long-term character continuity should work.
 
 The next small pass checked MiniMax specifically against its current OpenAI-compatible streaming docs.
 
@@ -537,3 +568,14 @@ Implemented:
 - changed viewer waiting behavior to keep the selected main idle as the baseline, immediately trigger one thinking clip when the provider starts working, occasionally inject additional non-looping thinking clips during longer waits, and blend back into the configured idle when the first streamed response begins
 - kept the backend prompt builder from exposing `thinking` clips as regular reply movements so the LLM does not use waiting animations as normal in-conversation gesture suggestions
 - added explicit frontend tests for thinking-injection timing and asset selection, alongside the existing backend/frontend coverage for shared thinking metadata, uploads, prompt filtering, and expression cue selection
+
+### 17. PHPUnit output was cleaned up for pre-release confidence
+
+This pass removed the remaining false-positive noise from the PHP test suite so expected API error-path tests do not print `[error]` tags during normal development runs.
+
+Implemented:
+
+- migrated `backend/phpunit.xml.dist` to the current PHPUnit schema and kept the generated PHPUnit cache out of git
+- adjusted SSE response flushing so the streaming API test no longer trips BrowserKit output-buffer warnings
+- lowered expected test-only 404 exception logging to `info` in Symfony test config
+- switched the PHPUnit kernel to `APP_DEBUG=0` so API Platform does not emit false-positive `[error]` logs for expected exception-to-error-resource test paths

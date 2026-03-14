@@ -20,7 +20,6 @@ export default function AvatarIdentityPanel({
     name: '',
     backstory: '',
     personality: '',
-    systemPrompt: '',
     llmCredentialId: '',
     speechVoiceGender: '',
     speechLanguage: 'auto',
@@ -31,7 +30,6 @@ export default function AvatarIdentityPanel({
       name: avatar?.name || '',
       backstory: avatar?.backstory || '',
       personality: avatar?.personality || '',
-      systemPrompt: avatar?.systemPrompt || '',
       llmCredentialId: credentialId ? String(credentialId) : '',
       speechVoiceGender: avatar?.speechVoiceGender || '',
       speechLanguage: avatar?.speechLanguage || 'auto',
@@ -64,7 +62,6 @@ export default function AvatarIdentityPanel({
             name: draft.name,
             backstory: draft.backstory,
             personality: draft.personality,
-            systemPrompt: draft.systemPrompt,
             llmCredentialId: draft.llmCredentialId ? Number(draft.llmCredentialId) : null,
             speechVoiceGender: draft.speechVoiceGender || null,
             speechLanguage: draft.speechLanguage || 'auto',
@@ -103,16 +100,6 @@ export default function AvatarIdentityPanel({
             onChange={(event) => setDraft((current) => ({ ...current, personality: event.target.value }))}
             placeholder="Example: warm, patient, playful, direct..."
             rows={4}
-            className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
-          />
-        </label>
-        <label className="block space-y-2">
-          <div className="text-xs uppercase tracking-[0.24em] text-white/45">Special instructions (advanced)</div>
-          <textarea
-            value={draft.systemPrompt}
-            onChange={(event) => setDraft((current) => ({ ...current, systemPrompt: event.target.value }))}
-            placeholder="Optional extra rules for how the avatar should answer."
-            rows={5}
             className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
           />
         </label>

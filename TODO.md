@@ -32,7 +32,9 @@ This baseline has been verified against the current repository. The next phase s
 ### 1. Avatar believability
 
 - improve persona consistency
-- improve memory use in prompt assembly
+- keep tightening memory use in prompt assembly now that token diagnostics and manual LLM compression are in place
+- test whether the new split between Relationship Memory and Long-Term Memory produces better character consistency in real chats
+- refine the new long-term memory directive and compression prompt based on real chat behavior
 - improve cue quality so avatar reactions feel intentional
 - continue polishing the core “thinking” movement and emotion VRMA set; `thinking` is now a first-class animation kind used for viewer wait states, and `default_vrma/thinking/` remains the dedicated drop zone for those launch-ready clips
 - keep expression overlays facial-only and emotionally coherent
@@ -54,6 +56,9 @@ This baseline has been verified against the current repository. The next phase s
 - move from inline memory tags to a stricter backend-only tool contract if provider support is reliable
 - keep updates scoped strictly to the authenticated user and selected avatar
 - preserve revision history and auditability
+- decide how much automatic memory compression or summarization should happen without surprising the user
+- improve memory structure beyond a single markdown document if long-term personality fidelity needs a richer model
+- tune the new memory warning threshold once real prompt footprints are observed across multiple providers and models
 
 ### 4. Frontend cleanup
 
@@ -103,6 +108,10 @@ Before closing a feature set, the minimum checks should be:
   - streamed cue events now include backend-resolved asset ids for movement and expression playback so the viewer no longer has to make the final streamed cue choice locally
   - viewer-side chat now consumes streamed text and cue events, plays movement and facial overlays from backend-resolved cues, and uses browser speech synthesis for spoken replies
   - assistant replies may append long-term memory entries through the restricted inline `{memory:...}` bridge, persisted through the existing avatar memory revision flow
+  - memory responses now include approximate prompt-footprint diagnostics, active provider/model details, and the exact memory-related prompt blocks shown in the Manage memory panel
+  - the Manage memory panel can now trigger manual LLM-backed compression through `/api/avatars/{id}/memory/compress`, with the compressed result saved as a normal revision
+  - memory now distinguishes Relationship Memory from Long-Term Memory, supports scoped `{memory:relationship|...}` and `{memory:long-term|...}` tags, and warns in Manage when the selected model is running short on reserved memory allowance
+  - user-editable avatar system-prompt fields have been removed from the main product flow; avatar name, backstory, and personality are now framed as chat-only character data rather than true system instructions
 - Encryption requirements:
   - provider secrets must be encrypted at rest
   - never serialize raw secrets back to the frontend
@@ -112,7 +121,7 @@ Before closing a feature set, the minimum checks should be:
 
 - Add STT and TTS once text streaming is stable.
 - Evaluate structured output in addition to inline cue tags if provider support is consistent.
-- Consider optional semantic memory summarization so `memory.md` stays compact.
+- Continue iterating on semantic memory summarization now that the first manual compression path exists.
 - Consider ephemeral provider sessions only if they preserve the same security guarantees as the backend proxy.
 - Expand onboarding help after launch based on where non-technical users get stuck most often.
 

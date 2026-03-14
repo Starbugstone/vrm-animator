@@ -62,7 +62,7 @@ class AvatarMemoryService
             throw new \RuntimeException('Memory revision conflict.');
         }
 
-        return $this->saveMemory($memory, trim($markdownContent), $source);
+        return $this->saveMemory($memory, $markdownContent, $source);
     }
 
     public function resetMemory(Avatar $avatar, string $source = 'user'): AvatarMemory
@@ -78,33 +78,51 @@ class AvatarMemoryService
     }
 
     /**
-     * @param list<string> $entries
+     * @param list<array{scope:string,value:string}> $entries
      */
-    public function appendRelationshipMemory(Avatar $avatar, array $entries, string $source = 'assistant'): AvatarMemory
+    public function appendMemoryEntries(Avatar $avatar, array $entries, string $source = 'assistant'): AvatarMemory
     {
         $memory = $this->getOrCreateMemory($avatar, $source);
-        $normalizedEntries = [];
+        $groupedEntries = [
+            'relationship' => [],
+            'long-term' => [],
+        ];
 
         foreach ($entries as $entry) {
-            $normalized = trim((string) $entry);
+            $scope = strtolower(trim((string) ($entry['scope'] ?? 'relationship')));
+            $scope = $scope === 'long-term' ? 'long-term' : 'relationship';
+            $normalized = trim((string) ($entry['value'] ?? ''));
             $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
             if ($normalized === '') {
                 continue;
             }
 
-            $normalizedEntries[] = $normalized;
+            $groupedEntries[$scope][] = $normalized;
         }
 
-        $normalizedEntries = array_values(array_unique($normalizedEntries));
-        if ($normalizedEntries === []) {
+        $groupedEntries = [
+            'relationship' => array_values(array_unique($groupedEntries['relationship'])),
+            'long-term' => array_values(array_unique($groupedEntries['long-term'])),
+        ];
+        if ($groupedEntries['relationship'] === [] && $groupedEntries['long-term'] === []) {
             return $memory;
         }
 
-        $updatedMarkdown = $this->appendBulletsToSection(
-            $memory->getMarkdownContent(),
-            'Relationship Memory',
-            $normalizedEntries,
-        );
+        $updatedMarkdown = $memory->getMarkdownContent();
+        if ($groupedEntries['relationship'] !== []) {
+            $updatedMarkdown = $this->appendBulletsToSection(
+                $updatedMarkdown,
+                'Relationship Memory',
+                $groupedEntries['relationship'],
+            );
+        }
+        if ($groupedEntries['long-term'] !== []) {
+            $updatedMarkdown = $this->appendBulletsToSection(
+                $updatedMarkdown,
+                'Long-Term Memory',
+                $groupedEntries['long-term'],
+            );
+        }
 
         if ($updatedMarkdown === $memory->getMarkdownContent()) {
             return $memory;
@@ -129,8 +147,14 @@ class AvatarMemoryService
 
     private function saveMemory(AvatarMemory $memory, string $markdownContent, string $source): AvatarMemory
     {
+        $avatar = $memory->getAvatar();
+        if ($avatar === null) {
+            throw new \RuntimeException('Avatar memory is not linked to an avatar.');
+        }
+
+        $normalizedMarkdown = $this->normalizeMemoryMarkdown($avatar, $markdownContent);
         $memory
-            ->setMarkdownContent($markdownContent)
+            ->setMarkdownContent($normalizedMarkdown)
             ->setRevision($memory->getRevision() + 1)
             ->setLastUpdatedBy($source);
 
@@ -139,6 +163,47 @@ class AvatarMemoryService
         $this->entityManager->flush();
 
         return $memory;
+    }
+
+    public function normalizeMemoryMarkdown(Avatar $avatar, string $markdownContent): string
+    {
+        $normalized = trim(str_replace("\r\n", "\n", $markdownContent));
+        if ($normalized === '') {
+            return $this->buildDefaultMarkdown($avatar);
+        }
+
+        if (!str_starts_with($normalized, '# Avatar Memory')) {
+            $normalized = "# Avatar Memory\n\n".$normalized;
+        }
+
+        $normalized = $this->replaceSection(
+            $normalized,
+            'Avatar Identity',
+            $this->buildIdentitySection($avatar),
+        );
+
+        $normalized = $this->ensureSectionExists(
+            $normalized,
+            'Relationship Memory',
+            "- important facts about the user\n- promises made\n- preferences\n- recurring topics",
+        );
+        $normalized = $this->ensureSectionExists(
+            $normalized,
+            'Long-Term Memory',
+            "- durable facts that should stay true across future chats\n- ongoing goals or situations that may come back later",
+        );
+        $normalized = $this->ensureSectionExists(
+            $normalized,
+            'Behavioral Rules',
+            "- stay in character\n- keep responses grounded in the avatar profile",
+        );
+        $normalized = $this->ensureSectionExists(
+            $normalized,
+            'Notes',
+            '- add long-term notes here',
+        );
+
+        return trim($normalized);
     }
 
     private function createRevision(AvatarMemory $memory, string $source): void
@@ -166,6 +231,10 @@ class AvatarMemoryService
             '- preferences',
             '- recurring topics',
             '',
+            '## Long-Term Memory',
+            '- durable facts that should stay true across future chats',
+            '- ongoing goals or situations that may come back later',
+            '',
             '## Behavioral Rules',
             '- stay in character',
             '- keep responses grounded in the avatar profile',
@@ -181,7 +250,6 @@ class AvatarMemoryService
             sprintf('- name: %s', $avatar->getName() ?: ''),
             sprintf('- backstory: %s', $avatar->getBackstory() ?: ''),
             sprintf('- personality: %s', $avatar->getPersonality() ?: ''),
-            sprintf('- system_prompt: %s', $avatar->getSystemPrompt() ?: ''),
             sprintf('- speech_voice_gender: %s', $avatar->getSpeechVoiceGender() ?: ''),
             sprintf('- speech_language: %s', $avatar->getSpeechLanguage()),
         ]);
@@ -236,5 +304,15 @@ class AvatarMemoryService
         $replacement = $prefix.trim(implode("\n", $existingLines));
 
         return preg_replace($pattern, $replacement, $markdown) ?? $markdown;
+    }
+
+    private function ensureSectionExists(string $markdown, string $sectionTitle, string $defaultBody): string
+    {
+        $pattern = sprintf('/## %s\n.*?(?=\n## |\z)/s', preg_quote($sectionTitle, '/'));
+        if (preg_match($pattern, $markdown) === 1) {
+            return $markdown;
+        }
+
+        return rtrim($markdown)."\n\n## ".$sectionTitle."\n".trim($defaultBody);
     }
 }

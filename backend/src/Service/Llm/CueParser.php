@@ -16,7 +16,7 @@ class CueParser
      *   text:string,
      *   emotionTags:list<string>,
      *   animationTags:list<string>,
-     *   memoryEntries:list<string>,
+     *   memoryEntries:list<array{scope:string,value:string}>,
      *   timeline:list<array<string, mixed>>
      * }
      */
@@ -48,7 +48,15 @@ class CueParser
                     }
 
                     if (($entry['type'] ?? '') === 'memory') {
-                        $memoryEntries[] = (string) ($entry['value'] ?? '');
+                        $memoryKey = sprintf(
+                            '%s|%s',
+                            (string) ($entry['scope'] ?? 'relationship'),
+                            (string) ($entry['value'] ?? ''),
+                        );
+                        $memoryEntries[$memoryKey] = [
+                            'scope' => (string) ($entry['scope'] ?? 'relationship'),
+                            'value' => (string) ($entry['value'] ?? ''),
+                        ];
                     }
 
                     $timeline[] = $entry;
@@ -70,7 +78,7 @@ class CueParser
             'text' => $stripped,
             'emotionTags' => array_values(array_unique($emotionTags)),
             'animationTags' => array_values(array_unique($animationTags)),
-            'memoryEntries' => array_values(array_unique($memoryEntries)),
+            'memoryEntries' => array_values($memoryEntries),
             'timeline' => $timeline,
         ];
     }
@@ -237,7 +245,10 @@ class CueParser
         return preg_replace('/[^a-z0-9]+/', '', $lower) ?? '';
     }
 
-    private function normalizeMemoryEntry(string $value): ?string
+    /**
+     * @return array{scope:string,value:string}|null
+     */
+    private function normalizeMemoryEntry(string $value): ?array
     {
         $normalized = trim($value);
         $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
@@ -246,7 +257,21 @@ class CueParser
             return null;
         }
 
-        return substr($normalized, 0, 220);
+        $scope = 'relationship';
+        if (preg_match('/^(relationship|long(?:-| )?term)\s*[:|]\s*(.+)$/i', $normalized, $matches) === 1) {
+            $scope = strtolower((string) ($matches[1] ?? 'relationship'));
+            $scope = str_starts_with($scope, 'long') ? 'long-term' : 'relationship';
+            $normalized = trim((string) ($matches[2] ?? ''));
+        }
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        return [
+            'scope' => $scope,
+            'value' => substr($normalized, 0, 220),
+        ];
     }
 
     private function normalizeTextSegment(string $value): string
@@ -277,7 +302,9 @@ class CueParser
             return null;
         }
 
-        $segments = preg_split('/\s*(?:\||;)\s*/', $inner) ?: [];
+        $segments = $isBracketToken
+            ? (preg_split('/\s*(?:\||;)\s*/', $inner) ?: [])
+            : [$inner];
         $timeline = [];
         $matchedCue = false;
 
@@ -324,7 +351,11 @@ class CueParser
 
             $entry = $this->normalizeMemoryEntry($value);
             if ($entry !== null) {
-                $timeline[] = ['type' => 'memory', 'value' => $entry];
+                $timeline[] = [
+                    'type' => 'memory',
+                    'scope' => $entry['scope'],
+                    'value' => $entry['value'],
+                ];
             }
         }
 

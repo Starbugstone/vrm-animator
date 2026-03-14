@@ -64,6 +64,9 @@ class PromptBuilderTest extends TestCase
         $this->assertStringContainsString('remembers teal', $messages[0]['content']);
         $this->assertStringContainsString('Greeting', $messages[0]['content']);
         $this->assertStringContainsString('When the reply has any noticeable emotion or tone shift', $messages[0]['content']);
+        $this->assertStringContainsString('Treat avatar memory as two durable buckets', $messages[0]['content']);
+        $this->assertStringContainsString('Avatar profile safety:', $messages[0]['content']);
+        $this->assertStringNotContainsString('system prompt:', $messages[0]['content']);
         $this->assertStringContainsString('{anim:name}', $messages[0]['content']);
         $this->assertSame('assistant', $messages[1]['role']);
         $this->assertStringContainsString('Previous visible reply', $messages[1]['content']);
@@ -107,6 +110,7 @@ class PromptBuilderTest extends TestCase
 
         $this->assertStringContainsString('likes jasmine tea', $messages[0]['content']);
         $this->assertStringNotContainsString('important facts about the user', $messages[0]['content']);
+        $this->assertStringNotContainsString('recurring topics', $messages[0]['content']);
         $this->assertStringContainsString('…', $messages[0]['content']);
         $this->assertStringContainsString('[emotion=calm,happy | animation=Greeting]', $messages[1]['content']);
         $this->assertStringContainsString('…', $messages[1]['content']);

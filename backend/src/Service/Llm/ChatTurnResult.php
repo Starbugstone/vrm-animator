@@ -9,7 +9,7 @@ final readonly class ChatTurnResult
 {
     /**
      * @param list<array<string, mixed>> $assistantTimeline
-     * @param list<string> $assistantMemoryEntries
+     * @param list<array{scope:string,value:string}> $assistantMemoryEntries
      */
     public function __construct(
         public Conversation $conversation,

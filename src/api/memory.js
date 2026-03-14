@@ -19,6 +19,14 @@ export function resetAvatarMemory(token, avatarId) {
   })
 }
 
+export function compressAvatarMemory(token, avatarId, payload) {
+  return apiRequest(`/api/avatars/${avatarId}/memory/compress`, {
+    method: 'POST',
+    token,
+    json: payload,
+  })
+}
+
 export function fetchAvatarMemoryRevisions(token, avatarId) {
   return apiRequest(`/api/avatars/${avatarId}/memory/revisions`, { token })
 }

@@ -71,7 +71,6 @@ class Avatar
     private ?string $personality = null;
 
     #[ORM\Column(type: Types::TEXT, nullable: true)]
-    #[Groups(['avatar:read', 'avatar:write'])]
     private ?string $systemPrompt = null;
 
     #[ORM\Column(length: 16, nullable: true)]

@@ -41,7 +41,7 @@ describe('streamAvatarChatMessage', () => {
       'event: status\ndata: {"message":"Preparing avatar context..."}\n\n',
       'event: text.delta\ndata: {"delta":"Hel',
       'lo"}\n\nevent: cue\ndata: {"cueType":"emotion","value":"happy"}\n\n',
-      'event: memory\ndata: {"entry":"likes jasmine tea"}\n\n',
+      'event: memory\ndata: {"entry":"likes jasmine tea","scope":"relationship"}\n\n',
       'event: message.complete\ndata: {"conversation":{"id":1,"provider":"minimax","model":"MiniMax-M2.5"},"assistantMessage":{"content":"Hello"}}\n\n',
     ]))
 
@@ -62,7 +62,7 @@ describe('streamAvatarChatMessage', () => {
     expect(onStatus).toHaveBeenCalledWith({ message: 'Preparing avatar context...' })
     expect(onTextDelta).toHaveBeenCalledWith({ delta: 'Hello' })
     expect(onCue).toHaveBeenCalledWith({ cueType: 'emotion', value: 'happy' })
-    expect(onMemory).toHaveBeenCalledWith({ entry: 'likes jasmine tea' })
+    expect(onMemory).toHaveBeenCalledWith({ entry: 'likes jasmine tea', scope: 'relationship' })
     expect(onComplete).toHaveBeenCalledTimes(1)
     expect(completion.conversation.model).toBe('MiniMax-M2.5')
   })

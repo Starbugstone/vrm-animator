@@ -56,7 +56,6 @@ class AvatarPersonaController extends AbstractController
             ->setName($name)
             ->setDescription($this->normalizeNullableString($payload['description'] ?? null))
             ->setPersonality($this->normalizeNullableString($payload['personality'] ?? null))
-            ->setSystemPrompt($this->normalizeNullableString($payload['systemPrompt'] ?? null))
             ->setIsPrimary((bool) ($payload['isPrimary'] ?? false));
 
         try {
@@ -107,9 +106,6 @@ class AvatarPersonaController extends AbstractController
         }
         if (array_key_exists('personality', $payload)) {
             $persona->setPersonality($this->normalizeNullableString($payload['personality']));
-        }
-        if (array_key_exists('systemPrompt', $payload)) {
-            $persona->setSystemPrompt($this->normalizeNullableString($payload['systemPrompt']));
         }
         if (array_key_exists('llmCredentialId', $payload)) {
             try {
@@ -195,7 +191,6 @@ class AvatarPersonaController extends AbstractController
      *   name:string,
      *   description:?string,
      *   personality:?string,
-     *   systemPrompt:?string,
      *   llmCredentialId:?int,
      *   llmProvider:?string,
      *   isPrimary:bool,
@@ -211,7 +206,6 @@ class AvatarPersonaController extends AbstractController
             'name' => $persona->getName(),
             'description' => $persona->getDescription(),
             'personality' => $persona->getPersonality(),
-            'systemPrompt' => $persona->getSystemPrompt(),
             'llmCredentialId' => $persona->getLlmCredential()?->getId(),
             'llmProvider' => $persona->getLlmCredential()?->getProvider(),
             'isPrimary' => $persona->isPrimary(),

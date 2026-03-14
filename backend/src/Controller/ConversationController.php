@@ -354,8 +354,8 @@ class ConversationController extends AbstractController
 
     private function primeSseStream(): void
     {
-        while (ob_get_level() > 0) {
-            ob_end_flush();
+        if (ob_get_level() > 0 && function_exists('ob_flush')) {
+            @ob_flush();
         }
 
         echo ':' . str_repeat(' ', 2048) . "\n\n";
@@ -377,7 +377,10 @@ class ConversationController extends AbstractController
         }
 
         if (($event['type'] ?? '') === 'memory') {
-            $this->emitSseEvent('memory', ['entry' => (string) ($event['value'] ?? '')]);
+            $this->emitSseEvent('memory', [
+                'entry' => (string) ($event['value'] ?? ''),
+                'scope' => (string) ($event['scope'] ?? 'relationship'),
+            ]);
             return;
         }
 
@@ -506,7 +509,7 @@ class ConversationController extends AbstractController
         echo 'event: '.$event."\n";
         echo 'data: '.json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\n\n";
 
-        if (function_exists('ob_flush')) {
+        if (ob_get_level() > 0 && function_exists('ob_flush')) {
             @ob_flush();
         }
 
