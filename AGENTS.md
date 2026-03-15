@@ -63,7 +63,7 @@ vrm-animator/
 
 | Layer        | Technology |
 |-------------|------------|
-| **Backend** | PHP 8.3+, Symfony 7.2, API Platform 4, Doctrine ORM 3, MariaDB 11, Lexik JWT, Nelmio CORS |
+| **Backend** | PHP 8.3+, Symfony 7.2, API Platform 4, Doctrine ORM 3, MariaDB 11, Lexik JWT, Nelmio CORS, Monolog |
 | **Frontend**| React 18, Vite 7, Tailwind CSS, Three.js, @pixiv/three-vrm, @pixiv/three-vrm-animation |
 | **Runtime** | Docker Compose: `php` (Apache), `node` (Vite), `database` (MariaDB), `mailpit` |
 | **Auth**    | JWT (stateless); register/login via `/api/register`, `/api/login_check` |
@@ -84,6 +84,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **User-first product thinking**: The app must stay easy to use, explicit, and understandable to non-technical users. Do not assume the user already understands avatar tooling, LLM setup, or hologram concepts.
 - **Configuration UX consistency**: Avatar, LLM, TTS, memory, and future provider setup surfaces must feel coherent with each other. Reuse interaction patterns, keep fallback behavior explicit, and avoid making users re-learn a different workflow for each settings panel.
 - **Docker-first verification**: Run Node/Vite/Vitest and PHP/PHPUnit verification through Docker Compose so checks use the project runtime, not the host machine. Prefer `docker compose exec -T node ...` and `docker compose exec -T php ...` when the services are already running.
+- **Backend diagnostics**: Symfony Monolog is available. When debugging backend, provider, auth, upload, or chat orchestration issues, consult the logs in `backend/var/log/` before assuming the frontend or upstream provider is solely at fault.
 
 ### 3.2 Backend (Symfony)
 

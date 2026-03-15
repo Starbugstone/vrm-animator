@@ -1,6 +1,6 @@
 ## TODO
 
-Updated: 2026-03-14
+Updated: 2026-03-15
 
 This file is intentionally short. `devlog.md` holds the product narrative and end goal; this file is the working task list for the next implementation window.
 
@@ -37,6 +37,7 @@ This baseline has been verified against the current repository. The next phase s
 - refine the new long-term memory directive and compression prompt based on real chat behavior
 - improve cue quality so avatar reactions feel intentional
 - keep tuning speech-time cue pacing so long spoken replies stay lively without becoming repetitive
+- keep refining the new reply-motion queue and priority handoff rules so conversational gestures stay smooth when cues arrive close together
 - continue polishing the core “thinking” movement and emotion VRMA set; `thinking` is now a first-class animation kind used for viewer wait states, and `default_vrma/thinking/` remains the dedicated drop zone for those launch-ready clips
 - keep expression overlays facial-only and emotionally coherent
 - define and polish the two launch starter avatars from the default asset pool so they feel production-ready
@@ -79,6 +80,7 @@ This baseline has been verified against the current repository. The next phase s
 - keep the current browser-speech fallback usable through avatar-level speech language and voice preferences
 - harden the new ElevenLabs BYOK streaming TTS path now that avatar-level voice routing exists
 - keep the browser-speech fallback reliable whenever an avatar has no ElevenLabs voice selected or remote playback fails
+- route future browser boundary timing and ElevenLabs timestamp/alignment data through the new centralized speech clock before adding more reply-sync logic
 - improve ElevenLabs voice tagging, filtering, and selection UX so avatar sex defaults and explicit overrides stay understandable
 - decide whether more ElevenLabs controls should live at the credential level, avatar level, or stay hidden for first-time users
 - add STT after TTS

@@ -18,6 +18,16 @@ import {
   sampleSpeechMotionDelay,
   takeSpeakableSpeechChunk,
 } from '../lib/viewerSpeech.js'
+import {
+  createEmptySpeechClockState,
+  createSpeechClock,
+  estimateSpeechDurationMs,
+  getSpeechClockElapsedMs,
+  getSpeechClockReleaseDelayMs,
+  getSpeechClockRemainingMs,
+  recordSpeechClockActivity,
+  syncSpeechClockDuration,
+} from '../lib/viewerSpeechClock.js'
 import { playStreamedAudioResponse } from '../lib/streamingAudio.js'
 import { getEffectiveVoiceGender, hasRemoteTtsConfiguration } from '../lib/ttsVoices.js'
 import { streamAvatarTts } from '../api/tts.js'
@@ -75,8 +85,6 @@ function createEmptySpeechPresenceState() {
   return {
     sessionId: 0,
     started: false,
-    startedAt: 0,
-    totalDurationMs: 0,
     beats: [],
     recentMovementIds: [],
     lastMovementAssetId: '',
@@ -182,18 +190,6 @@ function pickSpeechVoiceWithPreference(speechSynthesis, locale, preferredGender)
   return genderVoices[0] || candidateVoices[0] || null
 }
 
-function estimateSpeechDurationMs(text, rate = 1) {
-  const wordCount = String(text || '').trim().split(/\s+/).filter(Boolean).length
-  if (wordCount === 0) {
-    return 0
-  }
-
-  const wordsPerMinute = 165 * Math.max(rate, 0.6)
-  const minutes = wordCount / wordsPerMinute
-
-  return Math.max(1800, Math.ceil(minutes * 60_000) + 1200)
-}
-
 function findMovementAssetByTag(items, tag) {
   const normalizedTag = normalizeToken(tag)
   if (!normalizedTag) return null
@@ -280,6 +276,7 @@ export default function ViewerPage({ workspace }) {
   const speechSessionIdRef = useRef(0)
   const speechStopTimeoutRef = useRef(null)
   const speechMonitorIntervalRef = useRef(null)
+  const speechClockRef = useRef(createEmptySpeechClockState())
   const speechPresenceRef = useRef(createEmptySpeechPresenceState())
   const speechPresenceBeatTimeoutsRef = useRef([])
   const speechPresenceInjectionTimeoutRef = useRef(null)
@@ -288,7 +285,6 @@ export default function ViewerPage({ workspace }) {
   const delayedSpeechCueIdRef = useRef(0)
   const remoteAudioRef = useRef(typeof Audio !== 'undefined' ? new Audio() : null)
   const remoteTtsAbortRef = useRef(null)
-  const lastSpeechActivityAtRef = useRef(0)
   const streamingSpeechBufferRef = useRef('')
   const streamingSpeechCursorRef = useRef(0)
   const streamingSpeechSamplesRef = useRef([])
@@ -424,6 +420,7 @@ export default function ViewerPage({ workspace }) {
   const stopSpeechPresenceSession = useCallback(() => {
     clearSpeechPresenceTimers()
     pendingDelayedSpeechCuesRef.current = []
+    speechClockRef.current = createEmptySpeechClockState()
     speechPresenceRef.current = createEmptySpeechPresenceState()
   }, [clearSpeechPresenceTimers])
 
@@ -679,6 +676,7 @@ export default function ViewerPage({ workspace }) {
       loop: false,
       returnToDefault: true,
       stripExpressionTracks: true,
+      priority: reason === 'speech' ? 'speech-injection' : 'speech-explicit',
     })
 
     return asset
@@ -711,7 +709,6 @@ export default function ViewerPage({ workspace }) {
 
   const resetSpeechRuntime = useCallback(() => {
     speechSessionIdRef.current += 1
-    lastSpeechActivityAtRef.current = 0
     streamingSpeechBufferRef.current = ''
     streamingSpeechCursorRef.current = 0
     streamingSpeechSamplesRef.current = []
@@ -824,7 +821,7 @@ export default function ViewerPage({ workspace }) {
       return false
     }
 
-    const elapsedMs = Math.max(0, nowMs() - state.startedAt)
+    const elapsedMs = getSpeechClockElapsedMs(speechClockRef.current)
     const remainingMs = Math.max(0, delayMs - elapsedMs)
     const timeoutId = window.setTimeout(() => {
       void runSpeechBeat({
@@ -856,8 +853,8 @@ export default function ViewerPage({ workspace }) {
       return
     }
 
-    const elapsedMs = Math.max(0, nowMs() - state.startedAt)
-    const remainingMs = state.totalDurationMs - elapsedMs
+    const elapsedMs = getSpeechClockElapsedMs(speechClockRef.current)
+    const remainingMs = getSpeechClockRemainingMs(speechClockRef.current)
     if (remainingMs <= SPEECH_MOVEMENT_END_BUFFER_MS) {
       return
     }
@@ -874,8 +871,8 @@ export default function ViewerPage({ workspace }) {
         return
       }
 
-      const currentElapsedMs = Math.max(0, nowMs() - currentState.startedAt)
-      const currentRemainingMs = currentState.totalDurationMs - currentElapsedMs
+      const currentElapsedMs = getSpeechClockElapsedMs(speechClockRef.current)
+      const currentRemainingMs = getSpeechClockRemainingMs(speechClockRef.current)
       if (currentRemainingMs <= SPEECH_MOVEMENT_END_BUFFER_MS) {
         return
       }
@@ -918,20 +915,39 @@ export default function ViewerPage({ workspace }) {
     }, delayMs)
   }, [
     actionItems,
-    idleItems,
     playConversationalMovementAsset,
     rememberSpeechMovement,
   ])
 
-  const startSpeechPresenceSession = useCallback((sessionId, totalDurationMs, fallbackEmotion = 'neutral') => {
+  const startSpeechPresenceSession = useCallback((sessionId, speechClock, fallbackEmotion = 'neutral') => {
     if (typeof window === 'undefined') {
       return
     }
 
     const currentState = speechPresenceRef.current
     if (currentState.started && currentState.sessionId === sessionId) {
+      speechClockRef.current = syncSpeechClockDuration(
+        speechClock?.active && speechClock.sessionId === sessionId ? speechClock : speechClockRef.current,
+        {
+          totalDurationMs: Math.max(
+            speechClockRef.current.totalDurationMs || 0,
+            speechClock?.totalDurationMs || 0,
+          ),
+          rate: speechClock?.playbackRate || speechClockRef.current.playbackRate,
+          text: speechCuePlanRef.current.fullText,
+        },
+      )
       return
     }
+
+    const nextSpeechClock = speechClock?.active
+      ? speechClock
+      : createSpeechClock({
+        sessionId,
+        source: 'speech',
+        timingKind: 'estimated',
+        text: speechCuePlanRef.current.fullText || streamingSpeechBufferRef.current,
+      })
 
     const plan = speechCuePlanRef.current?.beats?.length
       ? speechCuePlanRef.current
@@ -942,16 +958,15 @@ export default function ViewerPage({ workspace }) {
     const beats = plan.beats.map((beat) => ({
       ...beat,
       offsetMs: beat.animationDelayMs !== null && beat.animationDelayMs !== undefined
-        ? Math.max(0, Math.min(Number(beat.animationDelayMs), Math.max(0, totalDurationMs - SPEECH_MOVEMENT_END_BUFFER_MS)))
-        : Math.round(Math.max(0, totalDurationMs) * beat.offsetRatio),
+        ? Math.max(0, Math.min(Number(beat.animationDelayMs), Math.max(0, nextSpeechClock.totalDurationMs - SPEECH_MOVEMENT_END_BUFFER_MS)))
+        : Math.round(Math.max(0, nextSpeechClock.totalDurationMs) * beat.offsetRatio),
     }))
 
     clearSpeechPresenceTimers()
+    speechClockRef.current = nextSpeechClock
     speechPresenceRef.current = {
       sessionId,
       started: true,
-      startedAt: nowMs(),
-      totalDurationMs,
       beats,
       recentMovementIds: [],
       lastMovementAssetId: '',
@@ -985,7 +1000,7 @@ export default function ViewerPage({ workspace }) {
       speechPresenceBeatTimeoutsRef.current.push(timeoutId)
     })
 
-    if (totalDurationMs > SPEECH_MOVEMENT_END_BUFFER_MS + 800) {
+    if (nextSpeechClock.totalDurationMs > SPEECH_MOVEMENT_END_BUFFER_MS + 800) {
       queueNextSpeechMovementInjection()
     }
 
@@ -1036,6 +1051,7 @@ export default function ViewerPage({ workspace }) {
       loop: false,
       returnToDefault: true,
       stripExpressionTracks: true,
+      priority: 'user-message',
     })
   }, [playAnimationFile])
 
@@ -1153,9 +1169,16 @@ export default function ViewerPage({ workspace }) {
             return
           }
 
+          const speechClock = createSpeechClock({
+            sessionId,
+            source: 'remote-tts',
+            timingKind: 'audio-start',
+            text: speechCuePlanRef.current.fullText || cleanedText,
+            totalDurationMs: estimateSpeechDurationMs(speechCuePlanRef.current.fullText || cleanedText),
+          })
           startSpeechPresenceSession(
             sessionId,
-            estimateSpeechDurationMs(speechCuePlanRef.current.fullText || cleanedText),
+            speechClock,
             emotion || activeEmotionRef.current || 'neutral',
           )
           playEmotionCue(emotion || activeEmotionRef.current || 'neutral', { preferSpeech: true, loop: true })
@@ -1235,10 +1258,6 @@ export default function ViewerPage({ workspace }) {
       )
     }
 
-    const markSpeechActivity = () => {
-      lastSpeechActivityAtRef.current = typeof performance !== 'undefined' ? performance.now() : Date.now()
-    }
-
     utterance.onstart = () => {
       if (sessionId !== speechSessionIdRef.current) {
         return
@@ -1253,16 +1272,29 @@ export default function ViewerPage({ workspace }) {
         speechMonitorIntervalRef.current = null
       }
 
-      markSpeechActivity()
+      const speechText = speechCuePlanRef.current.fullText || streamingSpeechBufferRef.current || cleanedText
+      const existingClock = speechClockRef.current
+      const speechClock = existingClock.active && existingClock.sessionId === sessionId
+        ? recordSpeechClockActivity(syncSpeechClockDuration(existingClock, {
+          text: speechText,
+          rate: utterance.rate,
+        }))
+        : createSpeechClock({
+          sessionId,
+          source: 'browser-speech',
+          timingKind: 'boundary-events',
+          text: speechText,
+          rate: utterance.rate,
+        })
       startSpeechPresenceSession(
         sessionId,
-        estimateSpeechDurationMs(speechCuePlanRef.current.fullText || cleanedText, utterance.rate),
+        speechClock,
         emotion || activeEmotionRef.current || 'neutral',
       )
       playEmotionCue(emotion || activeEmotionRef.current || 'neutral', { preferSpeech: true, loop: true })
       speechStopTimeoutRef.current = window.setTimeout(
         stopSpeechOverlayNow,
-        estimateSpeechDurationMs(cleanedText, utterance.rate),
+        Math.max(SPEECH_OVERLAY_RELEASE_MS, getSpeechClockRemainingMs(speechClock)),
       )
       speechMonitorIntervalRef.current = window.setInterval(() => {
         if (sessionId !== speechSessionIdRef.current) {
@@ -1271,12 +1303,12 @@ export default function ViewerPage({ workspace }) {
 
         const stillSpeaking = speechSynthesis.speaking || speechSynthesis.pending || speechSynthesis.paused
         if (!stillSpeaking) {
-          const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
-          const elapsedSinceBoundary = Math.max(0, now - lastSpeechActivityAtRef.current)
-          const releaseDelay = lastSpeechActivityAtRef.current > 0
-            ? Math.max(80, SPEECH_BOUNDARY_RELEASE_MS - elapsedSinceBoundary)
-            : SPEECH_OVERLAY_RELEASE_MS
-          scheduleSpeechOverlayStop(releaseDelay)
+          scheduleSpeechOverlayStop(
+            getSpeechClockReleaseDelayMs(speechClockRef.current, {
+              boundaryReleaseMs: SPEECH_BOUNDARY_RELEASE_MS,
+              overlayReleaseMs: SPEECH_OVERLAY_RELEASE_MS,
+            }),
+          )
         }
       }, 120)
     }
@@ -1285,7 +1317,7 @@ export default function ViewerPage({ workspace }) {
         return
       }
 
-      markSpeechActivity()
+      speechClockRef.current = recordSpeechClockActivity(speechClockRef.current)
 
       if (speechStopTimeoutRef.current) {
         window.clearTimeout(speechStopTimeoutRef.current)
@@ -1293,12 +1325,12 @@ export default function ViewerPage({ workspace }) {
       }
     }
     utterance.onend = () => {
-      const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
-      const elapsedSinceBoundary = Math.max(0, now - lastSpeechActivityAtRef.current)
-      const releaseDelay = lastSpeechActivityAtRef.current > 0
-        ? Math.max(80, SPEECH_BOUNDARY_RELEASE_MS - elapsedSinceBoundary)
-        : SPEECH_OVERLAY_RELEASE_MS
-      scheduleSpeechOverlayStop(releaseDelay)
+      scheduleSpeechOverlayStop(
+        getSpeechClockReleaseDelayMs(speechClockRef.current, {
+          boundaryReleaseMs: SPEECH_BOUNDARY_RELEASE_MS,
+          overlayReleaseMs: SPEECH_OVERLAY_RELEASE_MS,
+        }),
+      )
     }
     utterance.onpause = () => {
       scheduleSpeechOverlayStop()
@@ -1425,6 +1457,7 @@ export default function ViewerPage({ workspace }) {
       },
     ])
     resetSpeechRuntime()
+    void startThinkingPresence()
     streamingSpeechSamplesRef.current = [outgoingMessage]
     let receivedAssistantText = false
 

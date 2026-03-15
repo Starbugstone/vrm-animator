@@ -10,7 +10,7 @@ class GlmProviderTest extends TestCase
 {
     public function testItUsesTheInjectedBaseUrl(): void
     {
-        $provider = new GlmProvider('https://open.bigmodel.cn/api/coding/paas/v4/');
+        $provider = new GlmProvider(glmBaseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4/');
 
         $method = new \ReflectionMethod($provider, 'getBaseUrl');
         $method->setAccessible(true);
@@ -41,5 +41,46 @@ class GlmProviderTest extends TestCase
         $this->assertStringContainsString('no available balance or resource package', $message);
         $this->assertStringContainsString('https://open.bigmodel.cn/api/paas/v4', $message);
         $this->assertStringContainsString('https://open.bigmodel.cn/api/coding/paas/v4', $message);
+    }
+
+    public function testItFallsBackToOutputTextWhenMessageContentIsEmpty(): void
+    {
+        $provider = new GlmProvider();
+
+        $method = new \ReflectionMethod($provider, 'extractCompletionContent');
+        $method->setAccessible(true);
+
+        $content = $method->invoke($provider, [
+            'choices' => [[
+                'message' => [
+                    'content' => '',
+                    'reasoning_content' => 'Reasoning only.',
+                ],
+            ]],
+            'output_text' => 'Visible answer from output_text.',
+        ]);
+
+        $this->assertSame('Visible answer from output_text.', $content);
+    }
+
+    public function testItExposesReasoningContentForDiagnostics(): void
+    {
+        $provider = new GlmProvider();
+
+        $method = new \ReflectionMethod($provider, 'extractReasoningContent');
+        $method->setAccessible(true);
+
+        $reasoning = $method->invoke($provider, [
+            'choices' => [[
+                'message' => [
+                    'reasoning_content' => [
+                        ['text' => 'Step one. '],
+                        ['text' => 'Step two.'],
+                    ],
+                ],
+            ]],
+        ]);
+
+        $this->assertSame('Step one. Step two.', $reasoning);
     }
 }

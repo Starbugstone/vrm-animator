@@ -2,8 +2,17 @@
 
 namespace App\Service\Llm;
 
+use Psr\Log\LoggerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
+
 abstract class AbstractOpenAiCompatibleProvider implements LlmProviderInterface
 {
+    public function __construct(
+        #[Autowire(service: 'monolog.logger.llm')]
+        private readonly ?LoggerInterface $llmLogger = null,
+    ) {
+    }
+
     abstract protected function getBaseUrl(): string;
 
     protected function resolveBaseUrl(LlmCompletionRequest $request): string
@@ -31,8 +40,9 @@ abstract class AbstractOpenAiCompatibleProvider implements LlmProviderInterface
     {
         $response = $this->requestJson($request, $secret, false);
 
-        $content = $this->extractVisibleText($response['choices'][0]['message']['content'] ?? null);
+        $content = $this->extractCompletionContent($response);
         if (trim($content) === '') {
+            $this->logEmptyCompletion($request, $response, false);
             throw new \RuntimeException('LLM provider returned an empty completion.');
         }
 
@@ -160,6 +170,13 @@ abstract class AbstractOpenAiCompatibleProvider implements LlmProviderInterface
         }
 
         if (trim($content) === '') {
+            $decoded = json_decode($rawResponse, true);
+            if (is_array($decoded)) {
+                $this->logEmptyCompletion($request, $decoded, true, $rawResponse);
+            } else {
+                $this->logRawStreamFailure($request, $rawResponse);
+            }
+
             throw new \RuntimeException('LLM provider returned an empty streamed completion.');
         }
 
@@ -317,6 +334,57 @@ abstract class AbstractOpenAiCompatibleProvider implements LlmProviderInterface
             return $outputText;
         }
 
+        $choiceText = $this->extractVisibleText($payload['choices'][0]['text'] ?? null);
+        if ($choiceText !== '') {
+            return $choiceText;
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    protected function extractCompletionContent(array $payload): string
+    {
+        $messageContent = $this->extractVisibleText($payload['choices'][0]['message']['content'] ?? null);
+        if ($messageContent !== '') {
+            return $messageContent;
+        }
+
+        $outputText = $this->extractVisibleText($payload['output_text'] ?? null);
+        if ($outputText !== '') {
+            return $outputText;
+        }
+
+        $choiceText = $this->extractVisibleText($payload['choices'][0]['text'] ?? null);
+        if ($choiceText !== '') {
+            return $choiceText;
+        }
+
+        return '';
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    protected function extractReasoningContent(array $payload): string
+    {
+        $messageReasoning = $this->extractVisibleText($payload['choices'][0]['message']['reasoning_content'] ?? null);
+        if ($messageReasoning !== '') {
+            return $messageReasoning;
+        }
+
+        $deltaReasoning = $this->extractVisibleText($payload['choices'][0]['delta']['reasoning_content'] ?? null);
+        if ($deltaReasoning !== '') {
+            return $deltaReasoning;
+        }
+
+        $topLevelReasoning = $this->extractVisibleText($payload['reasoning_content'] ?? null);
+        if ($topLevelReasoning !== '') {
+            return $topLevelReasoning;
+        }
+
         return '';
     }
 
@@ -405,5 +473,81 @@ abstract class AbstractOpenAiCompatibleProvider implements LlmProviderInterface
         }
 
         return 0;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function logEmptyCompletion(LlmCompletionRequest $request, array $payload, bool $stream, ?string $rawResponse = null): void
+    {
+        if ($this->llmLogger === null) {
+            return;
+        }
+
+        $choice = is_array($payload['choices'][0] ?? null) ? $payload['choices'][0] : [];
+        $message = is_array($choice['message'] ?? null) ? $choice['message'] : [];
+        $delta = is_array($choice['delta'] ?? null) ? $choice['delta'] : [];
+        $reasoning = $this->extractReasoningContent($payload);
+
+        $this->llmLogger->warning('LLM provider returned no visible assistant content.', [
+            'provider' => $request->provider,
+            'model' => $request->model,
+            'stream' => $stream,
+            'endpoint' => $this->resolveBaseUrl($request).'/chat/completions',
+            'finish_reason' => is_string($choice['finish_reason'] ?? null) ? $choice['finish_reason'] : null,
+            'top_level_keys' => array_keys($payload),
+            'message_keys' => array_keys($message),
+            'delta_keys' => array_keys($delta),
+            'message_content_type' => $this->describeValueType($message['content'] ?? null),
+            'message_reasoning_type' => $this->describeValueType($message['reasoning_content'] ?? null),
+            'output_text_type' => $this->describeValueType($payload['output_text'] ?? null),
+            'reasoning_excerpt' => $this->truncateForLog($reasoning, 600),
+            'response_excerpt' => $this->truncateForLog(
+                json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '',
+                4000,
+            ),
+            'raw_response_excerpt' => $this->truncateForLog($rawResponse ?? '', 4000),
+        ]);
+    }
+
+    private function logRawStreamFailure(LlmCompletionRequest $request, string $rawResponse): void
+    {
+        if ($this->llmLogger === null) {
+            return;
+        }
+
+        $this->llmLogger->warning('LLM provider stream ended without a parseable completion payload.', [
+            'provider' => $request->provider,
+            'model' => $request->model,
+            'endpoint' => $this->resolveBaseUrl($request).'/chat/completions',
+            'raw_response_excerpt' => $this->truncateForLog($rawResponse, 4000),
+        ]);
+    }
+
+    private function describeValueType(mixed $value): string
+    {
+        return match (true) {
+            $value === null => 'null',
+            is_string($value) => 'string',
+            is_array($value) && array_is_list($value) => 'list',
+            is_array($value) => 'map',
+            is_bool($value) => 'bool',
+            is_int($value), is_float($value) => 'number',
+            default => get_debug_type($value),
+        };
+    }
+
+    private function truncateForLog(string $value, int $limit): string
+    {
+        $normalized = trim($value);
+        if ($normalized === '') {
+            return '';
+        }
+
+        if (mb_strlen($normalized) <= $limit) {
+            return $normalized;
+        }
+
+        return rtrim(mb_substr($normalized, 0, max(1, $limit - 1))).'…';
     }
 }

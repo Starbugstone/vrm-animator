@@ -2,14 +2,20 @@
 
 namespace App\Service\Llm;
 
+use Psr\Log\LoggerInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
+
 final class GlmProvider extends AbstractOpenAiCompatibleProvider
 {
     private const STANDARD_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
     private const CODING_BASE_URL = 'https://open.bigmodel.cn/api/coding/paas/v4';
 
     public function __construct(
+        #[Autowire(service: 'monolog.logger.llm')]
+        ?LoggerInterface $llmLogger = null,
         private readonly string $glmBaseUrl = 'https://open.bigmodel.cn/api/paas/v4',
     ) {
+        parent::__construct($llmLogger);
     }
 
     public function getProviderId(): string

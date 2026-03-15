@@ -5,6 +5,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation'
 import { createThinkingBubbleService } from './lib/thinkingBubbleService.js'
+import {
+  buildMotionRuntimeMeta,
+  isAmbientMotionKind,
+  shouldPromoteQueuedBaseMotion,
+  shouldQueueBaseMotion,
+  shouldReplaceQueuedMotion,
+} from './lib/viewerMotionQueue.js'
 
 const STAGE_BASE_HEIGHT = 0.18
 const STAGE_BASE_Y = -0.1
@@ -50,10 +57,6 @@ const IDLE_VARIANT_INTERVAL_MAX_SECONDS = 24
 
 const MOTION_LAYER_BASE = 'base'
 const MOTION_LAYER_OVERLAY = 'overlay'
-
-function isAmbientMotionKind(kind) {
-  return kind === 'idle' || kind === 'thinking'
-}
 
 function formatBaseMotionStatus(kind, label) {
   if (kind === 'idle') {
@@ -194,6 +197,7 @@ export default function useHologramViewer(canvasRef) {
     let playbackMode = 'command'
     let activeBaseMotion = null
     let previousBaseMotion = null
+    let queuedBaseMotion = null
     let baseTransitionBlendDuration = 0
     let baseTransitionBlendElapsed = 0
     let activeOverlayMotion = null
@@ -315,6 +319,31 @@ export default function useHologramViewer(canvasRef) {
       idleVariantTimer = idleVariantPool.length > 0 ? sampleIdleVariantDelay() : Number.POSITIVE_INFINITY
     }
 
+    const getMotionNowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
+
+    const clearQueuedBaseMotion = () => {
+      queuedBaseMotion = null
+    }
+
+    const queueBaseMotionRequest = (motion, requestVersion) => {
+      const nextQueuedMotion = {
+        ...motion,
+        requestVersion,
+        queuedAtMs: getMotionNowMs(),
+      }
+
+      if (shouldReplaceQueuedMotion(queuedBaseMotion, nextQueuedMotion)) {
+        queuedBaseMotion = nextQueuedMotion
+      } else if (queuedBaseMotion) {
+        queuedBaseMotion = {
+          ...queuedBaseMotion,
+          requestVersion,
+        }
+      }
+
+      return true
+    }
+
     const stopMotionAction = (motion) => {
       motion?.action?.stop()
       if (motion?.action) {
@@ -381,12 +410,18 @@ export default function useHologramViewer(canvasRef) {
       if (activeOverlayMotion?.action === finishedAction) {
         stopOverlayMotion({ immediate: true })
         updateMotionStatus()
+        return
+      }
+
+      if (activeBaseMotion?.action === finishedAction && queuedBaseMotion) {
+        promoteQueuedBaseMotionIfReady()
       }
     }
 
     const stopCurrentAnimation = ({ resetPose = true } = {}) => {
       playbackMode = 'command'
       baseMotionRequestVersion += 1
+      clearQueuedBaseMotion()
       finalizeBaseTransition()
       stopOverlayMotion({ immediate: true })
       idleVariantTimer = Number.POSITIVE_INFINITY
@@ -564,6 +599,12 @@ export default function useHologramViewer(canvasRef) {
 
       activeBaseMotion = {
         ...motion,
+        ...buildMotionRuntimeMeta({
+          kind: motion.kind,
+          priority: motion.priority,
+          duration: motion.duration,
+          nowMs: getMotionNowMs(),
+        }),
         action: nextAction,
         returnQueued: false,
       }
@@ -576,6 +617,47 @@ export default function useHologramViewer(canvasRef) {
       }
 
       updateMotionStatus()
+      return true
+    }
+
+    const dispatchBaseMotionRequest = (motion, requestVersion) => {
+      const loadingLabel = `${motion.kind === 'thinking' ? 'Loading thinking' : motion.kind === 'idle' ? 'Loading idle' : 'Loading action'}: ${motion.label}`
+      setViewerStatus(loadingLabel)
+
+      loadMotionClip(motion)
+        .then((loadedMotion) => {
+          if (requestVersion !== baseMotionRequestVersion) return
+          startBaseMotion(loadedMotion)
+        })
+        .catch((error) => {
+          if (requestVersion !== baseMotionRequestVersion) return
+          console.error(error)
+          setViewerStatus(
+            motion.kind === 'thinking'
+              ? 'Thinking load failed'
+              : motion.kind === 'idle'
+                ? 'Idle load failed'
+                : 'Action load failed',
+          )
+        })
+    }
+
+    const promoteQueuedBaseMotionIfReady = () => {
+      if (!queuedBaseMotion) {
+        return false
+      }
+
+      if (!shouldPromoteQueuedBaseMotion({
+        activeMotion: activeBaseMotion,
+        queuedMotion: queuedBaseMotion,
+        previousMotion: previousBaseMotion,
+      })) {
+        return false
+      }
+
+      const nextQueuedMotion = queuedBaseMotion
+      queuedBaseMotion = null
+      dispatchBaseMotionRequest(nextQueuedMotion, nextQueuedMotion.requestVersion)
       return true
     }
 
@@ -645,39 +727,34 @@ export default function useHologramViewer(canvasRef) {
 
       const requestVersion =
         layer === MOTION_LAYER_OVERLAY ? overlayMotionRequestVersion : baseMotionRequestVersion
-      const loadingLabel =
-        layer === MOTION_LAYER_OVERLAY
-          ? `Loading mouth: ${motion.label}`
-          : `${motion.kind === 'thinking' ? 'Loading thinking' : motion.kind === 'idle' ? 'Loading idle' : 'Loading action'}: ${motion.label}`
 
-      setViewerStatus(loadingLabel)
+      if (layer === MOTION_LAYER_BASE && shouldQueueBaseMotion({
+        activeMotion: activeBaseMotion,
+        nextMotion: motion,
+        previousMotion: previousBaseMotion,
+      })) {
+        return queueBaseMotionRequest(motion, requestVersion)
+      }
 
-      loadMotionClip(motion)
-        .then((loadedMotion) => {
-          if (layer === MOTION_LAYER_OVERLAY && requestVersion !== overlayMotionRequestVersion) return
-          if (layer === MOTION_LAYER_BASE && requestVersion !== baseMotionRequestVersion) return
+      if (layer === MOTION_LAYER_OVERLAY) {
+        setViewerStatus(`Loading mouth: ${motion.label}`)
 
-          if (layer === MOTION_LAYER_OVERLAY) {
+        loadMotionClip(motion)
+          .then((loadedMotion) => {
+            if (requestVersion !== overlayMotionRequestVersion) return
             startOverlayMotion(loadedMotion)
-            return
-          }
+          })
+          .catch((error) => {
+            if (requestVersion !== overlayMotionRequestVersion) return
+            console.error(error)
+            setViewerStatus('Mouth load failed')
+          })
 
-          startBaseMotion(loadedMotion)
-        })
-        .catch((error) => {
-          if (layer === MOTION_LAYER_OVERLAY && requestVersion !== overlayMotionRequestVersion) return
-          if (layer === MOTION_LAYER_BASE && requestVersion !== baseMotionRequestVersion) return
-          console.error(error)
-          setViewerStatus(
-            layer === MOTION_LAYER_OVERLAY
-              ? 'Mouth load failed'
-              : motion.kind === 'thinking'
-                ? 'Thinking load failed'
-                : motion.kind === 'idle'
-                  ? 'Idle load failed'
-                  : 'Action load failed',
-          )
-        })
+        return true
+      }
+
+      clearQueuedBaseMotion()
+      dispatchBaseMotionRequest(motion, requestVersion)
 
       return true
     }
@@ -981,6 +1058,7 @@ export default function useHologramViewer(canvasRef) {
         cacheKey: options.cacheKey || buildMotionCacheKey(file, label),
         loop: options.loop ?? isPersistentIdle,
         returnToDefault: options.returnToDefault ?? !isPersistentIdle,
+        priority: options.priority ?? 'idle',
       }
 
       if (isPersistentIdle) {
@@ -1011,6 +1089,7 @@ export default function useHologramViewer(canvasRef) {
         kind: 'idle',
         loop: true,
         returnToDefault: false,
+        priority: defaultIdleMotion.priority ?? 'idle',
       })
     }
 
@@ -1025,6 +1104,7 @@ export default function useHologramViewer(canvasRef) {
             kind: 'idle',
             loop: false,
             returnToDefault: true,
+            priority: motion.priority ?? 'ambient',
           }))
         : []
 
@@ -1047,6 +1127,7 @@ export default function useHologramViewer(canvasRef) {
         loop: options.loop ?? false,
         stripExpressionTracks: Boolean(options.stripExpressionTracks),
         returnToDefault: options.layer === MOTION_LAYER_OVERLAY ? false : (options.returnToDefault ?? true),
+        priority: options.priority ?? 'manual',
       })
     }
 
@@ -1256,12 +1337,16 @@ export default function useHologramViewer(canvasRef) {
         updateBaseTransitionWeights(dt)
         currentMixer.update(dt)
       }
+      if (playbackMode === 'motion') {
+        promoteQueuedBaseMotionIfReady()
+      }
       if (
         playbackMode === 'motion' &&
         activeBaseMotion?.action &&
         activeBaseMotion.returnToDefault &&
         defaultIdleMotion &&
         !activeBaseMotion.returnQueued &&
+        !queuedBaseMotion &&
         activeBaseMotion.cacheKey !== defaultIdleMotion.cacheKey
       ) {
         const leadSeconds = Math.min(
