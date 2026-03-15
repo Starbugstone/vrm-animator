@@ -44,6 +44,10 @@ class TtsCredentialTest extends WebTestCase
         $providers = json_decode($client->getResponse()->getContent(), true);
         $this->assertSame('elevenlabs', $providers['providers'][0]['id']);
         $this->assertSame('eleven_flash_v2_5', $providers['providers'][0]['defaultModel']);
+        $this->assertSame(
+            ['eleven_flash_v2_5', 'eleven_v3', 'eleven_multilingual_v2', 'eleven_flash_v2'],
+            array_column($providers['providers'][0]['models'], 'id'),
+        );
 
         $client->request('POST', '/api/tts/credentials', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,

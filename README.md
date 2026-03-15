@@ -116,11 +116,12 @@ If you use a restricted ElevenLabs key, it must also be allowed to read voices b
 - `PATCH /api/avatars/{id}/tts`
 - `POST /api/avatars/{id}/tts/stream`
 
-The current provider list contains only `elevenlabs`, with these backend-advertised models:
+The current provider list contains only `elevenlabs`, with these backend-advertised Text to Speech models:
 
 - `eleven_flash_v2_5` as the low-latency default
-- `eleven_turbo_v2_5`
-- `eleven_multilingual_v2`
+- `eleven_v3` for the most expressive character delivery
+- `eleven_multilingual_v2` for stronger multilingual and longer-form fallback use
+- `eleven_flash_v2` as an older low-latency fallback
 
 ### Typical Flow
 

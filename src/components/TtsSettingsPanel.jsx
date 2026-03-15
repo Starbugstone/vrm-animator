@@ -49,6 +49,10 @@ export default function TtsSettingsPanel({
     defaultModel: provider.defaultModel,
   })
   const [isCreatingNew, setIsCreatingNew] = useState(false)
+  const selectedModel = useMemo(
+    () => provider.models?.find((model) => model.id === draft.defaultModel) || null,
+    [draft.defaultModel, provider.models],
+  )
 
   const selectedCredential = useMemo(
     () => credentials.find((entry) => String(entry.id) === selectedCredentialId) || null,
@@ -173,6 +177,12 @@ export default function TtsSettingsPanel({
                   </option>
                 ))}
               </select>
+              {selectedModel ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/55">
+                  <div className="font-mono text-[11px] text-white/45">{selectedModel.id}</div>
+                  <div className="mt-1">{selectedModel.hint}</div>
+                </div>
+              ) : null}
             </label>
           </div>
 

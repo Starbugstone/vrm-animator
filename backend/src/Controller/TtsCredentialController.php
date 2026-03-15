@@ -17,6 +17,33 @@ use Symfony\Component\Routing\Attribute\Route;
 class TtsCredentialController extends AbstractController
 {
     private const DEFAULT_MODEL = 'eleven_flash_v2_5';
+    /**
+     * Current TTS-focused ElevenLabs model list aligned with the public docs.
+     *
+     * @var array<int, array{id:string,label:string,hint:string}>
+     */
+    private const PROVIDER_MODELS = [
+        [
+            'id' => 'eleven_flash_v2_5',
+            'label' => 'Flash v2.5',
+            'hint' => 'Lowest-latency TTS default for realtime playback.',
+        ],
+        [
+            'id' => 'eleven_v3',
+            'label' => 'Eleven v3',
+            'hint' => 'Most expressive TTS model for emotional character delivery.',
+        ],
+        [
+            'id' => 'eleven_multilingual_v2',
+            'label' => 'Multilingual v2',
+            'hint' => 'Most stable choice for longer-form speech generation.',
+        ],
+        [
+            'id' => 'eleven_flash_v2',
+            'label' => 'Flash v2',
+            'hint' => 'Older low-latency English-only fallback.',
+        ],
+    ];
 
     #[Route('/api/tts/providers', name: 'api_tts_providers', methods: ['GET'])]
     public function providers(): JsonResponse
@@ -27,11 +54,7 @@ class TtsCredentialController extends AbstractController
                     'id' => 'elevenlabs',
                     'label' => 'ElevenLabs',
                     'defaultModel' => self::DEFAULT_MODEL,
-                    'models' => [
-                        ['id' => 'eleven_flash_v2_5', 'label' => 'Flash v2.5', 'hint' => 'Lowest-latency streaming default.'],
-                        ['id' => 'eleven_turbo_v2_5', 'label' => 'Turbo v2.5', 'hint' => 'Balanced speed and quality.'],
-                        ['id' => 'eleven_multilingual_v2', 'label' => 'Multilingual v2', 'hint' => 'Best fallback when language coverage matters most.'],
-                    ],
+                    'models' => self::PROVIDER_MODELS,
                 ],
             ],
         ]);
