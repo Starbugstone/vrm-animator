@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import CameraPopover from '../CameraPopover.jsx'
 import useHologramViewer from '../useHologramViewer.js'
 import AnimationPopover from './AnimationPopover.jsx'
@@ -28,6 +28,7 @@ import {
   recordSpeechClockActivity,
   syncSpeechClockDuration,
 } from '../lib/viewerSpeechClock.js'
+import { createAvatarPresenceState, reduceAvatarPresence } from '../lib/avatarPresenceMachine.js'
 import { playStreamedAudioResponse } from '../lib/streamingAudio.js'
 import { getEffectiveVoiceGender, hasRemoteTtsConfiguration } from '../lib/ttsVoices.js'
 import { streamAvatarTts } from '../api/tts.js'
@@ -94,6 +95,10 @@ function createEmptySpeechPresenceState() {
 
 function nowMs() {
   return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
+
+function getChatPhaseForPresenceMode(mode) {
+  return mode === 'thinking' ? 'waiting' : mode === 'speaking' || mode === 'responding' ? 'streaming' : 'idle'
 }
 
 function detectLanguageLocale(...samples) {
@@ -266,7 +271,7 @@ export default function ViewerPage({ workspace }) {
   const [draftMessage, setDraftMessage] = useState('')
   const [notice, setNotice] = useState('')
   const [isChatBusy, setIsChatBusy] = useState(false)
-  const [chatPhase, setChatPhase] = useState('idle')
+  const [avatarPresence, dispatchAvatarPresence] = useReducer(reduceAvatarPresence, undefined, createAvatarPresenceState)
   const [isContextLoading, setIsContextLoading] = useState(false)
   const [loadedAvatarName, setLoadedAvatarName] = useState('No avatar loaded')
   const [pendingMessages, setPendingMessages] = useState([])
@@ -274,6 +279,7 @@ export default function ViewerPage({ workspace }) {
   const activeEmotionRef = useRef('neutral')
   const speechSynthesisRef = useRef(typeof window !== 'undefined' ? window.speechSynthesis || null : null)
   const speechSessionIdRef = useRef(0)
+  const avatarPresenceRequestIdRef = useRef(0)
   const speechStopTimeoutRef = useRef(null)
   const speechMonitorIntervalRef = useRef(null)
   const speechClockRef = useRef(createEmptySpeechClockState())
@@ -404,6 +410,7 @@ export default function ViewerPage({ workspace }) {
   const hasConnectedLlm = Boolean(effectivePersona?.llmCredentialId)
   const hasRemoteTts = hasRemoteTtsConfiguration(selectedAvatar)
   const hasStartedChat = liveMessages.length > 0 || conversations.length > 0
+  const chatPhase = getChatPhaseForPresenceMode(avatarPresence.mode)
 
   const clearSpeechPresenceTimers = useCallback(() => {
     speechPresenceBeatTimeoutsRef.current.forEach((timeoutId) => {
@@ -440,10 +447,11 @@ export default function ViewerPage({ workspace }) {
 
   useEffect(() => {
     if (!selectedAvatar || !workspace.token) {
+      avatarPresenceRequestIdRef.current = 0
       setActiveConversationId(null)
       setPendingMessages([])
       setIsContextLoading(false)
-      setChatPhase('idle')
+      dispatchAvatarPresence({ type: 'reset' })
       hasVisibleAssistantTextRef.current = false
       thinkingRuntimeRef.current = false
       setThinkingIndicatorEnabled(false)
@@ -1129,6 +1137,15 @@ export default function ViewerPage({ workspace }) {
     resumeIdleMotion()
   }, [clearThinkingCycleTimer, resumeIdleMotion, setThinkingIndicatorEnabled, stopOverlayAnimation])
 
+  useEffect(() => {
+    if (avatarPresence.mode === 'thinking') {
+      void startThinkingPresence()
+      return
+    }
+
+    stopThinkingPresence()
+  }, [avatarPresence.mode, startThinkingPresence, stopThinkingPresence])
+
   const playRemoteTts = useCallback(async (text, emotion, languageSamples = []) => {
     const audio = remoteAudioRef.current
     const cleanedText = String(text || '').trim()
@@ -1151,6 +1168,10 @@ export default function ViewerPage({ workspace }) {
         return
       }
 
+      dispatchAvatarPresence({
+        type: 'speech_stopped',
+        requestId: avatarPresenceRequestIdRef.current,
+      })
       stopSpeechPresenceSession()
       stopOverlayAnimation({ immediate: false })
     }
@@ -1169,6 +1190,10 @@ export default function ViewerPage({ workspace }) {
             return
           }
 
+          dispatchAvatarPresence({
+            type: 'speech_started',
+            requestId: avatarPresenceRequestIdRef.current,
+          })
           const speechClock = createSpeechClock({
             sessionId,
             source: 'remote-tts',
@@ -1192,7 +1217,7 @@ export default function ViewerPage({ workspace }) {
     }
 
     return true
-  }, [playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopRemoteTtsPlayback, stopSpeechPresenceSession, workspace.token])
+  }, [dispatchAvatarPresence, playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopRemoteTtsPlayback, stopSpeechPresenceSession, workspace.token])
 
   const queueSpeechUtterance = useCallback((text, emotion, languageSamples = []) => {
     const speechSynthesis = speechSynthesisRef.current
@@ -1239,6 +1264,10 @@ export default function ViewerPage({ workspace }) {
         speechMonitorIntervalRef.current = null
       }
 
+      dispatchAvatarPresence({
+        type: 'speech_stopped',
+        requestId: avatarPresenceRequestIdRef.current,
+      })
       stopSpeechPresenceSession()
       stopOverlayAnimation({ immediate: false })
     }
@@ -1272,6 +1301,10 @@ export default function ViewerPage({ workspace }) {
         speechMonitorIntervalRef.current = null
       }
 
+      dispatchAvatarPresence({
+        type: 'speech_started',
+        requestId: avatarPresenceRequestIdRef.current,
+      })
       const speechText = speechCuePlanRef.current.fullText || streamingSpeechBufferRef.current || cleanedText
       const existingClock = speechClockRef.current
       const speechClock = existingClock.active && existingClock.sessionId === sessionId
@@ -1350,7 +1383,7 @@ export default function ViewerPage({ workspace }) {
     }
     speechSynthesis.speak(utterance)
     return true
-  }, [playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopSpeechPresenceSession])
+  }, [dispatchAvatarPresence, playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopSpeechPresenceSession])
 
   const flushStreamingSpeechBuffer = useCallback((options = {}) => {
     const final = Boolean(options.final)
@@ -1392,6 +1425,7 @@ export default function ViewerPage({ workspace }) {
         return
       }
 
+      dispatchAvatarPresence({ type: 'reset' })
       resetSpeechRuntime()
     }
 
@@ -1400,7 +1434,7 @@ export default function ViewerPage({ workspace }) {
     return () => {
       window.removeEventListener('viewer:reset-speech-state', handleSpeechReset)
     }
-  }, [resetSpeechRuntime, selectedAvatar])
+  }, [dispatchAvatarPresence, resetSpeechRuntime, selectedAvatar])
 
   const handlePlayAction = useCallback(async () => {
     if (!selectedAction) return
@@ -1434,11 +1468,12 @@ export default function ViewerPage({ workspace }) {
 
     const outgoingMessage = draftMessage.trim()
     const tempBaseId = Date.now()
+    const requestId = ++avatarPresenceRequestIdRef.current
 
     setIsChatBusy(true)
     setNotice('')
     setDraftMessage('')
-    setChatPhase('waiting')
+    dispatchAvatarPresence({ type: 'user_message_submitted', requestId })
     hasVisibleAssistantTextRef.current = false
     setPendingMessages([
       {
@@ -1457,7 +1492,6 @@ export default function ViewerPage({ workspace }) {
       },
     ])
     resetSpeechRuntime()
-    void startThinkingPresence()
     streamingSpeechSamplesRef.current = [outgoingMessage]
     let receivedAssistantText = false
 
@@ -1478,8 +1512,7 @@ export default function ViewerPage({ workspace }) {
           }
 
           if (event?.phase === 'prepare' || event?.phase === 'provider') {
-            setChatPhase('waiting')
-            startThinkingPresence()
+            dispatchAvatarPresence({ type: 'provider_waiting', requestId })
             return
           }
 
@@ -1494,8 +1527,7 @@ export default function ViewerPage({ workspace }) {
             const hasVisibleDelta = delta.trim() !== ''
             if (hasVisibleDelta && !hasVisibleAssistantTextRef.current) {
               hasVisibleAssistantTextRef.current = true
-              setChatPhase('streaming')
-              stopThinkingPresence()
+              dispatchAvatarPresence({ type: 'assistant_text_visible', requestId })
             }
             streamingSpeechBufferRef.current = `${streamingSpeechBufferRef.current}${delta}`
             if (hasVisibleAssistantTextRef.current && !hasRemoteTts) {
@@ -1576,8 +1608,7 @@ export default function ViewerPage({ workspace }) {
         },
       })
 
-      stopThinkingPresence()
-      setChatPhase('idle')
+      dispatchAvatarPresence({ type: 'response_finished', requestId })
       setPendingMessages([])
       setActiveConversationId(response.conversation.id)
       const firstDeltaMs = response?.timing?.firstDeltaMs
@@ -1618,8 +1649,7 @@ export default function ViewerPage({ workspace }) {
         })
       }
     } catch (error) {
-      stopThinkingPresence()
-      setChatPhase('idle')
+      dispatchAvatarPresence({ type: 'response_failed', requestId })
       if (!receivedAssistantText) {
         setPendingMessages([])
         setDraftMessage(outgoingMessage)
@@ -1631,12 +1661,11 @@ export default function ViewerPage({ workspace }) {
           : (error.message || 'Chat failed.'),
       )
     } finally {
-      stopThinkingPresence()
-      setChatPhase('idle')
       setIsChatBusy(false)
     }
   }, [
     activeConversationId,
+    dispatchAvatarPresence,
     appendPendingAssistantData,
     draftMessage,
     effectivePersona,
@@ -1649,8 +1678,6 @@ export default function ViewerPage({ workspace }) {
     resetSpeechRuntime,
     scheduleDelayedSpeechCue,
     selectedAvatar,
-    startThinkingPresence,
-    stopThinkingPresence,
     streamChatMessage,
   ])
 

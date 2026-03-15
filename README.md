@@ -81,6 +81,115 @@ Keep `LLM_CREDENTIAL_ENCRYPTION_KEY` stable once you have saved AI connections. 
 
 Do not commit real secrets from local env files into the tracked `.env` templates.
 
+## ElevenLabs TTS Configuration
+
+The app now supports backend-streamed ElevenLabs speech on a bring-your-own-key basis.
+
+Important behavior:
+
+- there is no shared ElevenLabs server key in the committed env files
+- each user saves their own ElevenLabs API key through the authenticated TTS API or the `Manage -> Voice & Speech` UI
+- saved TTS secrets are encrypted at rest by the backend using the same `LLM_CREDENTIAL_ENCRYPTION_KEY`
+- if an avatar does not have both a saved TTS credential and a selected voice, the Viewer falls back to browser speech synthesis
+
+### What The API Needs
+
+To use the ElevenLabs path successfully, the current user needs:
+
+- a valid JWT, because all TTS endpoints are private
+- a saved ElevenLabs credential created through `POST /api/tts/credentials`
+- an ElevenLabs key that can access the voice list and stream speech
+- a stable backend `LLM_CREDENTIAL_ENCRYPTION_KEY`, otherwise previously saved keys become unreadable
+- the PHP `curl` extension available in the backend runtime for remote audio streaming
+
+If you use a restricted ElevenLabs key, it must also be allowed to read voices because the backend validates avatar voice selections against `GET /api/tts/credentials/{id}/voices`.
+
+### Supported TTS Endpoints
+
+- `GET /api/tts/providers`
+- `GET /api/tts/credentials`
+- `POST /api/tts/credentials`
+- `PATCH /api/tts/credentials/{id}`
+- `DELETE /api/tts/credentials/{id}`
+- `GET /api/tts/credentials/{id}/voices`
+- `GET /api/avatars/{id}/tts`
+- `PATCH /api/avatars/{id}/tts`
+- `POST /api/avatars/{id}/tts/stream`
+
+The current provider list contains only `elevenlabs`, with these backend-advertised models:
+
+- `eleven_flash_v2_5` as the low-latency default
+- `eleven_turbo_v2_5`
+- `eleven_multilingual_v2`
+
+### Typical Flow
+
+1. Save a user-owned ElevenLabs key with `POST /api/tts/credentials`.
+2. Load available voices from `GET /api/tts/credentials/{id}/voices`.
+3. Attach that credential and one voice to an avatar with `PATCH /api/avatars/{id}/tts`.
+4. Stream speech from `POST /api/avatars/{id}/tts/stream`.
+
+The avatar-level TTS payload also supports:
+
+- `presentationGender` for the avatar's own presentation tag
+- `speechVoiceGender` for browser fallback voice preference
+- `speechLanguage` for browser fallback voice selection
+- `ttsCredentialId` and `ttsVoiceId` for the remote ElevenLabs route
+
+### Example Requests
+
+Create an ElevenLabs connection:
+
+```http
+POST /api/tts/credentials
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{
+  "name": "Personal ElevenLabs",
+  "secret": "your-elevenlabs-api-key",
+  "defaultModel": "eleven_flash_v2_5",
+  "isActive": true
+}
+```
+
+Attach a saved connection and voice to an avatar:
+
+```http
+PATCH /api/avatars/123/tts
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{
+  "presentationGender": "female",
+  "speechVoiceGender": "female",
+  "speechLanguage": "en-US",
+  "ttsCredentialId": 7,
+  "ttsVoiceId": "voice_f_1"
+}
+```
+
+Preview or stream speech:
+
+```http
+POST /api/avatars/123/tts/stream
+Authorization: Bearer <JWT>
+Content-Type: application/json
+
+{
+  "text": "Hello from ElevenLabs."
+}
+```
+
+For unsaved preview playback, the same stream endpoint also accepts temporary `ttsCredentialId` and `ttsVoiceId` overrides in the request body.
+
+### Fallback Rules
+
+- no saved ElevenLabs credential on the avatar: browser speech stays active
+- saved credential but no selected voice: browser speech stays active
+- remote playback failure during chat: the Viewer falls back to browser speech and keeps the reply usable
+- deleting or rotating the backend encryption key after saving credentials: affected keys must be entered again before remote TTS can work
+
 ## Asset Model
 
 Shared example assets are served by the backend from:
@@ -192,6 +301,18 @@ For GLM, each saved credential can choose its own endpoint mode in the AI Connec
 
 - `Standard API` uses `https://open.bigmodel.cn/api/paas/v4`
 - `Coding subscription` uses `https://open.bigmodel.cn/api/coding/paas/v4`
+
+### TTS configuration
+
+- `GET /api/tts/providers`
+- `GET /api/tts/credentials`
+- `POST /api/tts/credentials`
+- `PATCH /api/tts/credentials/{id}`
+- `DELETE /api/tts/credentials/{id}`
+- `GET /api/tts/credentials/{id}/voices`
+- `GET /api/avatars/{id}/tts`
+- `PATCH /api/avatars/{id}/tts`
+- `POST /api/avatars/{id}/tts/stream`
 
 API docs are available at `http://localhost:8080/api/docs`.
 

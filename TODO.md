@@ -37,7 +37,7 @@ This baseline has been verified against the current repository. The next phase s
 - refine the new long-term memory directive and compression prompt based on real chat behavior
 - improve cue quality so avatar reactions feel intentional
 - keep tuning speech-time cue pacing so long spoken replies stay lively without becoming repetitive
-- keep refining the new reply-motion queue and priority handoff rules so conversational gestures stay smooth when cues arrive close together
+- keep refining the new avatar presence state machine plus reply-motion queue so conversational gestures and speech handoffs stay smooth under messy real-world provider timing
 - continue polishing the core “thinking” movement and emotion VRMA set; `thinking` is now a first-class animation kind used for viewer wait states, and `default_vrma/thinking/` remains the dedicated drop zone for those launch-ready clips
 - keep expression overlays facial-only and emotionally coherent
 - define and polish the two launch starter avatars from the default asset pool so they feel production-ready
