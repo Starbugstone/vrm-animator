@@ -46,13 +46,4 @@ return [
         'contextLength' => 204800,
         'isRecommended' => false,
     ],
-    [
-        'id' => 'MiniMax-Text-01',
-        'name' => 'MiniMax-Text-01',
-        'description' => 'Legacy text model kept for compatibility with older setups.',
-        'group' => 'legacy',
-        'releasedAt' => '2025-01-15',
-        'contextLength' => 4000000,
-        'isRecommended' => false,
-    ],
 ];

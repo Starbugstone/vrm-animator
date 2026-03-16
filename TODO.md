@@ -115,6 +115,7 @@ Before closing a feature set, the minimum checks should be:
   - viewer-side chat now consumes streamed text and cue events, plays movement and facial overlays from backend-resolved cues, and uses browser speech synthesis for spoken replies
   - Manage now includes a dedicated `Voice & speech` section with backend-backed ElevenLabs BYOK credentials, per-avatar speech routing, avatar sex tags, voice overrides, and clear browser-speech fallback behavior
   - avatars now persist `presentationGender` plus optional ElevenLabs voice attachment so shared starter avatars can default to a sensible voice filter without forcing a hard lock
+  - avatars now also persist a `defaultFacingYaw`, and the Manage profile preview can save the current rotated T-pose view as the avatar's default starting direction for both Manage and Viewer loads
   - the viewer now prefers streamed ElevenLabs audio playback when an avatar has a saved remote voice, while falling back to browser speech if no remote voice is configured or playback fails
   - assistant replies may append long-term memory entries through the restricted inline `{memory:...}` bridge, persisted through the existing avatar memory revision flow
   - memory responses now include approximate prompt-footprint diagnostics, active provider/model details, and the exact memory-related prompt blocks shown in the Manage memory panel
@@ -158,9 +159,20 @@ Before closing a feature set, the minimum checks should be:
   - both frontend and backend use the same normalized tag vocabulary
 
 
-##ideas - emotional state
+## ideas - emotional state
 - have the avatar keep an emotional memory from global memory to state the idle animations. if angry then prioritise angry idle stances, if happy then prioritise happy idle stances, worried the same and all other emotional possibilities possible with vrma posibilities.
 - emotional memory. remember the actual state of the avatar and respond depending on that state (angry, happy, calm,ancious, flirty ... expand on the basic emotional states). These states should evolve depending on the discussion and situation and be updated
 - make sur custom vrma uploaded animations have the emotional tags so the avatar can use them accordingly depending on emotional state
 - use a bucket / weight system for emotions to value how the avatar feels the most inclined towards, can mix 2
 - replys from LLM must include the actual top emotions and the app should ajust with the bucket implemented.
+
+
+## Ideas - better avatar selection.
+- We need a better avatar selection on the viewer page, probably an image of the avatar (not in 3D, just a jpeg snapshot to save on resources, so have an option to take a photo for the profile)
+- a short description of the model, taken from the avatars profile
+- this should be a list of wide cards in a scrollable and surchable list so power users that have meny avatars can easily search and switch between avatars
+
+## Ideas - 3D hologram
+- this is the end goal, we will need a button to open a new window dedicated to the hologram projection.
+- for prototyping and cost, I'm using https://holusion.com/en/store/pixelxl so we have to work on the 4 camera projection to make this work
+- the rotation and position of the hologram images need to be controlled from the main view port so some sort of communication between windows, needs to be carefuly detailed in the readme on how to use hologram projection.

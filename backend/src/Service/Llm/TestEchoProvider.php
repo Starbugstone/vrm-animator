@@ -82,9 +82,41 @@ final class TestEchoProvider implements LlmProviderInterface
 
     private function buildCompressedMemoryResponse(string $request): string
     {
+        $isStrictRetry = str_contains($request, 'Retry instruction:');
         $memoryMarkdown = $request;
         if (preg_match("/Current memory markdown:\n(.+)$/s", $request, $matches) === 1) {
             $memoryMarkdown = trim((string) ($matches[1] ?? ''));
+        }
+
+        if (str_contains($memoryMarkdown, 'force strict retry marker') && !$isStrictRetry) {
+            return implode("\n", [
+                '# Avatar Memory',
+                '',
+                '## Relationship Memory',
+                '- force strict retry marker',
+                '- Stone loves structured notes.',
+                '- Stone asked for more compact memory.',
+                '- This intentionally verbose draft repeats the same idea in a longer way so the strict retry path has to do a better second pass.',
+                '- This intentionally verbose draft repeats the same idea in a longer way so the strict retry path has to do a better second pass.',
+                '- This intentionally verbose draft repeats the same idea in a longer way so the strict retry path has to do a better second pass.',
+                '- This intentionally verbose draft repeats the same idea in a longer way so the strict retry path has to do a better second pass.',
+                '- This intentionally verbose draft repeats the same idea in a longer way so the strict retry path has to do a better second pass.',
+                '- This intentionally verbose draft repeats the same idea in a longer way so the strict retry path has to do a better second pass.',
+                '- This intentionally verbose draft repeats the same idea in a longer way so the strict retry path has to do a better second pass.',
+                '- This intentionally verbose draft repeats the same idea in a longer way so the strict retry path has to do a better second pass.',
+                '- This intentionally verbose draft repeats the same idea in a longer way so the strict retry path has to do a better second pass.',
+                '- This intentionally verbose draft repeats the same idea in a longer way so the strict retry path has to do a better second pass.',
+            ]);
+        }
+
+        if (str_contains($memoryMarkdown, 'force strict retry marker') && $isStrictRetry) {
+            return implode("\n", [
+                '# Avatar Memory',
+                '',
+                '## Relationship Memory',
+                '- Stone loves structured notes.',
+                '- Stone asked for more compact memory.',
+            ]);
         }
 
         if (preg_match('/## Relationship Memory\n(.*?)(?=\n## |\z)/s', $memoryMarkdown, $matches) === 1) {

@@ -47,6 +47,7 @@ class AvatarTest extends WebTestCase
             'name' => 'My First Avatar',
             'filename' => 'avatar1.vrm',
             'isDefault' => true,
+            'defaultFacingYaw' => 45,
         ]));
 
         $this->assertResponseStatusCodeSame(201);
@@ -55,6 +56,7 @@ class AvatarTest extends WebTestCase
         $this->assertEquals('My First Avatar', $data['name']);
         $this->assertEquals('avatar1.vrm', $data['filename']);
         $this->assertTrue($data['isDefault']);
+        $this->assertSame(45.0, $data['defaultFacingYaw']);
     }
 
     public function testAvatarSpeechPreferencesCanBeSaved(): void
@@ -97,6 +99,39 @@ class AvatarTest extends WebTestCase
         $this->assertSame('male', $updated['presentationGender']);
         $this->assertSame('male', $updated['speechVoiceGender']);
         $this->assertSame('fr-FR', $updated['speechLanguage']);
+    }
+
+    public function testAvatarDefaultFacingYawCanBeSaved(): void
+    {
+        $client = static::createClient();
+        $token = $this->createAuthenticatedUser($client, 'avatar-facing@example.com');
+
+        $client->request('POST', '/api/avatars', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'Facing Avatar',
+            'filename' => 'facing-avatar.vrm',
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+
+        $data = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame(0.0, $data['defaultFacingYaw']);
+
+        $client->request('PATCH', '/api/avatars/'.$data['id'], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/merge-patch+json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'defaultFacingYaw' => 540,
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+
+        $updated = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame(180.0, $updated['defaultFacingYaw']);
     }
 
     public function testListOwnAvatars(): void

@@ -564,6 +564,7 @@ export default function ManagePage({ user, workspace }) {
     ensureConversationMessages,
     saveAvatarUpload,
     saveAvatarIdentity,
+    saveAvatarFacing,
     removeAvatar,
     saveAnimationUpload,
     adoptSharedAvatar,
@@ -693,7 +694,12 @@ export default function ManagePage({ user, workspace }) {
 
     try {
       const result = await action()
-      if (successMessage) setNotice(successMessage)
+      if (typeof successMessage === 'function') {
+        const nextMessage = successMessage(result)
+        if (nextMessage) setNotice(nextMessage)
+      } else if (successMessage) {
+        setNotice(successMessage)
+      }
       return result
     } catch (nextError) {
       setNotice(nextError.message || 'Action failed.')
@@ -820,8 +826,17 @@ export default function ManagePage({ user, workspace }) {
                 <AvatarPreviewCard
                   asset={selectedAvatar && token ? createPersistedAvatarAsset(selectedAvatar, token) : null}
                   file={null}
-                  helper="The preview follows the avatar record currently selected in your personal library."
+                  helper="The preview follows the selected avatar. Rotate it until the face looks right, then save that direction as the default start."
                   emptyLabel="Create an avatar in VRM Uploads, then return here to edit its identity and memory."
+                  defaultFacingYaw={selectedAvatar?.defaultFacingYaw || 0}
+                  onSaveDefaultFacing={selectedAvatar
+                    ? (defaultFacingYaw) => runAction(
+                      'avatar-facing',
+                      () => saveAvatarFacing(selectedAvatar.id, defaultFacingYaw),
+                      'Avatar starting direction saved.',
+                    )
+                    : null}
+                  saveFacingBusy={busyKey === 'avatar-facing'}
                 />
               </div>
 
@@ -857,7 +872,7 @@ export default function ManagePage({ user, workspace }) {
                   onCompress={() => runAction(
                     'memory-compress',
                     () => compressMemory(selectedAvatar.id, { revision: memory.revision }),
-                    'Memory compressed with the avatar AI connection.',
+                    (result) => result?.compressionRun?.summary || 'Memory compression finished.',
                   )}
                   onReset={() => runAction('memory-reset', async () => {
                     const result = await resetMemory(selectedAvatar.id)

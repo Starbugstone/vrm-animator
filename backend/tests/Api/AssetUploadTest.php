@@ -45,6 +45,7 @@ class AssetUploadTest extends WebTestCase
         $this->assertSame('Uploaded Avatar', $data['name']);
         $this->assertSame('test-avatar.vrm', $data['filename']);
         $this->assertNotEmpty($data['storedFilename']);
+        $this->assertSame(0.0, (float) $data['defaultFacingYaw']);
     }
 
     public function testAnimationUploadCreatesPersistedAnimation(): void

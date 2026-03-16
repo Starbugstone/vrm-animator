@@ -554,7 +554,9 @@ export default function ViewerPage({ workspace }) {
       const file = await assetToFile(selectedAvatarAsset)
       if (!file || cancelled) return
 
-      loadFile(file)
+      loadFile(file, {
+        defaultFacingYaw: selectedAvatarAsset.defaultFacingYaw || 0,
+      })
       setLoadedAvatarName(selectedAvatarAsset.label)
     }
 

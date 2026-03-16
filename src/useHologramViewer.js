@@ -12,6 +12,7 @@ import {
   shouldQueueBaseMotion,
   shouldReplaceQueuedMotion,
 } from './lib/viewerMotionQueue.js'
+import { normalizeFacingYawDegrees } from './lib/avatarFacing.js'
 
 const STAGE_BASE_HEIGHT = 0.18
 const STAGE_BASE_Y = -0.1
@@ -188,6 +189,7 @@ export default function useHologramViewer(canvasRef) {
     let originalHipsY = 0
     let currentVrm = null
     let currentAvatarUrl = null
+    let currentAvatarFacingYawRad = 0
     let currentMixer = null
     let currentCommand = 'idle'
     let commandTime = 0
@@ -307,7 +309,7 @@ export default function useHologramViewer(canvasRef) {
       currentVrm.humanoid?.resetNormalizedPose?.()
       currentVrm.expressionManager?.resetValues?.()
       currentVrm.lookAt?.reset?.()
-      currentVrm.scene.rotation.y = 0
+      currentVrm.scene.rotation.y = currentAvatarFacingYawRad
       currentVrm.scene.updateMatrixWorld(true)
     }
 
@@ -977,14 +979,18 @@ export default function useHologramViewer(canvasRef) {
       scene.remove(currentVrm.scene)
       disposeObject3D(currentVrm.scene)
       currentVrm = null
+      currentAvatarFacingYawRad = 0
     }
 
-    const loadAvatarFromFile = (file) => {
+    const loadAvatarFromFile = (file, options = {}) => {
       if (!file) return
 
       loadVersion += 1
       const thisLoadVersion = loadVersion
       const avatarUrl = URL.createObjectURL(file)
+      const nextFacingYawRad = THREE.MathUtils.degToRad(
+        normalizeFacingYawDegrees(options.defaultFacingYaw),
+      )
 
       currentAvatarUrl = avatarUrl
       setIsAvatarLoading(true)
@@ -1018,6 +1024,9 @@ export default function useHologramViewer(canvasRef) {
           removeCurrentAvatar()
           currentVrm = vrm
           fitAvatarToStage(currentVrm)
+          currentAvatarFacingYawRad = nextFacingYawRad
+          currentVrm.scene.rotation.y = currentAvatarFacingYawRad
+          currentVrm.scene.updateMatrixWorld(true)
 
           const hipsNode = currentVrm.humanoid?.getNormalizedBoneNode('hips')
           originalHipsY = hipsNode ? hipsNode.position.y : 0
@@ -1221,7 +1230,11 @@ export default function useHologramViewer(canvasRef) {
         if (leftUpperArm) leftUpperArm.rotation.set(-0.65, 0, 1.05)
         if (rightUpperArm) rightUpperArm.rotation.set(-0.65, 0, -1.05)
       } else if (currentVrm?.scene) {
-        currentVrm.scene.rotation.y = THREE.MathUtils.lerp(currentVrm.scene.rotation.y, 0, dt * 4)
+        currentVrm.scene.rotation.y = THREE.MathUtils.lerp(
+          currentVrm.scene.rotation.y,
+          currentAvatarFacingYawRad,
+          dt * 4,
+        )
       }
     }
 
@@ -1472,8 +1485,8 @@ export default function useHologramViewer(canvasRef) {
     }
   }, [canvasRef])
 
-  const loadFile = useCallback((file) => {
-    internalsRef.current?.loadFile(file)
+  const loadFile = useCallback((file, options) => {
+    internalsRef.current?.loadFile(file, options)
   }, [])
 
   const setIdleAnimation = useCallback((file, label, options) => {

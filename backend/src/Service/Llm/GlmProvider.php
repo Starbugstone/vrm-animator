@@ -53,4 +53,17 @@ final class GlmProvider extends AbstractOpenAiCompatibleProvider
 
         return $normalized;
     }
+
+    protected function getAdditionalPayload(LlmCompletionRequest $request, bool $stream): array
+    {
+        $thinking = $request->providerOptions['thinking'] ?? null;
+
+        if (!is_array($thinking)) {
+            return [];
+        }
+
+        return [
+            'thinking' => $thinking,
+        ];
+    }
 }

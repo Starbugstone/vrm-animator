@@ -120,6 +120,8 @@ class AvatarMemoryLlmService
                     : null,
                 'responseHandling' => [
                     'The compression reply is trimmed and markdown code fences are unwrapped if present.',
+                    'If the first rewrite is unchanged or not actually tighter, compression asks the same model for one stricter retry before keeping the current memory.',
+                    'GLM compression keeps reasoning enabled on the first attempt, then retries once with thinking disabled only if the provider returns no visible final markdown.',
                     'The avatar identity section is rewritten from the saved avatar profile so the LLM cannot drift core identity fields.',
                     'Missing core sections are restored automatically before the compressed memory is saved.',
                     'The final markdown is stored as a normal memory revision, so compression stays auditable and reversible.',
@@ -129,7 +131,18 @@ class AvatarMemoryLlmService
     }
 
     /**
-     * @return array{memory:AvatarMemory,request:array<string,mixed>,replyPreview:string}
+     * @return array{
+     *   memory:AvatarMemory,
+     *   request:array<string,mixed>,
+     *   replyPreview:string,
+     *   changed:bool,
+     *   retryUsed:bool,
+     *   retryMode:?string,
+     *   keptExisting:bool,
+     *   summary:string,
+     *   before:array{chars:int,compactedTokens:int},
+     *   after:array{chars:int,compactedTokens:int}
+     * }
      */
     public function compressMemory(User $user, Avatar $avatar, AvatarMemory $memory, int $expectedRevision): array
     {
@@ -144,12 +157,7 @@ class AvatarMemoryLlmService
         $request = $this->buildCompressionRequest($resolved, $avatar, $memory);
 
         try {
-            $completion = $this->providerResolver
-                ->resolve($resolved->provider)
-                ->complete(
-                    $request,
-                    $this->decryptCredentialSecret($resolved->credential->getEncryptedSecret(), $resolved->provider),
-                );
+            $attempt = $this->completeCompressionRequest($resolved, $avatar, $memory, $request);
         } catch (AvatarChatException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
@@ -160,13 +168,67 @@ class AvatarMemoryLlmService
             );
         }
 
-        $compressedMarkdown = $this->normalizeCompressionReply($avatar, $completion->content);
-        $updatedMemory = $this->avatarMemoryService->updateMemory($avatar, $compressedMarkdown, $expectedRevision, 'llm-compress');
+        $policy = $resolved->modelPolicy ?? $this->avatarLlmConfigurationResolver->fallbackPolicy();
+        $currentMarkdown = $memory->getMarkdownContent();
+        $evaluation = $this->evaluateCompressionCandidate($avatar, $policy, $currentMarkdown, $attempt['completion']->content);
+        $retryMode = $attempt['retryMode'];
+
+        if ($evaluation['shouldKeepExisting']) {
+            $strictRequest = $this->buildCompressionRequest(
+                $resolved,
+                $avatar,
+                $memory,
+                false,
+                'The previous rewrite was not compact enough. Try again and make it materially shorter while preserving all required sections and durable facts. Remove repetition aggressively and prefer dense bullets.',
+            );
+
+            try {
+                $strictAttempt = $this->completeCompressionRequest($resolved, $avatar, $memory, $strictRequest);
+                $retryMode = 'strict-rewrite-retry';
+                $strictEvaluation = $this->evaluateCompressionCandidate($avatar, $policy, $currentMarkdown, $strictAttempt['completion']->content);
+
+                if (!$strictEvaluation['shouldKeepExisting']) {
+                    $attempt = $strictAttempt;
+                    $evaluation = $strictEvaluation;
+                } elseif (
+                    $strictEvaluation['after']['compactedTokens'] < $evaluation['after']['compactedTokens']
+                    || $strictEvaluation['after']['chars'] < $evaluation['after']['chars']
+                ) {
+                    $attempt = $strictAttempt;
+                    $evaluation = $strictEvaluation;
+                }
+            } catch (\Throwable) {
+                // Keep the best previous attempt if the stricter retry also fails.
+            }
+        }
+
+        $shouldKeepExisting = $evaluation['shouldKeepExisting'];
+
+        $updatedMemory = $shouldKeepExisting
+            ? $memory
+            : $this->avatarMemoryService->updateMemory($avatar, $evaluation['compressedMarkdown'], $expectedRevision, 'llm-compress');
+
+        $summary = !$evaluation['changed']
+            ? 'The model returned the same normalized memory, so the current version was kept.'
+            : ($shouldKeepExisting
+                ? 'The model returned a rewrite, but even after a stricter retry it was not more compact than the current memory, so the current version was kept.'
+                : sprintf(
+                    'Memory compression saved a tighter version: compacted memory dropped from ~%d to ~%d tokens.',
+                    $evaluation['before']['compactedTokens'],
+                    $evaluation['after']['compactedTokens'],
+                ));
 
         return [
             'memory' => $updatedMemory,
-            'request' => $this->serializeRequest($request),
-            'replyPreview' => $this->limitText($completion->content, 1200),
+            'request' => $this->serializeRequest($attempt['request']),
+            'replyPreview' => $this->limitText($attempt['completion']->content, 1200),
+            'changed' => !$shouldKeepExisting,
+            'retryUsed' => $retryMode !== null,
+            'retryMode' => $retryMode,
+            'keptExisting' => $shouldKeepExisting,
+            'summary' => $summary,
+            'before' => $evaluation['before'],
+            'after' => $evaluation['after'],
         ];
     }
 
@@ -194,9 +256,21 @@ class AvatarMemoryLlmService
         ];
     }
 
-    private function buildCompressionRequest(ResolvedAvatarLlmConfig $resolved, Avatar $avatar, AvatarMemory $memory): LlmCompletionRequest
+    private function buildCompressionRequest(
+        ResolvedAvatarLlmConfig $resolved,
+        Avatar $avatar,
+        AvatarMemory $memory,
+        bool $disableThinking = false,
+        ?string $retryInstruction = null,
+    ): LlmCompletionRequest
     {
         $policy = $resolved->modelPolicy ?? $this->avatarLlmConfigurationResolver->fallbackPolicy();
+        $providerOptions = $resolved->credential?->getProviderOptions() ?? [];
+
+        if ($disableThinking && ($resolved->provider ?? '') === 'glm') {
+            $providerOptions['thinking'] = ['type' => 'disabled'];
+        }
+
         $messages = [
             [
                 'role' => 'system',
@@ -216,6 +290,9 @@ class AvatarMemoryLlmService
                         'Target memory budget: keep the rewritten memory within about %d characters of compacted chat context.',
                         $policy->maxMemoryCharacters,
                     ),
+                    $retryInstruction !== null && trim($retryInstruction) !== ''
+                        ? 'Retry instruction: '.trim($retryInstruction)
+                        : null,
                     "Current memory markdown:\n".$memory->getMarkdownContent(),
                 ]),
             ],
@@ -225,9 +302,92 @@ class AvatarMemoryLlmService
             $resolved->provider ?? '',
             $resolved->model ?? '',
             $messages,
-            max(400, min(900, (int) floor($policy->maxOutputTokens * 0.65))),
-            $resolved->credential?->getProviderOptions() ?? [],
+            max(700, min(1600, (int) floor($policy->maxOutputTokens * 0.9))),
+            $providerOptions,
         );
+    }
+
+    /**
+     * @return array{
+     *   completion:\App\Service\Llm\LlmCompletionResponse,
+     *   request:LlmCompletionRequest,
+     *   retryMode:?string
+     * }
+     */
+    private function completeCompressionRequest(
+        ResolvedAvatarLlmConfig $resolved,
+        Avatar $avatar,
+        AvatarMemory $memory,
+        LlmCompletionRequest $request,
+    ): array {
+        $provider = $this->providerResolver->resolve($resolved->provider);
+        $secret = $this->decryptCredentialSecret($resolved->credential->getEncryptedSecret(), $resolved->provider);
+
+        try {
+            return [
+                'completion' => $provider->complete($request, $secret),
+                'request' => $request,
+                'retryMode' => null,
+            ];
+        } catch (\RuntimeException $exception) {
+            $message = strtolower(trim($exception->getMessage()));
+            $canRetryWithoutThinking = ($resolved->provider ?? '') === 'glm'
+                && str_contains($message, 'empty completion');
+
+            if (!$canRetryWithoutThinking) {
+                throw $exception;
+            }
+
+            $retryRequest = $this->buildCompressionRequest($resolved, $avatar, $memory, true);
+            $retryCompletion = $provider->complete($retryRequest, $secret);
+
+            return [
+                'completion' => $retryCompletion,
+                'request' => $retryRequest,
+                'retryMode' => 'thinking-disabled-fallback',
+            ];
+        }
+    }
+
+    /**
+     * @return array{
+     *   compressedMarkdown:string,
+     *   changed:bool,
+     *   shouldKeepExisting:bool,
+     *   before:array{chars:int,compactedTokens:int},
+     *   after:array{chars:int,compactedTokens:int}
+     * }
+     */
+    private function evaluateCompressionCandidate(
+        Avatar $avatar,
+        \App\Service\Llm\ChatModelPolicy $policy,
+        string $currentMarkdown,
+        string $candidateReply,
+    ): array {
+        $compressedMarkdown = $this->normalizeCompressionReply($avatar, $candidateReply);
+        $beforeCompacted = $this->promptBuilder->buildCompactedMemoryMarkdown($currentMarkdown, $policy);
+        $afterCompacted = $this->promptBuilder->buildCompactedMemoryMarkdown($compressedMarkdown, $policy);
+        $beforeChars = mb_strlen($currentMarkdown);
+        $afterChars = mb_strlen($compressedMarkdown);
+        $beforeTokens = $this->tokenEstimator->estimateText($beforeCompacted);
+        $afterTokens = $this->tokenEstimator->estimateText($afterCompacted);
+        $changed = $compressedMarkdown !== $currentMarkdown;
+        $improvesCompaction = $afterTokens < $beforeTokens;
+        $improvesLength = $afterChars < $beforeChars;
+
+        return [
+            'compressedMarkdown' => $compressedMarkdown,
+            'changed' => $changed,
+            'shouldKeepExisting' => !$changed || (!$improvesCompaction && !$improvesLength),
+            'before' => [
+                'chars' => $beforeChars,
+                'compactedTokens' => $beforeTokens,
+            ],
+            'after' => [
+                'chars' => $afterChars,
+                'compactedTokens' => $afterTokens,
+            ],
+        ];
     }
 
     private function decryptCredentialSecret(string $encryptedSecret, string $provider): string

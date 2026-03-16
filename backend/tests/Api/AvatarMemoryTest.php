@@ -236,10 +236,80 @@ class AvatarMemoryTest extends WebTestCase
         $compressed = json_decode($client->getResponse()->getContent(), true);
         $this->assertSame('llm-compress', $compressed['lastUpdatedBy']);
         $this->assertArrayHasKey('compressionRun', $compressed);
+        $this->assertArrayHasKey('summary', $compressed['compressionRun']);
+        $this->assertArrayHasKey('changed', $compressed['compressionRun']);
+        $this->assertArrayHasKey('before', $compressed['compressionRun']);
+        $this->assertArrayHasKey('after', $compressed['compressionRun']);
         $this->assertStringContainsString('# Avatar Memory', $compressed['markdownContent']);
         $this->assertStringContainsString('The user prefers jasmine tea.', $compressed['markdownContent']);
         $this->assertStringContainsString('- name: Compression Avatar', $compressed['markdownContent']);
         $this->assertStringContainsString('- backstory: Keeps careful notes.', $compressed['markdownContent']);
         $this->assertStringContainsString('- personality: Thoughtful and warm.', $compressed['markdownContent']);
     }
+
+    public function testGlmMemoryDiagnosticsUseCurrentModelBudgetAndDisableThinkingForCompression(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'memory-glm-diagnostics@example.com');
+
+        $client->request('POST', '/api/avatars', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'Bee Cat',
+            'filename' => 'bee-cat.vrm',
+            'backstory' => 'Young, fun, bee cat girl, bouncy, jumps a lot, talkative.',
+            'personality' => 'Talkative, lively, cheerful, happy.',
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $avatar = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('POST', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'GLM Main',
+            'provider' => 'glm',
+            'secret' => 'glm-secret-token',
+            'defaultModel' => 'glm-4.7',
+            'providerOptions' => [
+                'endpointMode' => 'coding',
+            ],
+            'isActive' => true,
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $credential = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('POST', '/api/avatars/'.$avatar['id'].'/personas', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'Bee Cat Persona',
+            'personality' => 'Talkative, lively, cheerful, happy.',
+            'llmCredentialId' => $credential['id'],
+            'isPrimary' => true,
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+
+        $client->request('GET', '/api/avatars/'.$avatar['id'].'/memory', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'HTTP_ACCEPT' => 'application/json',
+        ]);
+
+        $this->assertResponseStatusCodeSame(200);
+        $memory = json_decode($client->getResponse()->getContent(), true);
+
+        $this->assertSame('glm-4.7', $memory['llmConfiguration']['model']);
+        $this->assertSame('configured', $memory['llmConfiguration']['policySource']);
+        $this->assertSame(1800, $memory['memoryStats']['budgetCharacters']);
+        $this->assertSame('coding', $memory['compression']['requestPreview']['providerOptions']['endpointMode']);
+        $this->assertArrayNotHasKey('thinking', $memory['compression']['requestPreview']['providerOptions']);
+    }
+
 }

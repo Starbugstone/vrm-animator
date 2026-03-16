@@ -8,5 +8,6 @@ Rules:
 - remove redundancy, filler, and stale temporary notes
 - keep durable preferences, promises, boundaries, recurring topics, emotional milestones, unresolved threads, and important long-term user context
 - prefer short bullets over long paragraphs
+- if the model uses hidden reasoning, keep it brief and preserve enough output budget for the final markdown
 - do not invent facts that are not supported by the current memory
 - do not expose hidden reasoning or mention compression

@@ -108,7 +108,13 @@ class LlmCredentialTest extends WebTestCase
         $this->assertResponseStatusCodeSame(200);
         $glmModels = json_decode($client->getResponse()->getContent(), true);
         $this->assertNotEmpty($glmModels['models']);
-        $this->assertSame('glm-5', $glmModels['models'][0]['id']);
+        $glmIds = array_column($glmModels['models'], 'id');
+        $this->assertContains('glm-5', $glmIds);
+        $this->assertContains('glm-4.7', $glmIds);
+        $this->assertContains('glm-4-flash-250414', $glmIds);
+        $this->assertContains('glm-4-flashx-250414', $glmIds);
+        $this->assertNotContains('glm-4.5-x', $glmIds);
+        $this->assertNotContains('glm-4-32b-0414-128k', $glmIds);
 
         $client->request('GET', '/api/llm/providers/gemini/models?search=flash', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,
@@ -129,6 +135,7 @@ class LlmCredentialTest extends WebTestCase
         $minimaxModels = json_decode($client->getResponse()->getContent(), true);
         $this->assertNotEmpty($minimaxModels['models']);
         $this->assertSame('MiniMax-M2.5', $minimaxModels['models'][0]['id']);
+        $this->assertNotContains('MiniMax-Text-01', array_column($minimaxModels['models'], 'id'));
 
         $client->request('GET', '/api/llm/providers/openai/models?search=gpt-5.2', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,

@@ -153,6 +153,10 @@ class AvatarMemoryService
         }
 
         $normalizedMarkdown = $this->normalizeMemoryMarkdown($avatar, $markdownContent);
+        if ($normalizedMarkdown === $memory->getMarkdownContent()) {
+            return $memory;
+        }
+
         $memory
             ->setMarkdownContent($normalizedMarkdown)
             ->setRevision($memory->getRevision() + 1)

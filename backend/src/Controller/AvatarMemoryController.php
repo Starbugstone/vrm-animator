@@ -119,6 +119,12 @@ class AvatarMemoryController extends AbstractController
         return $this->json([
             ...$this->serializeMemory($avatar, $result['memory'], $avatarMemoryLlmService),
             'compressionRun' => [
+                'changed' => $result['changed'],
+                'retryUsed' => $result['retryUsed'],
+                'keptExisting' => $result['keptExisting'],
+                'summary' => $result['summary'],
+                'before' => $result['before'],
+                'after' => $result['after'],
                 'request' => $result['request'],
                 'replyPreview' => $result['replyPreview'],
             ],

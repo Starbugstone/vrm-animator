@@ -345,6 +345,12 @@ export default function useWorkspace(token) {
     return { avatar, persona }
   }, [token])
 
+  const saveAvatarFacing = useCallback(async (avatarId, defaultFacingYaw) => {
+    const avatar = await updateAvatar(token, avatarId, { defaultFacingYaw })
+    setAvatars((current) => upsertById(current, avatar))
+    return avatar
+  }, [token])
+
   const removeAvatar = useCallback(async (avatarId) => {
     await deleteAvatar(token, avatarId)
     setAvatars((current) => removeById(current, avatarId))
@@ -609,6 +615,7 @@ export default function useWorkspace(token) {
     ensureConversationMessages,
     saveAvatarUpload,
     saveAvatarIdentity,
+    saveAvatarFacing,
     removeAvatar,
     saveAnimationUpload,
     adoptSharedAvatar,

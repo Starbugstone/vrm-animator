@@ -71,6 +71,7 @@ export default function MemoryPanel({ memory, revisions, busy, onSave, onCompres
   const chatMemoryContext = memory.chatMemoryContext || {}
   const compression = memory.compression || {}
   const compressionRequest = compression.requestPreview || null
+  const compressionRun = memory.compressionRun || null
   const warning = memory.warning || {}
   const warningKey = `${memory.id || 'memory'}:${memory.revision || 0}:${llmConfiguration.model || 'no-model'}`
 
@@ -99,9 +100,13 @@ export default function MemoryPanel({ memory, revisions, busy, onSave, onCompres
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setWarningOpen(false)
-                  void onCompress?.()
+                onClick={async () => {
+                  try {
+                    await onCompress?.()
+                    setWarningOpen(false)
+                  } catch {
+                    setWarningOpen(true)
+                  }
                 }}
                 disabled={busy || !compression.available}
                 className="rounded-2xl border border-fuchsia-300/30 bg-fuchsia-300/12 px-4 py-2 text-sm font-medium text-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-50"
@@ -207,6 +212,28 @@ export default function MemoryPanel({ memory, revisions, busy, onSave, onCompres
       />
 
       <div className="mt-4 grid gap-3 xl:grid-cols-2">
+        {compressionRun ? (
+          <div className={`rounded-2xl border px-3 py-3 text-sm ${
+            compressionRun.changed
+              ? 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100'
+              : 'border-amber-300/25 bg-amber-300/10 text-amber-100'
+          }`}>
+            <div className="text-xs uppercase tracking-[0.24em] opacity-70">Last compression run</div>
+            <div className="mt-2 font-medium">
+              {compressionRun.summary || 'Compression finished.'}
+            </div>
+            <div className="mt-2 text-xs opacity-80">
+              {`Compacted tokens ~${compressionRun.before?.compactedTokens || 0} -> ~${compressionRun.after?.compactedTokens || 0} | chars ${compressionRun.before?.chars || 0} -> ${compressionRun.after?.chars || 0}`}
+            </div>
+            {compressionRun.retryUsed ? (
+              <div className="mt-2 text-xs opacity-80">
+                {compressionRun.retryMode === 'thinking-disabled-fallback'
+                  ? 'A provider fallback retry was used after the first attempt returned no visible final markdown.'
+                  : 'A stricter retry was used because the first rewrite was not compact enough.'}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <DetailBlock
           title="Memory directive passed to chat"
           body={chatMemoryContext.directive || 'No directive available.'}

@@ -1,6 +1,7 @@
 import { downloadAnimationFile } from '../api/animations.js'
 import { downloadAvatarFile } from '../api/avatars.js'
 import { downloadSharedAssetFile } from '../api/library.js'
+import { normalizeFacingYawDegrees } from './avatarFacing.js'
 
 export function createPersistedAvatarAsset(record, authToken) {
   return {
@@ -11,6 +12,7 @@ export function createPersistedAvatarAsset(record, authToken) {
     label: record.name,
     source: 'user',
     authToken,
+    defaultFacingYaw: normalizeFacingYawDegrees(record.defaultFacingYaw),
   }
 }
 

@@ -81,6 +81,10 @@ class Avatar
     #[Groups(['avatar:read', 'avatar:write'])]
     private ?string $presentationGender = null;
 
+    #[ORM\Column(type: Types::FLOAT)]
+    #[Groups(['avatar:read', 'avatar:write'])]
+    private float $defaultFacingYaw = 0.0;
+
     #[ORM\Column(length: 16)]
     #[Groups(['avatar:read', 'avatar:write'])]
     private string $speechLanguage = 'auto';
@@ -214,6 +218,18 @@ class Avatar
     public function setPresentationGender(?string $presentationGender): static
     {
         $this->presentationGender = $presentationGender;
+
+        return $this;
+    }
+
+    public function getDefaultFacingYaw(): float
+    {
+        return $this->defaultFacingYaw;
+    }
+
+    public function setDefaultFacingYaw(?float $defaultFacingYaw): static
+    {
+        $this->defaultFacingYaw = $this->normalizeFacingYaw($defaultFacingYaw ?? 0.0);
 
         return $this;
     }
@@ -370,5 +386,20 @@ class Avatar
     {
         $this->owner = $owner;
         return $this;
+    }
+
+    private function normalizeFacingYaw(float $degrees): float
+    {
+        $normalized = fmod($degrees, 360.0);
+
+        if ($normalized > 180.0) {
+            $normalized -= 360.0;
+        }
+
+        if ($normalized <= -180.0) {
+            $normalized += 360.0;
+        }
+
+        return $normalized;
     }
 }

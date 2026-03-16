@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useHologramViewer from '../useHologramViewer.js'
 import { assetToFile } from '../lib/viewerAssets.js'
+import { deriveSavedFacingYawDegrees, normalizeFacingYawDegrees } from '../lib/avatarFacing.js'
 
 export default function AvatarPreviewCard({
   asset = null,
@@ -8,10 +9,13 @@ export default function AvatarPreviewCard({
   title = 'Avatar preview',
   helper = 'Select an avatar or choose a VRM file to inspect it here before editing.',
   emptyLabel = 'Choose an avatar or upload a VRM file to preview it.',
+  defaultFacingYaw = 0,
+  onSaveDefaultFacing = null,
+  saveFacingBusy = false,
 }) {
   const canvasRef = useRef(null)
   const [notice, setNotice] = useState('')
-  const { loadFile, status, isLoaded, isAvatarLoading } = useHologramViewer(canvasRef)
+  const { loadFile, status, isLoaded, isAvatarLoading, framingState } = useHologramViewer(canvasRef)
 
   const activeLabel = useMemo(() => {
     if (file) return file.name
@@ -31,7 +35,9 @@ export default function AvatarPreviewCard({
       try {
         const nextFile = file || (await assetToFile(asset))
         if (!nextFile || cancelled) return
-        loadFile(nextFile)
+        loadFile(nextFile, {
+          defaultFacingYaw,
+        })
         setNotice('')
       } catch (error) {
         if (!cancelled) {
@@ -45,7 +51,12 @@ export default function AvatarPreviewCard({
     return () => {
       cancelled = true
     }
-  }, [asset, file, loadFile])
+  }, [asset, defaultFacingYaw, file, loadFile])
+
+  const savedFacingLabel = useMemo(
+    () => `${normalizeFacingYawDegrees(defaultFacingYaw)} deg`,
+    [defaultFacingYaw],
+  )
 
   return (
     <section className="rounded-[28px] border border-white/10 bg-[rgba(8,14,28,0.8)] p-5 shadow-[0_24px_80px_rgba(3,7,18,0.35)]">
@@ -76,6 +87,28 @@ export default function AvatarPreviewCard({
           </div>
         ) : null}
       </div>
+
+      {onSaveDefaultFacing ? (
+        <div className="mt-4 rounded-[24px] border border-white/10 bg-black/20 p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-[0.24em] text-white/45">Default facing</div>
+              <div className="mt-1 text-sm text-white/60">
+                Rotate the preview until the avatar looks right, then save that view as the starting direction.
+              </div>
+              <div className="mt-2 text-xs text-white/45">Saved yaw: {savedFacingLabel}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onSaveDefaultFacing(deriveSavedFacingYawDegrees(defaultFacingYaw, framingState.yaw))}
+              disabled={!isLoaded || isAvatarLoading || saveFacingBusy}
+              className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saveFacingBusy ? 'Saving facing...' : 'Use current view as default'}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {notice ? (
         <div className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm text-rose-100">
