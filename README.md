@@ -91,6 +91,8 @@ Important behavior:
 - each user saves their own ElevenLabs API key through the authenticated TTS API or the `Manage -> Voice & Speech` UI
 - saved TTS secrets are encrypted at rest by the backend using the same `LLM_CREDENTIAL_ENCRYPTION_KEY`
 - if an avatar does not have both a saved TTS credential and a selected voice, the Viewer falls back to browser speech synthesis
+- voice catalogs are now loaded through the paginated ElevenLabs voice search API so larger accounts are not truncated to a single page
+- the avatar voice picker now searches across voice name and metadata tags, while also taking the avatar speech language into account when narrowing the list
 
 ### What The API Needs
 

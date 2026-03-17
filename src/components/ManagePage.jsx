@@ -591,6 +591,7 @@ export default function ManagePage({ user, workspace }) {
   const [activeConversationId, setActiveConversationId] = useState(null)
   const [notice, setNotice] = useState('')
   const [busyKey, setBusyKey] = useState('')
+  const [avatarAutosaveBusy, setAvatarAutosaveBusy] = useState(false)
   const [avatarUpload, setAvatarUpload] = useState(EMPTY_AVATAR_UPLOAD)
   const [animationUpload, setAnimationUpload] = useState(EMPTY_ANIMATION_UPLOAD)
   const [customAvatarDraft, setCustomAvatarDraft] = useState(EMPTY_CUSTOM_AVATAR)
@@ -643,16 +644,26 @@ export default function ManagePage({ user, workspace }) {
     () => sharedAvatarPresets.find((entry) => entry.id === customAvatarDraft.sharedAvatarId) || null,
     [customAvatarDraft.sharedAvatarId, sharedAvatarPresets],
   )
+  const selectedAvatarPreviewAsset = useMemo(() => {
+    if (!selectedAvatar || !token) return null
+
+    return createPersistedAvatarAsset({
+      id: selectedAvatar.id,
+      filename: selectedAvatar.filename,
+      name: selectedAvatar.name,
+      defaultFacingYaw: selectedAvatar.defaultFacingYaw,
+    }, token)
+  }, [selectedAvatar?.id, selectedAvatar?.filename, selectedAvatar?.name, selectedAvatar?.defaultFacingYaw, token])
   const previewAsset = useMemo(() => {
     if (avatarUpload.file) return null
     if (selectedSharedPreset) return selectedSharedPreset
-    if (!selectedAvatar || !token) return null
-    return createPersistedAvatarAsset(selectedAvatar, token)
-  }, [avatarUpload.file, selectedAvatar, selectedSharedPreset, token])
+    return selectedAvatarPreviewAsset
+  }, [avatarUpload.file, selectedAvatarPreviewAsset, selectedSharedPreset])
   const sectionCopy = SECTION_COPY[activeSection]
+  const selectedAvatarIdValue = selectedAvatar?.id || null
 
   useEffect(() => {
-    if (!selectedAvatar) {
+    if (!selectedAvatarIdValue) {
       setActiveConversationId(null)
       return
     }
@@ -662,11 +673,11 @@ export default function ManagePage({ user, workspace }) {
     async function loadAvatarContext() {
       try {
         await Promise.all([
-          ensurePersonas(selectedAvatar.id),
-          ensureMemory(selectedAvatar.id),
+          ensurePersonas(selectedAvatarIdValue),
+          ensureMemory(selectedAvatarIdValue),
         ])
 
-        const loadedConversations = await ensureConversations(selectedAvatar.id)
+        const loadedConversations = await ensureConversations(selectedAvatarIdValue)
         if (cancelled) return
 
         const nextConversationId = loadedConversations[0]?.id || null
@@ -686,7 +697,28 @@ export default function ManagePage({ user, workspace }) {
     return () => {
       cancelled = true
     }
-  }, [ensureConversationMessages, ensureConversations, ensureMemory, ensurePersonas, selectedAvatar])
+  }, [ensureConversationMessages, ensureConversations, ensureMemory, ensurePersonas, selectedAvatarIdValue])
+
+  const saveAvatarProfileAutosave = useCallback(async (payload) => {
+    if (!selectedAvatarIdValue) {
+      return
+    }
+
+    setAvatarAutosaveBusy(true)
+
+    try {
+      await saveAvatarIdentity(selectedAvatarIdValue, payload)
+      await saveAvatarTtsConfig(selectedAvatarIdValue, {
+        presentationGender: payload.presentationGender,
+        speechVoiceGender: payload.speechVoiceGender,
+        speechLanguage: payload.speechLanguage,
+        ttsCredentialId: payload.ttsCredentialId,
+        ttsVoiceId: payload.ttsVoiceId,
+      })
+    } finally {
+      setAvatarAutosaveBusy(false)
+    }
+  }, [saveAvatarIdentity, saveAvatarTtsConfig, selectedAvatarIdValue])
 
   async function runAction(key, action, successMessage) {
     setBusyKey(key)
@@ -824,7 +856,7 @@ export default function ManagePage({ user, workspace }) {
                 </div>
 
                 <AvatarPreviewCard
-                  asset={selectedAvatar && token ? createPersistedAvatarAsset(selectedAvatar, token) : null}
+                  asset={selectedAvatarPreviewAsset}
                   file={null}
                   helper="The preview follows the selected avatar. Rotate it until the face looks right, then save that direction as the default start."
                   emptyLabel="Create an avatar in VRM Uploads, then return here to edit its identity and memory."
@@ -849,19 +881,8 @@ export default function ManagePage({ user, workspace }) {
                   ttsVoicesByCredential={ttsVoicesByCredential}
                   onLoadTtsVoices={(credentialId) => loadTtsVoiceCatalog(credentialId)}
                   onPreviewTts={(payload, options) => previewAvatarTts(selectedAvatar.id, payload, options)}
-                  busy={busyKey === 'avatar-save'}
-                  onSave={(payload) =>
-                    runAction('avatar-save', async () => {
-                      await saveAvatarIdentity(selectedAvatar.id, payload)
-                      await saveAvatarTtsConfig(selectedAvatar.id, {
-                        presentationGender: payload.presentationGender,
-                        speechVoiceGender: payload.speechVoiceGender,
-                        speechLanguage: payload.speechLanguage,
-                        ttsCredentialId: payload.ttsCredentialId,
-                        ttsVoiceId: payload.ttsVoiceId,
-                      })
-                    }, 'Avatar profile saved.')
-                  }
+                  busy={avatarAutosaveBusy}
+                  onSave={saveAvatarProfileAutosave}
                 />
 
                 <MemoryPanel

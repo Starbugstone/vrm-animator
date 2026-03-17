@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { filterVoicesForAvatar, getEffectiveVoiceGender, normalizeGenderTag } from '../lib/ttsVoices.js'
+import {
+  filterVoicesForAvatar,
+  getEffectiveSpeechLanguage,
+  getEffectiveVoiceGender,
+  getVoiceTagSummary,
+  matchesVoiceSearch,
+  normalizeGenderTag,
+} from '../lib/ttsVoices.js'
 import { playStreamedAudioResponse } from '../lib/streamingAudio.js'
 
 const SPEECH_LANGUAGE_OPTIONS = [
@@ -11,14 +18,87 @@ const SPEECH_LANGUAGE_OPTIONS = [
   { value: 'it-IT', label: 'Italian' },
 ]
 
-function buildVoicePreviewText(name) {
+function buildVoicePreviewText(name, speechLanguage = 'auto') {
   const safeName = String(name || '').trim()
+  const languageCode = String(speechLanguage || 'auto').trim().toLowerCase().split('-')[0]
+
+  if (languageCode === 'fr') {
+    return safeName
+      ? `Bonjour, je m'appelle ${safeName}. Ceci est un court apercu de ma voix.`
+      : 'Bonjour. Ceci est un court apercu de ma voix.'
+  }
+
+  if (languageCode === 'es') {
+    return safeName
+      ? `Hola, me llamo ${safeName}. Esta es una breve muestra de mi voz.`
+      : 'Hola. Esta es una breve muestra de mi voz.'
+  }
+
+  if (languageCode === 'de') {
+    return safeName
+      ? `Hallo, ich bin ${safeName}. Das ist eine kurze Vorschau meiner Stimme.`
+      : 'Hallo. Das ist eine kurze Vorschau meiner Stimme.'
+  }
+
+  if (languageCode === 'it') {
+    return safeName
+      ? `Ciao, mi chiamo ${safeName}. Questo e un breve esempio della mia voce.`
+      : 'Ciao. Questo e un breve esempio della mia voce.'
+  }
 
   if (safeName) {
     return `Hello, I'm ${safeName}. This is a quick preview of my voice.`
   }
 
   return 'Hello. This is a quick preview of my voice.'
+}
+
+function formatSpeechLanguageLabel(value) {
+  const normalized = String(value || '').trim()
+  if (!normalized || normalized.toLowerCase() === 'auto') {
+    return 'Auto detect'
+  }
+
+  const matchedOption = SPEECH_LANGUAGE_OPTIONS.find((option) => option.value.toLowerCase() === normalized.toLowerCase())
+  if (matchedOption) {
+    return matchedOption.label
+  }
+
+  return normalized
+}
+
+function buildTextPayload(draft) {
+  return {
+    name: draft.name,
+    backstory: draft.backstory,
+    personality: draft.personality,
+  }
+}
+
+function buildSelectPayload(draft) {
+  return {
+    llmCredentialId: draft.llmCredentialId ? Number(draft.llmCredentialId) : null,
+    presentationGender: draft.presentationGender || null,
+    speechVoiceGender: draft.speechVoiceGender || null,
+    speechLanguage: draft.speechLanguage || 'auto',
+    ttsCredentialId: draft.ttsCredentialId ? Number(draft.ttsCredentialId) : null,
+    ttsVoiceId: draft.ttsVoiceId || null,
+  }
+}
+
+function buildDraftFromAvatar(avatar, credentialId) {
+  return {
+    name: avatar?.name || '',
+    backstory: avatar?.backstory || '',
+    personality: avatar?.personality || '',
+    llmCredentialId: credentialId ? String(credentialId) : '',
+    presentationGender: avatar?.presentationGender || '',
+    speechVoiceGender: avatar?.speechVoiceGender || '',
+    speechLanguage: avatar?.speechLanguage || 'auto',
+    ttsCredentialId: avatar?.ttsCredentialId ? String(avatar.ttsCredentialId) : '',
+    ttsVoiceId: avatar?.ttsVoiceId || '',
+    showAllVoices: false,
+  }
 }
 
 export default function AvatarIdentityPanel({
@@ -36,6 +116,14 @@ export default function AvatarIdentityPanel({
   const [previewText, setPreviewText] = useState('')
   const [previewError, setPreviewError] = useState('')
   const [previewingVoiceId, setPreviewingVoiceId] = useState('')
+  const [voiceSearch, setVoiceSearch] = useState('')
+  const [saveState, setSaveState] = useState('idle')
+  const autoPreviewTextRef = useRef('')
+  const previousAvatarIdRef = useRef(null)
+  const lastSavedTextPayloadRef = useRef('')
+  const lastSavedSelectPayloadRef = useRef('')
+  const saveRequestRef = useRef(0)
+  const draftRef = useRef(null)
   const previewAudioRef = useRef(typeof Audio !== 'undefined' ? new Audio() : null)
   const previewAbortRef = useRef(null)
   const [draft, setDraft] = useState({
@@ -51,24 +139,68 @@ export default function AvatarIdentityPanel({
     showAllVoices: false,
   })
 
-  useEffect(() => {
-    setDraft({
-      name: avatar?.name || '',
-      backstory: avatar?.backstory || '',
-      personality: avatar?.personality || '',
-      llmCredentialId: credentialId ? String(credentialId) : '',
-      presentationGender: avatar?.presentationGender || '',
-      speechVoiceGender: avatar?.speechVoiceGender || '',
-      speechLanguage: avatar?.speechLanguage || 'auto',
-      ttsCredentialId: avatar?.ttsCredentialId ? String(avatar.ttsCredentialId) : '',
-      ttsVoiceId: avatar?.ttsVoiceId || '',
-      showAllVoices: false,
+  const syncAutoPreviewText = useCallback((name, speechLanguage, options = {}) => {
+    const nextAutoText = buildVoicePreviewText(name, speechLanguage)
+    const previousAutoText = autoPreviewTextRef.current
+    autoPreviewTextRef.current = nextAutoText
+
+    setPreviewText((current) => {
+      if (options.force || String(current || '').trim() === '' || current === previousAutoText) {
+        return nextAutoText
+      }
+
+      return current
     })
+  }, [])
+
+  useEffect(() => {
+    const nextAvatarId = avatar?.id || null
+    if (previousAvatarIdRef.current === nextAvatarId) {
+      return
+    }
+
+    previousAvatarIdRef.current = nextAvatarId
+    const nextDraft = buildDraftFromAvatar(avatar, credentialId)
+
+    setDraft(nextDraft)
+    lastSavedTextPayloadRef.current = JSON.stringify(buildTextPayload(nextDraft))
+    lastSavedSelectPayloadRef.current = JSON.stringify(buildSelectPayload(nextDraft))
     setTtsLoadError('')
-    setPreviewText(buildVoicePreviewText(avatar?.name))
+    syncAutoPreviewText(avatar?.name, avatar?.speechLanguage || 'auto', { force: true })
     setPreviewError('')
     setPreviewingVoiceId('')
-  }, [avatar, credentialId])
+    setVoiceSearch('')
+    setSaveState('idle')
+  }, [avatar?.id, credentialId, syncAutoPreviewText, avatar])
+
+  useEffect(() => {
+    if (!avatar?.id) {
+      return
+    }
+
+    const nextCredentialId = credentialId ? String(credentialId) : ''
+    if (!nextCredentialId) {
+      return
+    }
+
+    setDraft((current) => {
+      if (current.llmCredentialId === nextCredentialId || current.llmCredentialId !== '') {
+        return current
+      }
+
+      const nextDraft = { ...current, llmCredentialId: nextCredentialId }
+      lastSavedSelectPayloadRef.current = JSON.stringify(buildSelectPayload(nextDraft))
+      return nextDraft
+    })
+  }, [avatar?.id, credentialId])
+
+  useEffect(() => {
+    syncAutoPreviewText(draft.name, draft.speechLanguage)
+  }, [draft.name, draft.speechLanguage, syncAutoPreviewText])
+
+  useEffect(() => {
+    draftRef.current = draft
+  }, [draft])
 
   const stopPreviewPlayback = useCallback(() => {
     previewAbortRef.current?.abort?.()
@@ -112,20 +244,81 @@ export default function AvatarIdentityPanel({
     ? ttsVoicesByCredential[Number(draft.ttsCredentialId)] || []
     : []
   const effectiveVoiceGender = getEffectiveVoiceGender(draft)
+  const effectiveSpeechLanguage = getEffectiveSpeechLanguage(draft)
+  const textDirty = JSON.stringify(buildTextPayload(draft)) !== lastSavedTextPayloadRef.current
   const filteredVoices = useMemo(() => {
-    if (draft.showAllVoices) {
-      return availableVoices
-    }
+    const searchMatches = voiceSearch
+      ? availableVoices.filter((voice) => matchesVoiceSearch(voice, voiceSearch))
+      : availableVoices
 
-    const visible = filterVoicesForAvatar(availableVoices, draft)
+    const visible = draft.showAllVoices || voiceSearch
+      ? searchMatches
+      : filterVoicesForAvatar(searchMatches, draft)
     const selectedVoice = availableVoices.find((voice) => voice.id === draft.ttsVoiceId)
 
-    if (selectedVoice && !visible.some((voice) => voice.id === selectedVoice.id)) {
+    if (!voiceSearch && selectedVoice && !visible.some((voice) => voice.id === selectedVoice.id)) {
       return [selectedVoice, ...visible]
     }
 
     return visible
-  }, [availableVoices, draft])
+  }, [availableVoices, draft, voiceSearch])
+
+  const saveSelectFields = useCallback(async (nextDraft) => {
+    if (!avatar?.id || !onSave) {
+      return
+    }
+
+    const payload = buildSelectPayload(nextDraft)
+    const serializedPayload = JSON.stringify(payload)
+    if (serializedPayload === lastSavedSelectPayloadRef.current) {
+      setSaveState('saved')
+      return
+    }
+
+    const requestId = saveRequestRef.current + 1
+    saveRequestRef.current = requestId
+    setSaveState('saving')
+
+    try {
+      await onSave(payload, { silentSuccess: true })
+      if (saveRequestRef.current !== requestId) {
+        return
+      }
+
+      lastSavedSelectPayloadRef.current = serializedPayload
+      setSaveState(textDirty ? 'idle' : 'saved')
+    } catch (error) {
+      if (saveRequestRef.current !== requestId) {
+        return
+      }
+
+      setSaveState('error')
+    }
+  }, [avatar?.id, onSave, textDirty])
+
+  const applySelectChange = useCallback((patch) => {
+    const currentDraft = draftRef.current || draft
+    const nextDraft = { ...currentDraft, ...patch }
+    draftRef.current = nextDraft
+    setDraft(nextDraft)
+    void saveSelectFields(nextDraft)
+  }, [draft, saveSelectFields])
+
+  const handleSaveTextFields = useCallback(async () => {
+    if (!onSave) {
+      return
+    }
+
+    setSaveState('saving')
+
+    try {
+      await onSave(buildTextPayload(draft), { silentSuccess: true })
+      lastSavedTextPayloadRef.current = JSON.stringify(buildTextPayload(draft))
+      setSaveState('saved')
+    } catch (error) {
+      setSaveState('error')
+    }
+  }, [draft, onSave])
 
   const handlePreviewVoice = useCallback(async (voice) => {
     if (!avatar?.id || !draft.ttsCredentialId || !onPreviewTts) {
@@ -137,7 +330,7 @@ export default function AvatarIdentityPanel({
       return
     }
 
-    const demoText = String(previewText || '').trim() || buildVoicePreviewText(draft.name || avatar.name)
+    const demoText = String(previewText || '').trim() || buildVoicePreviewText(draft.name || avatar.name, draft.speechLanguage)
     const audio = previewAudioRef.current
     if (!audio || !demoText) {
       return
@@ -202,27 +395,26 @@ export default function AvatarIdentityPanel({
         <div>
           <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Avatar profile</div>
           <div className="mt-2 text-sm text-white/60">
-            This is the personality sheet for the selected avatar. Keep it short and clear so the character stays consistent.
+            This is the personality sheet for the selected avatar. Dropdown choices save immediately. Text fields stay local until you save them.
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => onSave({
-            name: draft.name,
-            backstory: draft.backstory,
-            personality: draft.personality,
-            llmCredentialId: draft.llmCredentialId ? Number(draft.llmCredentialId) : null,
-            presentationGender: draft.presentationGender || null,
-            speechVoiceGender: draft.speechVoiceGender || null,
-            speechLanguage: draft.speechLanguage || 'auto',
-            ttsCredentialId: draft.ttsCredentialId ? Number(draft.ttsCredentialId) : null,
-            ttsVoiceId: draft.ttsVoiceId || null,
-          })}
-          disabled={busy}
-          className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {busy ? 'Saving...' : 'Save profile'}
-        </button>
+        <div className={`rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.18em] ${
+          saveState === 'error'
+            ? 'border-rose-300/25 bg-rose-300/10 text-rose-100'
+            : saveState === 'saving' || busy
+              ? 'border-cyan-300/25 bg-cyan-300/10 text-cyan-100'
+              : textDirty
+                ? 'border-amber-300/25 bg-amber-300/10 text-amber-100'
+                : 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100'
+        }`}>
+          {saveState === 'error'
+            ? 'Save failed'
+            : saveState === 'saving' || busy
+              ? 'Saving'
+              : textDirty
+                ? 'Text unsaved'
+                : 'Saved'}
+        </div>
       </div>
 
       <div className="mt-4 space-y-3">
@@ -255,11 +447,22 @@ export default function AvatarIdentityPanel({
             className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
           />
         </label>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => void handleSaveTextFields()}
+            disabled={!textDirty || busy}
+            className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? 'Saving...' : 'Save text fields'}
+          </button>
+        </div>
+
         <label className="block space-y-2">
           <div className="text-xs uppercase tracking-[0.24em] text-white/45">AI connection</div>
           <select
             value={draft.llmCredentialId}
-            onChange={(event) => setDraft((current) => ({ ...current, llmCredentialId: event.target.value }))}
+            onChange={(event) => applySelectChange({ llmCredentialId: event.target.value })}
             className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
           >
             <option value="">No AI attached yet</option>
@@ -283,7 +486,7 @@ export default function AvatarIdentityPanel({
               onClick={() => setDraft((current) => ({ ...current, showAllVoices: !current.showAllVoices }))}
               className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2 text-xs text-white/70 transition hover:bg-white/10"
             >
-              {draft.showAllVoices ? 'Match avatar tag' : 'Show all voices'}
+              {draft.showAllVoices ? 'Match avatar defaults' : 'Show all voices'}
             </button>
           </div>
 
@@ -292,7 +495,7 @@ export default function AvatarIdentityPanel({
               <div className="text-xs uppercase tracking-[0.24em] text-white/45">Avatar sex</div>
               <select
                 value={draft.presentationGender}
-                onChange={(event) => setDraft((current) => ({ ...current, presentationGender: event.target.value }))}
+                onChange={(event) => applySelectChange({ presentationGender: event.target.value })}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
               >
                 <option value="">No tag yet</option>
@@ -305,7 +508,7 @@ export default function AvatarIdentityPanel({
               <div className="text-xs uppercase tracking-[0.24em] text-white/45">Voice override</div>
               <select
                 value={draft.speechVoiceGender}
-                onChange={(event) => setDraft((current) => ({ ...current, speechVoiceGender: event.target.value }))}
+                onChange={(event) => applySelectChange({ speechVoiceGender: event.target.value })}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
               >
                 <option value="">Follow avatar sex</option>
@@ -318,7 +521,7 @@ export default function AvatarIdentityPanel({
               <div className="text-xs uppercase tracking-[0.24em] text-white/45">Speech language</div>
               <select
                 value={draft.speechLanguage}
-                onChange={(event) => setDraft((current) => ({ ...current, speechLanguage: event.target.value }))}
+                onChange={(event) => applySelectChange({ speechLanguage: event.target.value })}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
               >
                 {SPEECH_LANGUAGE_OPTIONS.map((option) => (
@@ -333,11 +536,10 @@ export default function AvatarIdentityPanel({
               <div className="text-xs uppercase tracking-[0.24em] text-white/45">Voice endpoint</div>
               <select
                 value={draft.ttsCredentialId}
-                onChange={(event) => setDraft((current) => ({
-                  ...current,
+                onChange={(event) => applySelectChange({
                   ttsCredentialId: event.target.value,
                   ttsVoiceId: '',
-                }))}
+                })}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
               >
                 <option value="">Use browser speech only</option>
@@ -355,9 +557,14 @@ export default function AvatarIdentityPanel({
               <div>
                 <div className="text-xs uppercase tracking-[0.24em] text-white/45">Voice selection</div>
                 <div className="mt-1 text-sm text-white/60">
-                  {effectiveVoiceGender
-                    ? `Voices tagged ${effectiveVoiceGender} are shown first for this avatar.`
-                    : 'No voice filter yet. Add an avatar sex or override to narrow the list.'}
+                  {voiceSearch
+                    ? 'Search checks voice name plus tags like language, accent, age, use case, and category.'
+                    : effectiveVoiceGender || effectiveSpeechLanguage
+                      ? `Matching voices for ${[
+                        effectiveVoiceGender ? `${effectiveVoiceGender} voices` : '',
+                        effectiveSpeechLanguage ? formatSpeechLanguageLabel(effectiveSpeechLanguage) : '',
+                      ].filter(Boolean).join(' in ')} are shown.`
+                      : 'No voice preference yet. Add an avatar sex, override, or speech language to narrow the list.'}
                 </div>
               </div>
               <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/55">
@@ -384,6 +591,21 @@ export default function AvatarIdentityPanel({
 
                 <label className="mb-3 block space-y-2">
                   <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs uppercase tracking-[0.24em] text-white/45">Search voices</div>
+                    <div className="text-[11px] text-white/40">
+                      {filteredVoices.length} shown / {availableVoices.length} loaded
+                    </div>
+                  </div>
+                  <input
+                    value={voiceSearch}
+                    onChange={(event) => setVoiceSearch(event.target.value)}
+                    placeholder="Search by name, language, accent, use case, or tag."
+                    className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+                  />
+                </label>
+
+                <label className="mb-3 block space-y-2">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="text-xs uppercase tracking-[0.24em] text-white/45">Demo phrase</div>
                     <div className="text-[11px] text-white/40">Use the play button on any voice card to audition it.</div>
                   </div>
@@ -399,23 +621,26 @@ export default function AvatarIdentityPanel({
                 <div className="grid gap-2">
                 {filteredVoices.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-white/55">
-                    No voices loaded for this endpoint yet.
+                    {voiceSearch
+                      ? 'No voices match this search for the current endpoint.'
+                      : 'No voices loaded for this endpoint yet.'}
                   </div>
                 ) : null}
                 {filteredVoices.map((voice) => {
                   const genderTag = normalizeGenderTag(voice.gender)
                   const isSelected = draft.ttsVoiceId === voice.id
+                  const tagSummary = getVoiceTagSummary(voice)
 
                   return (
                     <div
                       key={voice.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => setDraft((current) => ({ ...current, ttsVoiceId: voice.id }))}
+                      onClick={() => applySelectChange({ ttsVoiceId: voice.id })}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault()
-                          setDraft((current) => ({ ...current, ttsVoiceId: voice.id }))
+                          applySelectChange({ ttsVoiceId: voice.id })
                         }
                       }}
                       className={`cursor-pointer rounded-2xl border px-4 py-3 text-left transition focus:outline-none ${
@@ -430,6 +655,18 @@ export default function AvatarIdentityPanel({
                           <div className="mt-1 text-xs text-white/45">
                             {voice.description || voice.category || 'No description'}
                           </div>
+                          {tagSummary.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {tagSummary.map((tag) => (
+                                <div
+                                  key={`${voice.id}-${tag}`}
+                                  className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-white/55"
+                                >
+                                  {tag}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] text-white/60">
                           {genderTag || 'Untagged'}

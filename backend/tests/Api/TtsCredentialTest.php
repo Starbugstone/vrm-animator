@@ -107,19 +107,41 @@ class TtsCredentialTest extends WebTestCase
                         'id' => 'voice_f_1',
                         'name' => 'Ava',
                         'gender' => 'female',
-                        'labels' => ['gender' => 'female', 'accent' => 'american'],
+                        'labels' => ['gender' => 'female', 'accent' => 'american', 'language' => 'en'],
                         'category' => 'premade',
                         'description' => 'Warm and friendly',
                         'previewUrl' => 'https://example.com/ava.mp3',
+                        'language' => 'en',
+                        'locale' => 'en-US',
+                        'verifiedLanguages' => [
+                            [
+                                'language' => 'en',
+                                'locale' => 'en-US',
+                                'accent' => 'american',
+                                'modelId' => 'eleven_flash_v2_5',
+                                'previewUrl' => 'https://example.com/ava-en.mp3',
+                            ],
+                        ],
                     ],
                     [
                         'id' => 'voice_m_1',
                         'name' => 'Adam',
                         'gender' => 'male',
-                        'labels' => ['gender' => 'male', 'accent' => 'american'],
+                        'labels' => ['gender' => 'male', 'accent' => 'american', 'language' => 'en'],
                         'category' => 'premade',
                         'description' => 'Calm and steady',
                         'previewUrl' => 'https://example.com/adam.mp3',
+                        'language' => 'en',
+                        'locale' => 'en-US',
+                        'verifiedLanguages' => [
+                            [
+                                'language' => 'en',
+                                'locale' => 'en-US',
+                                'accent' => 'american',
+                                'modelId' => 'eleven_flash_v2_5',
+                                'previewUrl' => 'https://example.com/adam-en.mp3',
+                            ],
+                        ],
                     ],
                 ];
             }
@@ -170,6 +192,9 @@ class TtsCredentialTest extends WebTestCase
         $voices = json_decode($client->getResponse()->getContent(), true);
         $this->assertCount(2, $voices['voices']);
         $this->assertSame('female', $voices['voices'][0]['gender']);
+        $this->assertSame('en', $voices['voices'][0]['language']);
+        $this->assertSame('en-US', $voices['voices'][0]['locale']);
+        $this->assertSame('en-US', $voices['voices'][0]['verifiedLanguages'][0]['locale']);
 
         $client->request('POST', '/api/avatars/'.$avatar['id'].'/tts/stream', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,

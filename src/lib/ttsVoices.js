@@ -1,3 +1,46 @@
+function normalizeComparableText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter(Boolean))]
+}
+
+function normalizeLocaleTag(value) {
+  const normalized = String(value || '').trim()
+  if (!normalized) {
+    return ''
+  }
+
+  const segments = normalized.split('-').filter(Boolean)
+  if (segments.length === 0) {
+    return ''
+  }
+
+  if (segments.length === 1) {
+    return segments[0].toLowerCase()
+  }
+
+  return `${segments[0].toLowerCase()}-${segments.slice(1).join('-').toUpperCase()}`
+}
+
+function normalizeLanguageCode(value) {
+  const normalized = normalizeLocaleTag(value)
+  if (!normalized || normalized === 'auto') {
+    return ''
+  }
+
+  return normalized.split('-')[0]
+}
+
+function getVoiceVerifiedLanguages(voice) {
+  return Array.isArray(voice?.verifiedLanguages) ? voice.verifiedLanguages : []
+}
+
 export function normalizeGenderTag(value) {
   const normalized = String(value || '').trim().toLowerCase()
   return normalized === 'female' || normalized === 'male' ? normalized : ''
@@ -11,19 +54,119 @@ export function hasRemoteTtsConfiguration(avatar) {
   return Boolean(avatar?.ttsCredentialId && avatar?.ttsVoiceId)
 }
 
+export function getEffectiveSpeechLanguage(avatar) {
+  const normalized = normalizeLocaleTag(avatar?.speechLanguage)
+  return normalized && normalized !== 'auto' ? normalized : ''
+}
+
+export function getVoiceLocales(voice) {
+  const labels = voice?.labels && typeof voice.labels === 'object' ? voice.labels : {}
+
+  return uniqueStrings([
+    normalizeLocaleTag(voice?.locale),
+    normalizeLocaleTag(labels.locale),
+    ...getVoiceVerifiedLanguages(voice).map((entry) => normalizeLocaleTag(entry?.locale)),
+  ])
+}
+
+export function getVoiceLanguages(voice) {
+  const labels = voice?.labels && typeof voice.labels === 'object' ? voice.labels : {}
+  const locales = getVoiceLocales(voice)
+
+  return uniqueStrings([
+    normalizeLanguageCode(voice?.language),
+    normalizeLanguageCode(labels.language),
+    ...locales.map((locale) => normalizeLanguageCode(locale)),
+    ...getVoiceVerifiedLanguages(voice).map((entry) => normalizeLanguageCode(entry?.language)),
+  ])
+}
+
+export function voiceHasLanguageMetadata(voice) {
+  return getVoiceLocales(voice).length > 0 || getVoiceLanguages(voice).length > 0
+}
+
+export function voiceMatchesLanguage(voice, speechLanguage) {
+  const preferredLocale = normalizeLocaleTag(speechLanguage)
+  if (!preferredLocale || preferredLocale === 'auto') {
+    return false
+  }
+
+  const preferredLanguage = normalizeLanguageCode(preferredLocale)
+  const locales = getVoiceLocales(voice)
+  const languages = getVoiceLanguages(voice)
+
+  return locales.includes(preferredLocale) || languages.includes(preferredLanguage)
+}
+
+export function getVoicePrimaryLocale(voice) {
+  return getVoiceLocales(voice)[0] || getVoiceLanguages(voice)[0] || ''
+}
+
+export function getVoiceTagSummary(voice) {
+  const labels = voice?.labels && typeof voice.labels === 'object' ? voice.labels : {}
+  const values = uniqueStrings([
+    getVoicePrimaryLocale(voice),
+    typeof labels.accent === 'string' ? labels.accent.trim() : '',
+    typeof labels.age === 'string' ? labels.age.trim() : '',
+    typeof labels.use_case === 'string' ? labels.use_case.trim() : '',
+    typeof voice?.category === 'string' ? voice.category.trim() : '',
+  ])
+
+  return values
+}
+
 export function filterVoicesForAvatar(voices, avatar, options = {}) {
+  const items = Array.isArray(voices) ? voices : []
   const effectiveGender = options.gender || getEffectiveVoiceGender(avatar)
   const includeUnknown = options.includeUnknown !== false
 
-  if (!effectiveGender) {
-    return Array.isArray(voices) ? voices : []
+  let visible = items
+
+  if (effectiveGender) {
+    const preferred = visible.filter((voice) => normalizeGenderTag(voice?.gender) === effectiveGender)
+    const unknown = includeUnknown
+      ? visible.filter((voice) => !normalizeGenderTag(voice?.gender))
+      : []
+
+    if (preferred.length > 0) {
+      visible = [...preferred, ...unknown]
+    }
   }
 
-  const items = Array.isArray(voices) ? voices : []
-  const preferred = items.filter((voice) => normalizeGenderTag(voice?.gender) === effectiveGender)
-  const unknown = includeUnknown
-    ? items.filter((voice) => !normalizeGenderTag(voice?.gender))
+  const preferredLanguage = options.language || getEffectiveSpeechLanguage(avatar)
+  if (!preferredLanguage) {
+    return visible
+  }
+
+  const matchingLanguage = visible.filter((voice) => voiceMatchesLanguage(voice, preferredLanguage))
+  const unknownLanguage = includeUnknown
+    ? visible.filter((voice) => !voiceHasLanguageMetadata(voice))
     : []
 
-  return preferred.length > 0 ? [...preferred, ...unknown] : items
+  return matchingLanguage.length > 0 ? [...matchingLanguage, ...unknownLanguage] : visible
+}
+
+export function matchesVoiceSearch(voice, query) {
+  const normalizedQuery = normalizeComparableText(query)
+  if (!normalizedQuery) {
+    return true
+  }
+
+  const labels = voice?.labels && typeof voice.labels === 'object' ? voice.labels : {}
+  const verifiedLanguages = getVoiceVerifiedLanguages(voice)
+  const haystack = normalizeComparableText([
+    voice?.name,
+    voice?.description,
+    voice?.category,
+    voice?.gender,
+    voice?.language,
+    voice?.locale,
+    ...Object.entries(labels).flatMap(([key, value]) => [key, value]),
+    ...verifiedLanguages.flatMap((entry) => [entry?.language, entry?.locale, entry?.accent]),
+  ].filter(Boolean).join(' '))
+
+  return normalizedQuery
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((term) => haystack.includes(term))
 }
