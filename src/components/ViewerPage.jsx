@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import CameraPopover from '../CameraPopover.jsx'
 import useHologramViewer from '../useHologramViewer.js'
-import AnimationPopover from './AnimationPopover.jsx'
 import {
   assetToFile,
   createPersistedAnimationAsset,
@@ -37,6 +35,25 @@ const VIEWER_OPTION_LABELS = {
   autoBlink: 'Auto blink',
   lookAtCamera: 'Eyes follow camera',
 }
+const VIEWER_CAMERA_SLIDERS = [
+  { key: 'yaw', label: 'Yaw', min: -180, max: 180, step: 1, unit: 'deg' },
+  { key: 'tilt', label: 'Tilt', min: 26, max: 88, step: 1, unit: 'deg' },
+  { key: 'zoom', label: 'Zoom', min: 1.8, max: 12, step: 0.05, unit: '' },
+  { key: 'height', label: 'Height', min: -5, max: 5, step: 0.01, unit: '' },
+  { key: 'shift', label: 'Shift', min: -1.5, max: 1.5, step: 0.01, unit: '' },
+]
+const VIEWER_ASSIST_OPTIONS = [
+  {
+    key: 'autoBlink',
+    label: 'Auto blink',
+    description: 'Use VRM blink expressions for natural idle blinking.',
+  },
+  {
+    key: 'lookAtCamera',
+    label: 'Eyes follow camera',
+    description: 'Bind the VRM look-at target to the active camera.',
+  },
+]
 
 const SPEECH_LANGUAGE_FALLBACK = 'en-US'
 const SPEECH_OVERLAY_RELEASE_MS = 220
@@ -45,6 +62,8 @@ const SPEECH_MOVEMENT_END_BUFFER_MS = 1500
 const SPEECH_MOVEMENT_EXPLICIT_GUARD_MS = 2400
 const SPEECH_MOVEMENT_MIN_GAP_MS = 3200
 const SPEECH_RECENT_MOVEMENT_LIMIT = 3
+const MANAGE_SECTION_KEY = 'workspace.manageSection'
+const VIEWER_RIGHT_PANEL_KEY = 'workspace.viewerRightPanelCollapsed'
 const LANGUAGE_PROFILES = [
   {
     code: 'en',
@@ -226,7 +245,37 @@ function normalizeSharedAsset(asset, fallbackType) {
   }
 }
 
-export default function ViewerPage({ workspace }) {
+function readInitialRightPanelState() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  return window.localStorage.getItem(VIEWER_RIGHT_PANEL_KEY) === 'true'
+}
+
+function formatViewerSliderValue(step, value, unit) {
+  const numericValue = typeof value === 'number' ? value : Number(value || 0)
+  const text = Number.isInteger(step) ? numericValue.toFixed(0) : numericValue.toFixed(2)
+  return unit ? `${text} ${unit}` : text
+}
+
+function ViewerMetric({ label, value, detail, tone = 'default' }) {
+  const toneClass = tone === 'success'
+    ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100'
+    : tone === 'warning'
+      ? 'border-amber-300/20 bg-amber-300/10 text-amber-100'
+      : 'border-cyan-300/15 bg-cyan-300/10 text-cyan-100'
+
+  return (
+    <div className={`rounded-[24px] border px-4 py-4 ${toneClass}`}>
+      <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">{label}</div>
+      <div className="mt-2 text-lg font-semibold">{value}</div>
+      {detail ? <div className="mt-2 text-xs leading-5 text-white/60">{detail}</div> : null}
+    </div>
+  )
+}
+
+export default function ViewerPage({ workspace, onNavigate }) {
   const {
     avatars,
     selectedAvatarId,
@@ -271,6 +320,7 @@ export default function ViewerPage({ workspace }) {
   const [draftMessage, setDraftMessage] = useState('')
   const [notice, setNotice] = useState('')
   const [isChatBusy, setIsChatBusy] = useState(false)
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(readInitialRightPanelState)
   const [avatarPresence, dispatchAvatarPresence] = useReducer(reduceAvatarPresence, undefined, createAvatarPresenceState)
   const [isContextLoading, setIsContextLoading] = useState(false)
   const [loadedAvatarName, setLoadedAvatarName] = useState('No avatar loaded')
@@ -411,6 +461,12 @@ export default function ViewerPage({ workspace }) {
   const hasRemoteTts = hasRemoteTtsConfiguration(selectedAvatar)
   const hasStartedChat = liveMessages.length > 0 || conversations.length > 0
   const chatPhase = getChatPhaseForPresenceMode(avatarPresence.mode)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(VIEWER_RIGHT_PANEL_KEY, String(isRightPanelCollapsed))
+    }
+  }, [isRightPanelCollapsed])
 
   const clearSpeechPresenceTimers = useCallback(() => {
     speechPresenceBeatTimeoutsRef.current.forEach((timeoutId) => {
@@ -1685,6 +1741,14 @@ export default function ViewerPage({ workspace }) {
 
   const chatDisabled = !selectedAvatar || !effectivePersona || !effectivePersona.llmCredentialId
 
+  const openManageSection = useCallback((sectionId) => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(MANAGE_SECTION_KEY, sectionId)
+    }
+
+    onNavigate?.('manage')
+  }, [onNavigate])
+
   function handleChatComposerKeyDown(event) {
     if (event.key !== 'Enter' || event.shiftKey) return
     event.preventDefault()
@@ -1693,13 +1757,15 @@ export default function ViewerPage({ workspace }) {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#162c4f_0%,_#08111d_38%,_#03070d_100%)] text-white">
-      <div className="mx-auto grid min-h-screen max-w-[1680px] grid-cols-1 gap-6 px-4 pb-8 pt-6 xl:grid-cols-[370px_minmax(0,1fr)] xl:px-6">
-        <aside className="space-y-5 rounded-[32px] border border-white/10 bg-[rgba(6,10,20,0.76)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)] backdrop-blur">
+    <div className="min-h-screen bg-transparent text-white">
+      <div className="grid min-h-screen w-full grid-cols-1 gap-6 px-4 pb-10 pt-6 2xl:grid-cols-[340px_minmax(0,1fr)_auto] lg:px-6">
+        <aside className="space-y-5 rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.8)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)] backdrop-blur">
           <section>
-            <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Viewer</div>
-            <div className="mt-2 text-3xl font-semibold tracking-tight">Avatar runtime</div>
-            <div className="mt-3 text-sm leading-6 text-white/62">Preview the avatar, test animations, and chat in one place.</div>
+            <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Workspace</div>
+            <div className="mt-2 text-3xl font-semibold tracking-tight text-white">Avatar runtime</div>
+            <div className="mt-3 text-sm leading-6 text-white/62">
+              Chat with the avatar, watch streamed reactions, and keep the runtime view aligned with the new studio design.
+            </div>
             {isContextLoading ? (
               <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-xs text-cyan-100">
                 <span className="h-4 w-4 rounded-full border-2 border-cyan-100/30 border-t-cyan-100 animate-spin" />
@@ -1708,7 +1774,7 @@ export default function ViewerPage({ workspace }) {
             ) : null}
           </section>
 
-          <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.85)] p-4">
+          <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.82)] p-4">
             <div className="flex items-center justify-between gap-3">
               <div className="text-xs uppercase tracking-[0.28em] text-white/45">Conversation</div>
               <div className="text-[11px] text-white/40">{conversations.length} threads</div>
@@ -1720,7 +1786,7 @@ export default function ViewerPage({ workspace }) {
               onKeyDown={handleChatComposerKeyDown}
               rows={4}
               disabled={chatDisabled || isContextLoading}
-              placeholder={chatDisabled ? (!selectedAvatar ? 'Open Manage and save this avatar to your library first.' : 'Open Manage and connect one AI provider first.') : 'Type a message to the selected avatar'}
+              placeholder={chatDisabled ? (!selectedAvatar ? 'Open Control Center and save this avatar to your library first.' : 'Open Control Center and connect one AI provider first.') : 'Type a message to the selected avatar'}
               className="mt-4 w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:border-cyan-300/40 disabled:cursor-not-allowed disabled:opacity-50"
             />
             <button
@@ -1734,7 +1800,7 @@ export default function ViewerPage({ workspace }) {
 
             {notice ? <div className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-100">{notice}</div> : null}
 
-            <div className="mt-4 max-h-[320px] space-y-2 overflow-y-auto rounded-3xl border border-white/10 bg-black/25 p-3">
+            <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto rounded-3xl border border-white/10 bg-black/25 p-3">
               {chatPhase === 'waiting' ? (
                 <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-3 text-sm text-cyan-100">
                   <span className="inline-flex items-center gap-2">
@@ -1747,8 +1813,8 @@ export default function ViewerPage({ workspace }) {
                 <div className="rounded-2xl bg-black/30 px-3 py-3 text-sm text-white/60">
                   {chatDisabled
                     ? !selectedAvatar
-                      ? 'Default avatars are preview-only here. Open Manage to add one to your library first.'
-                      : 'Open Manage and attach one AI connection before starting chat.'
+                      ? 'Default avatars are preview-only here. Open Control Center to add one to your library first.'
+                      : 'Open Control Center and attach one AI connection before starting chat.'
                     : 'Start a conversation with the selected avatar.'}
                 </div>
               ) : null}
@@ -1773,8 +1839,13 @@ export default function ViewerPage({ workspace }) {
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.85)] p-4">
-            <div className="text-xs uppercase tracking-[0.28em] text-white/45">Configured avatar</div>
+          <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.82)] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs uppercase tracking-[0.28em] text-white/45">Configured avatar</div>
+              <div className="text-[11px] uppercase tracking-[0.16em] text-white/38">
+                {selectedAvatarAsset?.scope === 'personal' ? 'Library' : 'Default preview'}
+              </div>
+            </div>
             <select
               value={selectedViewerAvatarId}
               onChange={(event) => {
@@ -1797,18 +1868,23 @@ export default function ViewerPage({ workspace }) {
               ))}
             </select>
 
-            <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-              <div className="text-xs uppercase tracking-[0.24em] text-white/45">Attached identity</div>
-              <div className="mt-2 text-sm font-medium text-white">
-                {effectivePersona?.name || selectedAvatar?.name || 'No identity configured'}
-              </div>
-              <div className="mt-1 text-xs text-white/55">
-                {effectivePersona?.llmProvider ? `AI: ${effectivePersona.llmProvider}` : 'No AI attached'}
-              </div>
+            <div className="mt-4 grid gap-3">
+              <ViewerMetric
+                label="Identity"
+                value={effectivePersona?.name || selectedAvatar?.name || selectedAvatarAsset?.label || 'No avatar selected'}
+                detail={effectivePersona?.llmProvider ? `AI ${effectivePersona.llmProvider}` : selectedAvatar ? 'No AI attached yet' : 'Add to your library before chatting'}
+                tone={selectedAvatar ? 'success' : 'warning'}
+              />
+              <ViewerMetric
+                label="Voice path"
+                value={hasRemoteTts ? 'Remote TTS' : 'Browser speech'}
+                detail={selectedAvatar?.ttsVoiceName || 'No remote voice attached'}
+                tone={hasRemoteTts ? 'success' : 'warning'}
+              />
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.85)] p-4">
+          <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.82)] p-4">
             <div className="text-xs uppercase tracking-[0.28em] text-white/45">Selected identity</div>
             <div className="mt-3 text-2xl font-semibold text-cyan-100">
               {effectivePersona?.name || selectedAvatar?.name || selectedAvatarAsset?.label || 'No avatar selected'}
@@ -1822,7 +1898,7 @@ export default function ViewerPage({ workspace }) {
               </span>
               {!selectedAvatar ? (
                 <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-amber-100">
-                  Add this default to your library in Manage before chatting
+                  Add this default avatar in Control Center before chatting
                 </span>
               ) : null}
               {(selectedAvatar?.personality || selectedAvatarAsset?.personality) ? (
@@ -1832,41 +1908,13 @@ export default function ViewerPage({ workspace }) {
               ) : null}
             </div>
           </section>
-
         </aside>
 
         <main className="relative min-h-[62vh]">
-          <div className="relative h-[72vh] min-h-[560px] overflow-hidden rounded-[36px] border border-cyan-300/15 bg-black/25 shadow-[0_30px_90px_rgba(3,7,18,0.42)] xl:h-[calc(100vh-48px)]">
+          <div className="relative h-[72vh] min-h-[560px] overflow-hidden rounded-[36px] border border-cyan-300/15 bg-black/25 shadow-[0_30px_90px_rgba(3,7,18,0.42)] 2xl:h-[calc(100vh-72px)]">
             <canvas ref={canvasRef} className="viewer-canvas" />
 
-            <CameraPopover
-              framingValues={framingState}
-              viewerOptions={viewerOptions}
-              onFramingChange={setFramingValue}
-              onOptionChange={(key, value) => {
-                setViewerOption(key, value)
-                setNotice(`${VIEWER_OPTION_LABELS[key] || key}: ${value ? 'on' : 'off'}`)
-              }}
-            />
-
-            <AnimationPopover
-              idleItems={idleItems}
-              actionItems={actionItems}
-              thinkingItems={thinkingItems}
-              expressionItems={expressionItems}
-              selectedIdleId={selectedIdleId}
-              selectedActionId={selectedActionId}
-              selectedThinkingId={selectedThinkingId}
-              selectedExpressionId={selectedExpressionId}
-              onIdleSelect={setSelectedIdleId}
-              onActionSelect={setSelectedActionId}
-              onThinkingSelect={setSelectedThinkingId}
-              onExpressionSelect={setSelectedExpressionId}
-              onSetIdle={() => selectedIdle && assetToFile(selectedIdle).then((file) => file && setIdleAnimation(file, selectedIdle.label, { cacheKey: selectedIdle.id }))}
-              onPlayAction={handlePlayAction}
-              onPlayThinking={handlePlayThinking}
-              onPlayExpression={handlePlayExpression}
-            />
+            <div className="pointer-events-none absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle, rgba(13,185,242,0.9) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
 
             <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-6">
               <div className="rounded-full border border-cyan-300/20 bg-black/35 px-5 py-2 text-xs uppercase tracking-[0.25em] text-cyan-200/90 backdrop-blur">
@@ -1878,21 +1926,257 @@ export default function ViewerPage({ workspace }) {
               Avatar: {selectedAvatar?.name || selectedAvatarAsset?.label || 'none'}
             </div>
 
+            <div className="pointer-events-none absolute right-4 top-4 rounded-full border border-cyan-300/20 bg-black/35 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100/90 backdrop-blur">
+              Phase: {chatPhase}
+            </div>
+
             <div className="pointer-events-none absolute bottom-4 left-4 rounded-full border border-cyan-300/20 bg-black/35 px-4 py-2 text-xs uppercase tracking-[0.2em] text-cyan-100/90 backdrop-blur">
               {isAvatarLoading ? 'Loading avatar...' : status}
+            </div>
+
+            <div className="pointer-events-none absolute bottom-4 right-4 rounded-full border border-white/10 bg-black/30 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-white/60 backdrop-blur">
+              {hasRemoteTts ? 'Remote voice ready' : 'Browser speech fallback'}
+            </div>
+
+            <div className="absolute bottom-6 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-3 rounded-full border border-white/10 bg-[rgba(8,15,22,0.82)] px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur xl:flex">
+              {[
+                { label: 'Library', section: 'vrm-library' },
+                { label: 'Settings', section: 'avatar-edit' },
+                { label: 'Procedural', section: 'procedural' },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => openManageSection(item.section)}
+                  className="rounded-full border border-transparent px-4 py-2 text-sm text-white/72 transition hover:border-cyan-300/20 hover:bg-white/10 hover:text-white"
+                >
+                  {item.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => openManageSection('hologram')}
+                className="rounded-full border border-cyan-300/30 bg-cyan-300/18 px-5 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/26"
+              >
+                Hologram Mode
+              </button>
             </div>
 
             {!isLoaded ? (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
                 <div className="max-w-md rounded-[28px] border border-cyan-300/16 bg-[rgba(3,7,18,0.58)] px-6 py-5 text-center text-sm leading-6 text-white/78 shadow-[0_0_56px_rgba(34,211,238,0.1)] backdrop-blur">
                   {viewerAvatarItems.length === 0
-                    ? 'Use the Manage page to add a default avatar or upload your own.'
-                    : 'Select an avatar to load it into the viewer.'}
+                    ? 'Use Control Center to add a default avatar or upload your own.'
+                    : 'Select an avatar to load it into the workspace.'}
                 </div>
               </div>
             ) : null}
           </div>
         </main>
+
+        <div className={`relative hidden overflow-visible 2xl:block transition-[width] duration-300 ease-out ${isRightPanelCollapsed ? 'w-0' : 'w-[320px]'}`}>
+          <button
+            type="button"
+            onClick={() => setIsRightPanelCollapsed((current) => !current)}
+            className="absolute left-0 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/25 bg-[rgba(8,15,22,0.92)] px-3 py-3 text-xs font-medium uppercase tracking-[0.16em] text-cyan-100 shadow-[0_18px_40px_rgba(0,0,0,0.28)] transition hover:bg-[rgba(12,22,32,0.96)]"
+            aria-label={isRightPanelCollapsed ? 'Expand right panel' : 'Collapse right panel'}
+          >
+            {isRightPanelCollapsed ? '<' : '>'}
+          </button>
+
+          <aside className={`absolute inset-y-0 right-0 w-[320px] space-y-5 rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.8)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)] backdrop-blur transition-all duration-300 ease-out ${isRightPanelCollapsed ? 'pointer-events-none translate-x-full opacity-0' : 'pointer-events-auto translate-x-0 opacity-100'}`}>
+            <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.82)] p-4">
+              <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Animations</div>
+                <div className="mt-1 text-sm text-white/60">Direct runtime controls for the current avatar.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => openManageSection('vrma-library')}
+                className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-white/60 transition hover:border-cyan-300/20 hover:text-cyan-100"
+              >
+                Library
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <label className="block space-y-2">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Idle pose</div>
+                <select
+                  value={selectedIdleId}
+                  onChange={(event) => setSelectedIdleId(event.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+                >
+                  {idleItems.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => selectedIdle && assetToFile(selectedIdle).then((file) => file && setIdleAnimation(file, selectedIdle.label, { cacheKey: selectedIdle.id }))}
+                  disabled={!selectedIdle}
+                  className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Set idle
+                </button>
+              </label>
+
+              <label className="block space-y-2">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Action</div>
+                <select
+                  value={selectedActionId}
+                  onChange={(event) => setSelectedActionId(event.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+                >
+                  {actionItems.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handlePlayAction}
+                  disabled={!selectedAction}
+                  className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Play action
+                </button>
+              </label>
+
+              <label className="block space-y-2">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Thinking</div>
+                <select
+                  value={selectedThinkingId}
+                  onChange={(event) => setSelectedThinkingId(event.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+                >
+                  {thinkingItems.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handlePlayThinking}
+                  disabled={!selectedThinking}
+                  className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Play thinking cue
+                </button>
+              </label>
+
+              <label className="block space-y-2">
+                <div className="text-[11px] uppercase tracking-[0.2em] text-white/45">Expression</div>
+                <select
+                  value={selectedExpressionId}
+                  onChange={(event) => setSelectedExpressionId(event.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+                >
+                  {expressionItems.map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handlePlayExpression}
+                  disabled={!selectedExpression}
+                  className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Play expression
+                </button>
+              </label>
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.82)] p-4">
+              <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Camera</div>
+                  <div className="mt-1 text-sm text-white/60">Framing and viewer assists now live in this panel.</div>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-4">
+                {VIEWER_CAMERA_SLIDERS.map(({ key, label, min, max, step, unit }) => {
+                  const value = framingState[key] ?? 0
+
+                  return (
+                    <label key={key} className="block space-y-2">
+                      <div className="flex items-center justify-between text-sm text-white/82">
+                        <span>{label}</span>
+                        <span className="font-mono text-cyan-100">
+                          {formatViewerSliderValue(step, value, unit)}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={min}
+                        max={max}
+                        step={step}
+                        value={value}
+                        onChange={(event) => setFramingValue(key, Number(event.target.value))}
+                        className="w-full"
+                      />
+                    </label>
+                  )
+                })}
+              </div>
+
+              <div className="mt-4 space-y-2 rounded-2xl border border-white/10 bg-black/20 p-3">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/80">Viewer assists</div>
+                {VIEWER_ASSIST_OPTIONS.map(({ key, label, description }) => (
+                  <label key={key} className="flex items-start justify-between gap-3 rounded-2xl border border-white/8 bg-white/5 px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="text-sm text-white/85">{label}</div>
+                      <div className="mt-1 text-[11px] leading-5 text-white/45">{description}</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(viewerOptions[key])}
+                      onChange={(event) => {
+                        setViewerOption(key, event.target.checked)
+                        setNotice(`${VIEWER_OPTION_LABELS[key] || key}: ${event.target.checked ? 'on' : 'off'}`)
+                      }}
+                      className="mt-1 h-4 w-4 accent-cyan-400"
+                    />
+                  </label>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.82)] p-4">
+              <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Monitoring</div>
+              <div className="mt-4 grid gap-3">
+              <ViewerMetric label="Chat phase" value={chatPhase} detail={isChatBusy ? 'Reply in progress.' : 'Idle until the next user turn.'} tone={chatPhase === 'idle' ? 'success' : 'warning'} />
+              <ViewerMetric label="Speech path" value={hasRemoteTts ? 'ElevenLabs' : 'Browser'} detail={selectedAvatar?.ttsVoiceName || 'Fallback voice'} tone={hasRemoteTts ? 'success' : 'warning'} />
+              <ViewerMetric label="Eye blinking" value={viewerOptions.autoBlink ? 'Auto' : 'Off'} detail="Toggle available from the camera popover." />
+              <ViewerMetric label="Camera follow" value={viewerOptions.lookAtCamera ? 'Enabled' : 'Disabled'} detail="The viewer can keep eyes pointed toward the camera." />
+            </div>
+            </section>
+
+            <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.82)] p-4">
+            <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Projection shortcuts</div>
+            <div className="mt-3 text-sm leading-6 text-white/60">
+              The hologram and procedural screens are visible in Control Center now, but they still contain placeholders until those systems are implemented.
+            </div>
+            <div className="mt-4 grid gap-3">
+              <button
+                type="button"
+                onClick={() => openManageSection('procedural')}
+                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-left text-sm text-white/75 transition hover:border-cyan-300/20 hover:bg-white/10 hover:text-white"
+              >
+                Open procedural settings
+              </button>
+              <button
+                type="button"
+                onClick={() => openManageSection('hologram')}
+                className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-3 text-left text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/24"
+              >
+                Open hologram control center
+              </button>
+            </div>
+            </section>
+          </aside>
+        </div>
       </div>
     </div>
   )

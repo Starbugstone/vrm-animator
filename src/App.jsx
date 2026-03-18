@@ -76,6 +76,8 @@ export default function App() {
 
   const commonPageProps = {
     user: auth.user,
+    activePage,
+    onNavigate: setActivePage,
     workspace: {
       ...workspace,
       token: auth.token,
@@ -83,13 +85,28 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#04070d]">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-[rgba(3,7,18,0.92)] backdrop-blur">
-        <div className="mx-auto flex max-w-[1680px] flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
-          <div>
-            <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">VRM Animator</div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight text-white">Avatar workspace</div>
-            <div className="mt-2 text-sm text-white/58">Manage setup in one tab, then run and chat in Viewer.</div>
+    <div className="min-h-screen bg-[var(--app-bg)]">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-[rgba(7,14,20,0.84)] backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1720px] flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-6">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 text-lg font-semibold text-cyan-100 shadow-[0_0_24px_rgba(13,185,242,0.18)]">
+              VA
+            </div>
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.34em] text-cyan-200/70">VRM Animator</div>
+              <div className="mt-1 flex flex-wrap items-center gap-3">
+                <div className="text-2xl font-semibold tracking-tight text-white">
+                  {activePage === 'viewer' ? 'Main Avatar Workspace' : 'Control Center'}
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-cyan-100">
+                  <span className={`h-2 w-2 rounded-full ${workspace.isBootstrapping ? 'animate-pulse bg-amber-200' : 'bg-emerald-300'}`} />
+                  {workspace.isBootstrapping ? 'Syncing workspace' : 'Engine active'}
+                </div>
+              </div>
+              <div className="mt-2 text-sm text-white/58">
+                Build the avatar in Control Center, then run conversations and playback in Workspace.
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -103,7 +120,7 @@ export default function App() {
                     : 'text-white/70 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                Viewer
+                Workspace
               </button>
               <button
                 type="button"
@@ -114,19 +131,19 @@ export default function App() {
                     : 'text-white/70 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                Manage
+                Control Center
               </button>
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="text-right text-sm text-white/60">
+            <div className="flex items-center gap-3 rounded-[24px] border border-white/10 bg-white/5 px-3 py-2">
+              <div className="hidden text-right text-sm text-white/60 sm:block">
                 <div>{auth.user?.displayName || auth.user?.email}</div>
                 <div className="text-xs text-white/42">{auth.user?.email}</div>
               </div>
               <button
                 type="button"
                 onClick={auth.logout}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:border-cyan-300/30 hover:bg-white/10"
+                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-white/80 transition hover:border-cyan-300/30 hover:bg-white/10"
               >
                 Logout
               </button>

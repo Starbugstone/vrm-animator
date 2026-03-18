@@ -1,6 +1,6 @@
 ## TODO
 
-Updated: 2026-03-15
+Updated: 2026-03-18
 
 This file is intentionally short. `devlog.md` holds the product narrative and end goal; this file is the working task list for the next implementation window.
 
@@ -74,6 +74,10 @@ This baseline has been verified against the current repository. The next phase s
 - keep every setup surface biased toward plain language, clear sequencing, and obvious next actions
 - surface prerequisites early so users are told what is needed before they hit blocked states
 - make the core software experience feel complete even without any hologram hardware
+- finish wiring the new Stitch-driven Control Center and Workspace redesign now that the shell and placeholder screens are live
+- replace the new placeholder procedural controls with real runtime-backed settings for blinking, breathing, lip sync input, and tactile interaction
+- replace the new placeholder hologram control center with a real projection window, calibration transport, and PIXELXL prism preset handling
+- decide whether the Viewer should keep its current select dropdown for avatar switching or move fully to the planned searchable visual card list with avatar snapshots
 
 ### 5. Voice and hologram path
 
