@@ -142,6 +142,7 @@ class ConversationController extends AbstractController
             'conversation' => $this->serializeConversation($result->conversation, $conversationMessageRepository),
             'userMessage' => $this->serializeMessage($result->userMessage),
             'assistantMessage' => $this->serializeMessage($result->assistantMessage),
+            'assistantSpeechText' => $result->assistantSpeechText,
             'assistantTimeline' => $result->assistantTimeline,
             'assistantMemoryEntries' => $result->assistantMemoryEntries,
         ], Response::HTTP_OK);
@@ -300,6 +301,7 @@ class ConversationController extends AbstractController
                             'conversation' => $this->serializeConversation($result->conversation, $conversationMessageRepository),
                             'userMessage' => $this->serializeMessage($result->userMessage),
                             'assistantMessage' => $this->serializeMessage($result->assistantMessage),
+                            'assistantSpeechText' => $result->assistantSpeechText,
                             'assistantTimeline' => $result->assistantTimeline,
                             'assistantMemoryEntries' => $result->assistantMemoryEntries,
                             'timing' => [
@@ -333,6 +335,7 @@ class ConversationController extends AbstractController
                 'conversation' => $this->serializeConversation($result->conversation, $conversationMessageRepository),
                 'userMessage' => $this->serializeMessage($result->userMessage),
                 'assistantMessage' => $this->serializeMessage($result->assistantMessage),
+                'assistantSpeechText' => $result->assistantSpeechText,
                 'assistantTimeline' => $result->assistantTimeline,
                 'assistantMemoryEntries' => $result->assistantMemoryEntries,
                 'timing' => [

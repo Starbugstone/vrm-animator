@@ -1704,6 +1704,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
           : `Reply received via ${providerLabel}${modelLabel}.`,
       )
       const completedText = response.assistantMessage?.content || ''
+      const completedSpeechText = response.assistantSpeechText || completedText
       if (completedText.trim() !== '') {
         hasVisibleAssistantTextRef.current = true
       }
@@ -1717,7 +1718,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
         fallbackEmotion: finalEmotion,
       })
       if (hasRemoteTts) {
-        void playRemoteTts(completedText, finalEmotion, [outgoingMessage]).catch((nextError) => {
+        void playRemoteTts(completedSpeechText, finalEmotion, [outgoingMessage]).catch((nextError) => {
           setNotice(`${nextError.message || 'ElevenLabs playback failed.'} Falling back to browser speech.`)
           flushStreamingSpeechBuffer({
             final: true,

@@ -48,6 +48,7 @@ This baseline has been verified against the current repository. The next phase s
 - keep validating provider-specific stream quirks like MiniMax cumulative deltas and reasoning fields against real accounts
 - harden the streamed event contract for text, cue, memory, and completion events
 - continue tightening cue validation against allowed avatar animation metadata
+- keep refining the new stage-direction normalization so raw provider habits like `*smiles*` and `[laughing]` stay hidden from visible chat while still mapping cleanly into allowed avatar cues and ElevenLabs speech text
 - harden retries, timeouts, and provider failure handling
 - keep provider model catalogs current as OpenAI, Gemini, DeepSeek, GLM, and MiniMax release new models
 - keep model-specific prompt budgets aligned with provider model metadata as catalogs evolve
@@ -121,6 +122,7 @@ Before closing a feature set, the minimum checks should be:
   - avatars now persist `presentationGender` plus optional ElevenLabs voice attachment so shared starter avatars can default to a sensible voice filter without forcing a hard lock
   - avatars now also persist a `defaultFacingYaw`, and the Manage profile preview can save the current rotated T-pose view as the avatar's default starting direction for both Manage and Viewer loads
   - the viewer now prefers streamed ElevenLabs audio playback when an avatar has a saved remote voice, while falling back to browser speech if no remote voice is configured or playback fails
+  - chat parsing now strips raw stage-direction markers like `*smiles*`, `**laughs**`, and `[laughing]` from visible assistant text, resolves matching cues against allowed avatar assets when possible, and exposes a dedicated speech-only text variant for ElevenLabs playback
   - assistant replies may append long-term memory entries through the restricted inline `{memory:...}` bridge, persisted through the existing avatar memory revision flow
   - memory responses now include approximate prompt-footprint diagnostics, active provider/model details, and the exact memory-related prompt blocks shown in the Manage memory panel
   - the Manage memory panel can now trigger manual LLM-backed compression through `/api/avatars/{id}/memory/compress`, with the compressed result saved as a normal revision

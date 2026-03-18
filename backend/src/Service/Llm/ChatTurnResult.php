@@ -17,6 +17,7 @@ final readonly class ChatTurnResult
         public ConversationMessage $assistantMessage,
         public array $assistantTimeline = [],
         public array $assistantMemoryEntries = [],
+        public string $assistantSpeechText = '',
     ) {
     }
 }

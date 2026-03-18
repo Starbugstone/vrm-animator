@@ -166,7 +166,12 @@ class AvatarChatService
             ->setParsedEmotionTags([])
             ->setParsedAnimationTags([]);
 
-        $assistantText = $parsedAssistant['text'] !== '' ? $parsedAssistant['text'] : trim($completion->content);
+        $assistantText = $parsedAssistant['text'] !== '' || $parsedAssistant['timeline'] !== []
+            ? $parsedAssistant['text']
+            : trim($completion->content);
+        $assistantSpeechText = $parsedAssistant['speechText'] !== ''
+            ? $parsedAssistant['speechText']
+            : $assistantText;
         $assistantMessage = (new ConversationMessage())
             ->setConversation($conversation)
             ->setRole('assistant')
@@ -191,6 +196,7 @@ class AvatarChatService
             $assistantMessage,
             $parsedAssistant['timeline'],
             $parsedAssistant['memoryEntries'],
+            $assistantSpeechText,
         );
     }
 
