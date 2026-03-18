@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  buildVoiceFacetOptions,
   filterVoicesForAvatar,
   getEffectiveSpeechLanguage,
   getEffectiveVoiceGender,
   getVoiceTagSummary,
   matchesVoiceSearch,
   normalizeGenderTag,
+  voiceMatchesFacetFilters,
 } from '../lib/ttsVoices.js'
 import { playStreamedAudioResponse } from '../lib/streamingAudio.js'
 
@@ -108,6 +110,8 @@ export default function AvatarIdentityPanel({
   ttsCredentials = [],
   ttsVoicesByCredential = {},
   onLoadTtsVoices,
+  onSearchTtsVoiceLibrary,
+  onAddTtsVoiceLibraryVoice,
   onPreviewTts,
   busy,
   onSave,
@@ -117,12 +121,27 @@ export default function AvatarIdentityPanel({
   const [previewError, setPreviewError] = useState('')
   const [previewingVoiceId, setPreviewingVoiceId] = useState('')
   const [voiceSearch, setVoiceSearch] = useState('')
+  const [voiceFilters, setVoiceFilters] = useState({
+    category: '',
+    useCase: '',
+    accent: '',
+    age: '',
+  })
+  const [voiceSourceTab, setVoiceSourceTab] = useState('available')
+  const [voiceLibraryResults, setVoiceLibraryResults] = useState([])
+  const [voiceLibraryError, setVoiceLibraryError] = useState('')
+  const [voiceLibraryNotice, setVoiceLibraryNotice] = useState('')
+  const [voiceLibraryLoading, setVoiceLibraryLoading] = useState(false)
+  const [voiceLibraryNextPage, setVoiceLibraryNextPage] = useState(null)
+  const [voiceLibraryPage, setVoiceLibraryPage] = useState(0)
+  const [addingVoiceLibraryId, setAddingVoiceLibraryId] = useState('')
   const [saveState, setSaveState] = useState('idle')
   const autoPreviewTextRef = useRef('')
   const previousAvatarIdRef = useRef(null)
   const lastSavedTextPayloadRef = useRef('')
   const lastSavedSelectPayloadRef = useRef('')
   const saveRequestRef = useRef(0)
+  const voiceLibraryRequestRef = useRef(0)
   const draftRef = useRef(null)
   const previewAudioRef = useRef(typeof Audio !== 'undefined' ? new Audio() : null)
   const previewAbortRef = useRef(null)
@@ -170,6 +189,19 @@ export default function AvatarIdentityPanel({
     setPreviewError('')
     setPreviewingVoiceId('')
     setVoiceSearch('')
+    setVoiceFilters({
+      category: '',
+      useCase: '',
+      accent: '',
+      age: '',
+    })
+    setVoiceSourceTab('available')
+    setVoiceLibraryResults([])
+    setVoiceLibraryError('')
+    setVoiceLibraryNotice('')
+    setVoiceLibraryNextPage(null)
+    setVoiceLibraryPage(0)
+    setAddingVoiceLibraryId('')
     setSaveState('idle')
   }, [avatar?.id, credentialId, syncAutoPreviewText, avatar])
 
@@ -212,6 +244,8 @@ export default function AvatarIdentityPanel({
       return
     }
 
+    audio.onended = null
+    audio.onerror = null
     audio.pause()
     audio.removeAttribute('src')
     audio.load?.()
@@ -246,22 +280,114 @@ export default function AvatarIdentityPanel({
   const effectiveVoiceGender = getEffectiveVoiceGender(draft)
   const effectiveSpeechLanguage = getEffectiveSpeechLanguage(draft)
   const textDirty = JSON.stringify(buildTextPayload(draft)) !== lastSavedTextPayloadRef.current
+  const scopedVoices = useMemo(() => (
+    draft.showAllVoices
+      ? availableVoices
+      : filterVoicesForAvatar(availableVoices, draft)
+  ), [availableVoices, draft])
+  const voiceFacetOptions = useMemo(() => buildVoiceFacetOptions(scopedVoices), [scopedVoices])
+  const hasActiveVoiceFilters = useMemo(() => (
+    Object.values(voiceFilters).some((value) => String(value || '').trim() !== '')
+  ), [voiceFilters])
+  const voiceLibraryQuery = useMemo(() => ({
+    search: voiceSearch.trim(),
+    language: effectiveSpeechLanguage ? effectiveSpeechLanguage.split('-')[0] : '',
+    gender: effectiveVoiceGender || '',
+    accent: voiceFilters.accent,
+    age: voiceFilters.age,
+    category: voiceFilters.useCase || '',
+    pageSize: 100,
+    page: voiceLibraryPage,
+  }), [
+    effectiveSpeechLanguage,
+    effectiveVoiceGender,
+    voiceFilters.accent,
+    voiceFilters.age,
+    voiceFilters.useCase,
+    voiceLibraryPage,
+    voiceSearch,
+  ])
   const filteredVoices = useMemo(() => {
-    const searchMatches = voiceSearch
-      ? availableVoices.filter((voice) => matchesVoiceSearch(voice, voiceSearch))
-      : availableVoices
-
-    const visible = draft.showAllVoices || voiceSearch
-      ? searchMatches
-      : filterVoicesForAvatar(searchMatches, draft)
+    const tagMatches = hasActiveVoiceFilters
+      ? scopedVoices.filter((voice) => voiceMatchesFacetFilters(voice, voiceFilters))
+      : scopedVoices
+    const visible = voiceSearch
+      ? tagMatches.filter((voice) => matchesVoiceSearch(voice, voiceSearch))
+      : tagMatches
     const selectedVoice = availableVoices.find((voice) => voice.id === draft.ttsVoiceId)
 
-    if (!voiceSearch && selectedVoice && !visible.some((voice) => voice.id === selectedVoice.id)) {
+    if (!voiceSearch && !hasActiveVoiceFilters && selectedVoice && !visible.some((voice) => voice.id === selectedVoice.id)) {
       return [selectedVoice, ...visible]
     }
 
     return visible
-  }, [availableVoices, draft, voiceSearch])
+  }, [availableVoices, draft.ttsVoiceId, hasActiveVoiceFilters, scopedVoices, voiceFilters, voiceSearch])
+
+  useEffect(() => {
+    setVoiceLibraryPage(0)
+  }, [
+    draft.ttsCredentialId,
+    effectiveSpeechLanguage,
+    effectiveVoiceGender,
+    voiceFilters.accent,
+    voiceFilters.age,
+    voiceFilters.useCase,
+    voiceSearch,
+  ])
+
+  useEffect(() => {
+    if (!draft.ttsCredentialId || !onSearchTtsVoiceLibrary) {
+      setVoiceLibraryResults([])
+      setVoiceLibraryError('')
+      setVoiceLibraryNotice('')
+      setVoiceLibraryLoading(false)
+      setVoiceLibraryNextPage(null)
+      return
+    }
+
+    const requestId = voiceLibraryRequestRef.current + 1
+    voiceLibraryRequestRef.current = requestId
+    setVoiceLibraryLoading(true)
+    setVoiceLibraryError('')
+
+    const timerId = window.setTimeout(() => {
+      onSearchTtsVoiceLibrary(Number(draft.ttsCredentialId), voiceLibraryQuery)
+        .then((result) => {
+          if (voiceLibraryRequestRef.current !== requestId) {
+            return
+          }
+
+          const nextVoices = Array.isArray(result?.voices) ? result.voices : []
+          setVoiceLibraryResults((current) => {
+            if (voiceLibraryPage === 0) {
+              return nextVoices
+            }
+
+            const existingIds = new Set(current.map((voice) => voice.id))
+            return [...current, ...nextVoices.filter((voice) => !existingIds.has(voice.id))]
+          })
+          setVoiceLibraryNextPage(Number.isInteger(result?.nextPage) ? result.nextPage : null)
+        })
+        .catch((error) => {
+          if (voiceLibraryRequestRef.current !== requestId) {
+            return
+          }
+
+          setVoiceLibraryResults((current) => (voiceLibraryPage === 0 ? [] : current))
+          setVoiceLibraryNextPage(null)
+          setVoiceLibraryError(error?.message || 'Unable to load Voice Library results for this endpoint.')
+        })
+        .finally(() => {
+          if (voiceLibraryRequestRef.current === requestId) {
+            setVoiceLibraryLoading(false)
+          }
+        })
+    }, 200)
+
+    return () => {
+      window.clearTimeout(timerId)
+    }
+  }, [draft.ttsCredentialId, onSearchTtsVoiceLibrary, voiceLibraryPage, voiceLibraryQuery])
 
   const saveSelectFields = useCallback(async (nextDraft) => {
     if (!avatar?.id || !onSave) {
@@ -377,6 +503,83 @@ export default function AvatarIdentityPanel({
     previewingVoiceId,
     stopPreviewPlayback,
   ])
+
+  const handlePreviewVoiceLibrarySample = useCallback(async (voice) => {
+    const previewKey = `library:${voice.voiceId || voice.id}`
+    const previewUrl = String(voice.previewUrl || '').trim()
+
+    if (!previewUrl) {
+      setPreviewError('This library voice does not expose a preview sample.')
+      return
+    }
+
+    if (previewingVoiceId === previewKey) {
+      stopPreviewPlayback()
+      return
+    }
+
+    const audio = previewAudioRef.current
+    if (!audio) {
+      return
+    }
+
+    setPreviewError('')
+    stopPreviewPlayback()
+    setPreviewingVoiceId(previewKey)
+
+    const clearIfActive = () => {
+      setPreviewingVoiceId((current) => (current === previewKey ? '' : current))
+    }
+
+    audio.onended = clearIfActive
+    audio.onerror = () => {
+      setPreviewError('Unable to play this Voice Library preview.')
+      clearIfActive()
+    }
+
+    try {
+      audio.src = previewUrl
+      audio.load?.()
+      await audio.play()
+    } catch (error) {
+      setPreviewError(error?.message || 'Unable to play this Voice Library preview.')
+      clearIfActive()
+    }
+  }, [previewingVoiceId, stopPreviewPlayback])
+
+  const handleAddVoiceLibraryVoice = useCallback(async (voice) => {
+    if (!draft.ttsCredentialId || !onAddTtsVoiceLibraryVoice || !onLoadTtsVoices) {
+      return
+    }
+
+    setVoiceLibraryError('')
+    setVoiceLibraryNotice('')
+    setAddingVoiceLibraryId(voice.id)
+
+    try {
+      const addedVoice = await onAddTtsVoiceLibraryVoice(Number(draft.ttsCredentialId), {
+        publicUserId: voice.publicUserId || voice.publicOwnerId,
+        publicOwnerId: voice.publicOwnerId,
+        voiceId: voice.voiceId || voice.id,
+        name: voice.name,
+      })
+
+      const refreshedVoices = await onLoadTtsVoices(Number(draft.ttsCredentialId), { force: true })
+      const matchedVoice = (Array.isArray(refreshedVoices) ? refreshedVoices : []).find((entry) => (
+        entry.id === addedVoice?.voiceId || entry.name === voice.name
+      ))
+
+      if (matchedVoice) {
+        applySelectChange({ ttsVoiceId: matchedVoice.id })
+      }
+
+      setVoiceLibraryNotice(`${voice.name} was added to My Voices.`)
+    } catch (error) {
+      setVoiceLibraryError(error?.message || 'Unable to add this voice to My Voices.')
+    } finally {
+      setAddingVoiceLibraryId('')
+    }
+  }, [applySelectChange, draft.ttsCredentialId, onAddTtsVoiceLibraryVoice, onLoadTtsVoices])
 
   if (!avatar) {
     return (
@@ -557,8 +760,8 @@ export default function AvatarIdentityPanel({
               <div>
                 <div className="text-xs uppercase tracking-[0.24em] text-white/45">Voice selection</div>
                 <div className="mt-1 text-sm text-white/60">
-                  {voiceSearch
-                    ? 'Search checks voice name plus tags like language, accent, age, use case, and category.'
+                  {voiceSearch || hasActiveVoiceFilters
+                    ? 'Search and tag filters narrow the currently matched voice set without dropping the avatar language and sex defaults.'
                     : effectiveVoiceGender || effectiveSpeechLanguage
                       ? `Matching voices for ${[
                         effectiveVoiceGender ? `${effectiveVoiceGender} voices` : '',
@@ -588,12 +791,19 @@ export default function AvatarIdentityPanel({
                     {previewError}
                   </div>
                 ) : null}
+                {voiceLibraryNotice ? (
+                  <div className="mb-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-sm text-emerald-100">
+                    {voiceLibraryNotice}
+                  </div>
+                ) : null}
 
                 <label className="mb-3 block space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-xs uppercase tracking-[0.24em] text-white/45">Search voices</div>
                     <div className="text-[11px] text-white/40">
-                      {filteredVoices.length} shown / {availableVoices.length} loaded
+                      {voiceSourceTab === 'available'
+                        ? `${filteredVoices.length} shown / ${scopedVoices.length} matched / ${availableVoices.length} loaded`
+                        : `${voiceLibraryResults.length} library results`}
                     </div>
                   </div>
                   <input
@@ -604,98 +814,312 @@ export default function AvatarIdentityPanel({
                   />
                 </label>
 
-                <label className="mb-3 block space-y-2">
+                <div className="mb-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setVoiceSourceTab('available')}
+                    className={`rounded-2xl border px-3 py-2 text-xs font-medium transition ${
+                      voiceSourceTab === 'available'
+                        ? 'border-cyan-300/35 bg-cyan-300/12 text-cyan-100'
+                        : 'border-white/10 bg-white/6 text-white/65 hover:bg-white/10'
+                    }`}
+                  >
+                    Available voices
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVoiceSourceTab('library')}
+                    className={`rounded-2xl border px-3 py-2 text-xs font-medium transition ${
+                      voiceSourceTab === 'library'
+                        ? 'border-cyan-300/35 bg-cyan-300/12 text-cyan-100'
+                        : 'border-white/10 bg-white/6 text-white/65 hover:bg-white/10'
+                    }`}
+                  >
+                    Voice Library
+                  </button>
+                </div>
+
+                <div className="mb-3 rounded-2xl border border-white/10 bg-black/20 p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-xs uppercase tracking-[0.24em] text-white/45">Demo phrase</div>
-                    <div className="text-[11px] text-white/40">Use the play button on any voice card to audition it.</div>
-                  </div>
-                  <textarea
-                    value={previewText}
-                    onChange={(event) => setPreviewText(event.target.value)}
-                    rows={2}
-                    placeholder="Add a short sample line to audition each voice."
-                    className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
-                  />
-                </label>
-
-                <div className="grid gap-2">
-                {filteredVoices.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-white/55">
-                    {voiceSearch
-                      ? 'No voices match this search for the current endpoint.'
-                      : 'No voices loaded for this endpoint yet.'}
-                  </div>
-                ) : null}
-                {filteredVoices.map((voice) => {
-                  const genderTag = normalizeGenderTag(voice.gender)
-                  const isSelected = draft.ttsVoiceId === voice.id
-                  const tagSummary = getVoiceTagSummary(voice)
-
-                  return (
-                    <div
-                      key={voice.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => applySelectChange({ ttsVoiceId: voice.id })}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault()
-                          applySelectChange({ ttsVoiceId: voice.id })
-                        }
-                      }}
-                      className={`cursor-pointer rounded-2xl border px-4 py-3 text-left transition focus:outline-none ${
-                        isSelected
-                          ? 'border-cyan-300/35 bg-cyan-300/12 text-cyan-100'
-                          : 'border-white/10 bg-black/20 text-white/75 hover:border-cyan-300/20 hover:bg-white/10 focus:border-cyan-300/20'
-                      }`}
+                    <div className="text-xs uppercase tracking-[0.24em] text-white/45">Tag filters</div>
+                    <button
+                      type="button"
+                      onClick={() => setVoiceFilters({
+                        category: '',
+                        useCase: '',
+                        accent: '',
+                        age: '',
+                      })}
+                      disabled={!hasActiveVoiceFilters}
+                      className="rounded-2xl border border-white/10 bg-white/6 px-3 py-1.5 text-[11px] text-white/60 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-medium">{voice.name}</div>
-                          <div className="mt-1 text-xs text-white/45">
-                            {voice.description || voice.category || 'No description'}
-                          </div>
-                          {tagSummary.length > 0 ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {tagSummary.map((tag) => (
-                                <div
-                                  key={`${voice.id}-${tag}`}
-                                  className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-white/55"
-                                >
-                                  {tag}
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] text-white/60">
-                          {genderTag || 'Untagged'}
-                        </div>
+                      Reset filters
+                    </button>
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <label className="block space-y-2">
+                      <div className="text-xs uppercase tracking-[0.24em] text-white/45">Category</div>
+                      <select
+                        value={voiceFilters.category}
+                        onChange={(event) => setVoiceFilters((current) => ({ ...current, category: event.target.value }))}
+                        className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+                      >
+                        <option value="">All categories</option>
+                        {voiceFacetOptions.categories.map((value) => (
+                          <option key={`category-${value}`} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-2">
+                      <div className="text-xs uppercase tracking-[0.24em] text-white/45">Use case</div>
+                      <select
+                        value={voiceFilters.useCase}
+                        onChange={(event) => setVoiceFilters((current) => ({ ...current, useCase: event.target.value }))}
+                        className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+                      >
+                        <option value="">All use cases</option>
+                        {voiceFacetOptions.useCases.map((value) => (
+                          <option key={`use-case-${value}`} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-2">
+                      <div className="text-xs uppercase tracking-[0.24em] text-white/45">Accent</div>
+                      <select
+                        value={voiceFilters.accent}
+                        onChange={(event) => setVoiceFilters((current) => ({ ...current, accent: event.target.value }))}
+                        className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+                      >
+                        <option value="">All accents</option>
+                        {voiceFacetOptions.accents.map((value) => (
+                          <option key={`accent-${value}`} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block space-y-2">
+                      <div className="text-xs uppercase tracking-[0.24em] text-white/45">Age</div>
+                      <select
+                        value={voiceFilters.age}
+                        onChange={(event) => setVoiceFilters((current) => ({ ...current, age: event.target.value }))}
+                        className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+                      >
+                        <option value="">All ages</option>
+                        {voiceFacetOptions.ages.map((value) => (
+                          <option key={`age-${value}`} value={value}>
+                            {value}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                {voiceSourceTab === 'available' ? (
+                  <>
+                    <label className="mb-3 block space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs uppercase tracking-[0.24em] text-white/45">Demo phrase</div>
+                        <div className="text-[11px] text-white/40">Use the play button on any voice card to audition it.</div>
                       </div>
-                      <div className="mt-3 flex items-center justify-between gap-3">
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-white/35">
-                          {isSelected ? 'Selected for this avatar' : 'Click card to select'}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            void handlePreviewVoice(voice)
+                      <textarea
+                        value={previewText}
+                        onChange={(event) => setPreviewText(event.target.value)}
+                        rows={2}
+                        placeholder="Add a short sample line to audition each voice."
+                        className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+                      />
+                    </label>
+
+                    <div className="grid gap-2">
+                    {filteredVoices.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-white/55">
+                        {availableVoices.length === 0
+                          ? 'No voices loaded for this endpoint yet.'
+                          : scopedVoices.length === 0 && !draft.showAllVoices
+                            ? 'No voices match this avatar language and sex on this endpoint. Use Show all voices if you want the full catalog.'
+                            : voiceSearch || hasActiveVoiceFilters
+                              ? 'No voices match the current search and tag filters.'
+                              : 'No voices match the current picker defaults.'}
+                      </div>
+                    ) : null}
+                    {filteredVoices.map((voice) => {
+                      const genderTag = normalizeGenderTag(voice.gender)
+                      const isSelected = draft.ttsVoiceId === voice.id
+                      const tagSummary = getVoiceTagSummary(voice)
+
+                      return (
+                        <div
+                          key={voice.id}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => applySelectChange({ ttsVoiceId: voice.id })}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              applySelectChange({ ttsVoiceId: voice.id })
+                            }
                           }}
-                          disabled={!draft.ttsCredentialId}
-                          className={`rounded-2xl border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                            previewingVoiceId === voice.id
-                              ? 'border-amber-300/30 bg-amber-300/15 text-amber-100'
-                              : 'border-cyan-300/25 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20'
+                          className={`cursor-pointer rounded-2xl border px-4 py-3 text-left transition focus:outline-none ${
+                            isSelected
+                              ? 'border-cyan-300/35 bg-cyan-300/12 text-cyan-100'
+                              : 'border-white/10 bg-black/20 text-white/75 hover:border-cyan-300/20 hover:bg-white/10 focus:border-cyan-300/20'
                           }`}
                         >
-                          {previewingVoiceId === voice.id ? 'Stop demo' : 'Play demo'}
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-medium">{voice.name}</div>
+                              <div className="mt-1 text-xs text-white/45">
+                                {voice.description || voice.category || 'No description'}
+                              </div>
+                              {tagSummary.length > 0 ? (
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {tagSummary.map((tag) => (
+                                    <div
+                                      key={`${voice.id}-${tag}`}
+                                      className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-white/55"
+                                    >
+                                      {tag}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] text-white/60">
+                              {genderTag || 'Untagged'}
+                            </div>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-3">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-white/35">
+                              {isSelected ? 'Selected for this avatar' : 'Click card to select'}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                void handlePreviewVoice(voice)
+                              }}
+                              disabled={!draft.ttsCredentialId}
+                              className={`rounded-2xl border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                previewingVoiceId === voice.id
+                                  ? 'border-amber-300/30 bg-amber-300/15 text-amber-100'
+                                  : 'border-cyan-300/25 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20'
+                              }`}
+                            >
+                              {previewingVoiceId === voice.id ? 'Stop demo' : 'Play demo'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-100">
+                      This tab browses public ElevenLabs library voices. Add a voice to My Voices first, then switch back to Available voices to attach it to the avatar. The preview button plays the library sample clip directly.
+                    </div>
+
+                    {voiceLibraryError ? (
+                      <div className="mt-3 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                        {voiceLibraryError}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3 grid gap-2">
+                      {!voiceLibraryLoading && voiceLibraryResults.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-white/55">
+                          No Voice Library results matched the current search and avatar filters.
+                        </div>
+                      ) : null}
+
+                      {voiceLibraryResults.map((voice) => {
+                        const genderTag = normalizeGenderTag(voice.gender)
+                        const tagSummary = getVoiceTagSummary(voice)
+                        const previewKey = `library:${voice.voiceId || voice.id}`
+
+                        return (
+                          <div
+                            key={`library-${voice.publicOwnerId}-${voice.voiceId || voice.id}`}
+                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-left text-white/75"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-medium">{voice.name}</div>
+                                <div className="mt-1 text-xs text-white/45">
+                                  {voice.description || voice.category || 'No description'}
+                                </div>
+                                {tagSummary.length > 0 ? (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {tagSummary.map((tag) => (
+                                      <div
+                                        key={`${voice.id}-library-${tag}`}
+                                        className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-white/55"
+                                      >
+                                        {tag}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] uppercase tracking-[0.18em] text-white/60">
+                                {genderTag || 'Untagged'}
+                              </div>
+                            </div>
+                            <div className="mt-3 flex items-center justify-between gap-3">
+                              <div className="text-[11px] uppercase tracking-[0.16em] text-white/35">
+                                Add this voice to My Voices before selecting it for the avatar.
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handlePreviewVoiceLibrarySample(voice)}
+                                  disabled={!voice.previewUrl}
+                                  className={`rounded-2xl border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                    previewingVoiceId === previewKey
+                                      ? 'border-amber-300/30 bg-amber-300/15 text-amber-100'
+                                      : 'border-cyan-300/25 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/20'
+                                  }`}
+                                >
+                                  {previewingVoiceId === previewKey ? 'Stop demo' : 'Play demo'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleAddVoiceLibraryVoice(voice)}
+                                  disabled={addingVoiceLibraryId === voice.id}
+                                  className="rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-medium text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {addingVoiceLibraryId === voice.id ? 'Adding...' : 'Add to My Voices'}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {voiceLibraryNextPage !== null ? (
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setVoiceLibraryPage(voiceLibraryNextPage)}
+                          disabled={voiceLibraryLoading}
+                          className="rounded-2xl border border-white/10 bg-white/6 px-3 py-2 text-xs text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {voiceLibraryLoading ? 'Loading...' : 'Load more library voices'}
                         </button>
                       </div>
-                    </div>
-                  )
-                })}
-                </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
             )}
           </div>

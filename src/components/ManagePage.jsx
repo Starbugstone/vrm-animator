@@ -668,6 +668,8 @@ export default function ManagePage({ user, workspace }) {
     saveCredential,
     removeCredential,
     loadTtsVoiceCatalog,
+    searchTtsVoiceLibrary,
+    addVoiceLibraryVoice,
     saveTtsConnection,
     removeTtsConnection,
     saveAvatarTtsConfig,
@@ -1023,7 +1025,9 @@ export default function ManagePage({ user, workspace }) {
                       credentials={credentials}
                       ttsCredentials={ttsCredentials}
                       ttsVoicesByCredential={ttsVoicesByCredential}
-                      onLoadTtsVoices={(credentialId) => loadTtsVoiceCatalog(credentialId)}
+                      onLoadTtsVoices={(credentialId, options) => loadTtsVoiceCatalog(credentialId, options)}
+                      onSearchTtsVoiceLibrary={(credentialId, query) => searchTtsVoiceLibrary(credentialId, query)}
+                      onAddTtsVoiceLibraryVoice={(credentialId, payload) => addVoiceLibraryVoice(credentialId, payload)}
                       onPreviewTts={(payload, options) => previewAvatarTts(selectedAvatar.id, payload, options)}
                       busy={avatarAutosaveBusy}
                       onSave={saveAvatarProfileAutosave}

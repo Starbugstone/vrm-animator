@@ -34,10 +34,13 @@ class TtsCredentialRepository extends ServiceEntityRepository
     public function findOwnedCredential(User $owner, int $id): ?TtsCredential
     {
         /** @var TtsCredential|null $credential */
-        $credential = $this->findOneBy([
-            'id' => $id,
-            'owner' => $owner,
-        ]);
+        $credential = $this->createQueryBuilder('credential')
+            ->andWhere('credential.id = :id')
+            ->andWhere('IDENTITY(credential.owner) = :ownerId')
+            ->setParameter('id', $id)
+            ->setParameter('ownerId', $owner->getId())
+            ->getQuery()
+            ->getOneOrNullResult();
 
         return $credential;
     }

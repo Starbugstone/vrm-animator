@@ -44,10 +44,12 @@ import {
   updateAvatarPersona,
 } from '../api/personas.js'
 import {
+  addTtsVoiceLibraryVoice,
   createTtsCredential,
   deleteTtsCredential,
   listTtsCredentials,
   listTtsProviders,
+  listTtsVoiceLibrary,
   listTtsVoices,
   streamAvatarTts,
   updateAvatarTtsSettings,
@@ -494,6 +496,24 @@ export default function useWorkspace(token) {
     return normalizedVoices
   }, [token, ttsVoicesByCredential])
 
+  const searchTtsVoiceLibrary = useCallback((credentialId, query = {}) => {
+    if (!token || !credentialId) {
+      return Promise.resolve({ voices: [], nextPage: null })
+    }
+
+    return listTtsVoiceLibrary(token, credentialId, query)
+  }, [token])
+
+  const addVoiceLibraryVoice = useCallback(async (credentialId, payload) => {
+    if (!token || !credentialId) {
+      return null
+    }
+
+    const result = await addTtsVoiceLibraryVoice(token, credentialId, payload)
+    await loadTtsVoiceCatalog(credentialId, { force: true })
+    return result
+  }, [loadTtsVoiceCatalog, token])
+
   const saveTtsConnection = useCallback(async (payload) => {
     const credential = payload.credentialId
       ? await updateTtsCredential(token, payload.credentialId, payload)
@@ -629,6 +649,8 @@ export default function useWorkspace(token) {
     saveCredential,
     removeCredential,
     loadTtsVoiceCatalog,
+    searchTtsVoiceLibrary,
+    addVoiceLibraryVoice,
     saveTtsConnection,
     removeTtsConnection,
     saveAvatarTtsConfig,

@@ -85,7 +85,7 @@ This baseline has been verified against the current repository. The next phase s
 - harden the new ElevenLabs BYOK streaming TTS path now that avatar-level voice routing exists
 - keep the browser-speech fallback reliable whenever an avatar has no ElevenLabs voice selected or remote playback fails
 - route future browser boundary timing and ElevenLabs timestamp/alignment data through the new centralized speech clock before adding more reply-sync logic
-- monitor how the refreshed ElevenLabs voice search and language-aware filtering behave against large real-world voice libraries
+- monitor how the refreshed ElevenLabs voice search, stricter avatar language/sex matching, the new tabbed Voice Library flow, and direct library sample playback behave against large real-world voice libraries
 - decide whether more ElevenLabs controls should live at the credential level, avatar level, or stay hidden for first-time users
 - add STT after TTS
 - only then move toward dedicated hologram hardware output

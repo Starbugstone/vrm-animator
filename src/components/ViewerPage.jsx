@@ -245,6 +245,28 @@ function normalizeSharedAsset(asset, fallbackType) {
   }
 }
 
+function buildAssetCacheKey(asset, suffix = '') {
+  const baseId = String(asset?.id || '')
+  const version = String(asset?.assetVersion || '').trim()
+  const baseKey = version ? `${baseId}:${version}` : baseId
+
+  return suffix ? `${baseKey}:${suffix}` : baseKey
+}
+
+function findDefaultIdleItem(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return null
+  }
+
+  return items.find((item) => {
+    const relativePath = String(item?.relativePath || '').trim().toLowerCase()
+    const name = String(item?.name || '').trim().toLowerCase()
+    const label = String(item?.label || '').trim().toLowerCase()
+
+    return relativePath === 'idle/idle_main.vrma' || name === 'idle_main.vrma' || label === 'idle main'
+  }) || items[0]
+}
+
 function readInitialRightPanelState() {
   if (typeof window === 'undefined') {
     return false
@@ -442,7 +464,11 @@ export default function ViewerPage({ workspace, onNavigate }) {
     () => [...animationItems.filter((entry) => entry.kind === 'expression'), ...sharedExpressionItems],
     [animationItems, sharedExpressionItems],
   )
-  const selectedIdle = useMemo(() => idleItems.find((entry) => entry.id === selectedIdleId) || idleItems[0] || null, [idleItems, selectedIdleId])
+  const defaultIdleItem = useMemo(() => findDefaultIdleItem(idleItems), [idleItems])
+  const selectedIdle = useMemo(
+    () => idleItems.find((entry) => entry.id === selectedIdleId) || defaultIdleItem || null,
+    [defaultIdleItem, idleItems, selectedIdleId],
+  )
   const selectedAction = useMemo(() => actionItems.find((entry) => entry.id === selectedActionId) || actionItems[0] || null, [actionItems, selectedActionId])
   const selectedThinking = useMemo(() => thinkingItems.find((entry) => entry.id === selectedThinkingId) || thinkingItems[0] || null, [thinkingItems, selectedThinkingId])
   const selectedExpression = useMemo(() => expressionItems.find((entry) => entry.id === selectedExpressionId) || expressionItems[0] || null, [expressionItems, selectedExpressionId])
@@ -579,7 +605,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     if (idleItems.length === 0) {
       setSelectedIdleId('')
     } else if (!idleItems.some((entry) => entry.id === selectedIdleId)) {
-      setSelectedIdleId(idleItems[0].id)
+      setSelectedIdleId(defaultIdleItem?.id || idleItems[0].id)
     }
 
     if (actionItems.length === 0) {
@@ -599,7 +625,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     } else if (!expressionItems.some((entry) => entry.id === selectedExpressionId)) {
       setSelectedExpressionId(expressionItems[0].id)
     }
-  }, [actionItems, expressionItems, idleItems, selectedActionId, selectedExpressionId, selectedIdleId, selectedThinkingId, thinkingItems])
+  }, [actionItems, defaultIdleItem, expressionItems, idleItems, selectedActionId, selectedExpressionId, selectedIdleId, selectedThinkingId, thinkingItems])
 
   useEffect(() => {
     if (!selectedAvatarAsset) return
@@ -631,7 +657,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     async function applyIdle() {
       const file = await assetToFile(selectedIdle)
       if (!file || cancelled) return
-      setIdleAnimation(file, selectedIdle.label, { cacheKey: selectedIdle.id })
+      setIdleAnimation(file, selectedIdle.label, { cacheKey: buildAssetCacheKey(selectedIdle) })
     }
 
     applyIdle()
@@ -660,7 +686,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
           return {
             file,
             label: item.label,
-            cacheKey: `${item.id}:idle-variant`,
+            cacheKey: buildAssetCacheKey(item, 'idle-variant'),
           }
         }),
       )
@@ -737,7 +763,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     if (!file) return null
 
     playAnimationFile(file, asset.label, {
-      cacheKey: `${asset.id}:${reason}`,
+      cacheKey: buildAssetCacheKey(asset, reason),
       kind: 'action',
       loop: false,
       returnToDefault: true,
@@ -811,7 +837,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     if (!file) return
 
     playOverlayAnimationFile(file, asset.label, {
-      cacheKey: `${asset.id}:${options.preferSpeech ? 'speech' : 'cue'}`,
+      cacheKey: buildAssetCacheKey(asset, options.preferSpeech ? 'speech' : 'cue'),
       expressionOnly: true,
       loop: Boolean(options.loop),
     })
@@ -833,7 +859,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     if (!file) return
 
     playOverlayAnimationFile(file, asset.label, {
-      cacheKey: `${asset.id}:${options.preferSpeech ? 'speech' : 'cue'}`,
+      cacheKey: buildAssetCacheKey(asset, options.preferSpeech ? 'speech' : 'cue'),
       expressionOnly: true,
       loop: Boolean(options.loop),
     })
@@ -1112,7 +1138,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     }
 
     playAnimationFile(file, asset.label, {
-      cacheKey: `${asset.id}:thinking`,
+      cacheKey: buildAssetCacheKey(asset, 'thinking'),
       kind: 'thinking',
       loop: false,
       returnToDefault: true,
@@ -1163,7 +1189,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
       const file = await assetToFile(silentExpression)
       if (file && thinkingRuntimeRef.current) {
         playOverlayAnimationFile(file, silentExpression.label, {
-          cacheKey: `${silentExpression.id}:thinking`,
+          cacheKey: buildAssetCacheKey(silentExpression, 'thinking'),
           expressionOnly: true,
           loop: true,
         })
@@ -1498,7 +1524,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     if (!selectedAction) return
     const file = await assetToFile(selectedAction)
     if (!file) return
-    playAnimationFile(file, selectedAction.label, { cacheKey: selectedAction.id })
+    playAnimationFile(file, selectedAction.label, { cacheKey: buildAssetCacheKey(selectedAction) })
   }, [playAnimationFile, selectedAction])
 
   const handlePlayThinking = useCallback(async () => {
@@ -1506,7 +1532,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     const file = await assetToFile(selectedThinking)
     if (!file) return
     playAnimationFile(file, selectedThinking.label, {
-      cacheKey: `${selectedThinking.id}:thinking-preview`,
+      cacheKey: buildAssetCacheKey(selectedThinking, 'thinking-preview'),
       kind: 'thinking',
       loop: true,
       returnToDefault: false,
@@ -1518,7 +1544,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     if (!selectedExpression) return
     const file = await assetToFile(selectedExpression)
     if (!file) return
-    playOverlayAnimationFile(file, selectedExpression.label, { cacheKey: `${selectedExpression.id}:overlay` })
+    playOverlayAnimationFile(file, selectedExpression.label, { cacheKey: buildAssetCacheKey(selectedExpression, 'overlay') })
   }, [playOverlayAnimationFile, selectedExpression])
 
   const handleSendMessage = useCallback(async () => {
@@ -2014,7 +2040,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
                 </select>
                 <button
                   type="button"
-                  onClick={() => selectedIdle && assetToFile(selectedIdle).then((file) => file && setIdleAnimation(file, selectedIdle.label, { cacheKey: selectedIdle.id }))}
+                  onClick={() => selectedIdle && assetToFile(selectedIdle).then((file) => file && setIdleAnimation(file, selectedIdle.label, { cacheKey: buildAssetCacheKey(selectedIdle) }))}
                   disabled={!selectedIdle}
                   className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-2 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >

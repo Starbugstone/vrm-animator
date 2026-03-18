@@ -47,6 +47,68 @@ class ElevenLabsClient implements ElevenLabsClientInterface
         return $voices;
     }
 
+    public function listSharedVoices(string $secret, array $filters = []): array
+    {
+        if (self::$testDouble !== null) {
+            return self::$testDouble->listSharedVoices($secret, $filters);
+        }
+
+        $query = array_filter([
+            'search' => $this->normalizeNullableString($filters['search'] ?? null),
+            'language' => $this->normalizeNullableString($filters['language'] ?? null),
+            'accent' => $this->normalizeNullableString($filters['accent'] ?? null),
+            'gender' => $this->normalizeNullableString($filters['gender'] ?? null),
+            'age' => $this->normalizeNullableString($filters['age'] ?? null),
+            'category' => $this->normalizeNullableString($filters['category'] ?? null),
+            'page_size' => $this->normalizePositiveInt($filters['pageSize'] ?? null) ?? self::VOICE_PAGE_SIZE,
+            'page' => $this->normalizePositiveInt($filters['page'] ?? null) ?? 0,
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+
+        $decoded = $this->fetchJson(
+            '/v1/shared-voices?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986),
+            $secret,
+            'Unable to load ElevenLabs Voice Library results.',
+        );
+
+        $voices = [];
+        foreach (($decoded['voices'] ?? []) as $voice) {
+            $normalized = $this->normalizeSharedVoice($voice);
+            if ($normalized !== null) {
+                $voices[] = $normalized;
+            }
+        }
+
+        return [
+            'voices' => $voices,
+            'nextPage' => $this->normalizePositiveInt($decoded['next_page'] ?? null),
+        ];
+    }
+
+    public function addSharedVoice(string $secret, string $publicUserId, string $voiceId, string $name): array
+    {
+        if (self::$testDouble !== null) {
+            return self::$testDouble->addSharedVoice($secret, $publicUserId, $voiceId, $name);
+        }
+
+        $payload = [
+            'new_name' => $name,
+            'bookmarked' => true,
+        ];
+
+        $decoded = $this->sendJson(
+            'POST',
+            '/v1/voices/add/'.rawurlencode($publicUserId).'/'.rawurlencode($voiceId),
+            $secret,
+            $payload,
+            'Unable to add this ElevenLabs voice to My Voices.',
+        );
+
+        return [
+            'voiceId' => $this->normalizeNullableString($decoded['voice_id'] ?? null),
+            'name' => $this->normalizeNullableString($decoded['name'] ?? null),
+        ];
+    }
+
     public function streamSpeech(
         string $secret,
         string $voiceId,
@@ -185,15 +247,34 @@ class ElevenLabsClient implements ElevenLabsClientInterface
      */
     protected function fetchJson(string $path, string $secret, string $fallbackMessage): array
     {
+        return $this->sendJson('GET', $path, $secret, null, $fallbackMessage);
+    }
+
+    /**
+     * @param array<string, mixed>|null $payload
+     *
+     * @return array<string, mixed>
+     */
+    protected function sendJson(string $method, string $path, string $secret, ?array $payload, string $fallbackMessage): array
+    {
+        $headers = [
+            'xi-api-key: '.$secret,
+            'Accept: application/json',
+        ];
+
+        $content = null;
+        if ($payload !== null) {
+            $headers[] = 'Content-Type: application/json';
+            $content = json_encode($payload, JSON_UNESCAPED_SLASHES);
+        }
+
         $context = stream_context_create([
             'http' => [
-                'method' => 'GET',
-                'header' => implode("\r\n", [
-                    'xi-api-key: '.$secret,
-                    'Accept: application/json',
-                ]),
+                'method' => $method,
+                'header' => implode("\r\n", $headers),
                 'timeout' => 20,
                 'ignore_errors' => true,
+                'content' => $content,
             ],
         ]);
 
@@ -234,6 +315,15 @@ class ElevenLabsClient implements ElevenLabsClientInterface
         }
 
         $labels = $this->normalizeLabels($voice['labels'] ?? null);
+        $topLevelLabels = $this->normalizeLabels([
+            'accent' => $voice['accent'] ?? null,
+            'age' => $voice['age'] ?? null,
+            'gender' => $voice['gender'] ?? null,
+            'use_case' => $voice['use_case'] ?? null,
+            'language' => $voice['language'] ?? null,
+            'locale' => $voice['locale'] ?? null,
+        ]);
+        $labels = array_replace($topLevelLabels, $labels);
         $sharingLabels = $this->normalizeLabels(($voice['sharing']['labels'] ?? null));
         $mergedLabels = array_replace($sharingLabels, $labels);
         $verifiedLanguages = $this->normalizeVerifiedLanguages($voice['verified_languages'] ?? null);
@@ -257,6 +347,49 @@ class ElevenLabsClient implements ElevenLabsClientInterface
             'language' => $language,
             'locale' => $locale,
             'verifiedLanguages' => $verifiedLanguages,
+        ];
+    }
+
+    /**
+     * @param mixed $voice
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function normalizeSharedVoice(mixed $voice): ?array
+    {
+        if (!is_array($voice)) {
+            return null;
+        }
+
+        $voiceId = trim((string) ($voice['voice_id'] ?? ''));
+        $publicOwnerId = trim((string) ($voice['public_owner_id'] ?? ''));
+        $name = trim((string) ($voice['name'] ?? ''));
+        if ($voiceId === '' || $publicOwnerId === '' || $name === '') {
+            return null;
+        }
+
+        $labels = $this->normalizeLabels($voice['labels'] ?? null);
+        $language = $this->normalizeNullableString($voice['language'] ?? null)
+            ?? $this->normalizeNullableString($labels['language'] ?? null);
+        $locale = $this->normalizeNullableString($voice['locale'] ?? null)
+            ?? $this->normalizeNullableString($labels['locale'] ?? null);
+        $category = $this->normalizeNullableString($labels['use_case'] ?? null)
+            ?? $this->normalizeNullableString($voice['category'] ?? null);
+
+        return [
+            'id' => $voiceId,
+            'voiceId' => $voiceId,
+            'publicUserId' => $publicOwnerId,
+            'publicOwnerId' => $publicOwnerId,
+            'name' => $name,
+            'gender' => $this->normalizeGender($labels['gender'] ?? null),
+            'labels' => $labels,
+            'category' => $category,
+            'description' => $this->normalizeNullableString($voice['description'] ?? null),
+            'previewUrl' => $this->normalizeNullableString($voice['preview_url'] ?? null),
+            'language' => $language,
+            'locale' => $locale,
+            'verifiedLanguages' => [],
         ];
     }
 
@@ -354,6 +487,21 @@ class ElevenLabsClient implements ElevenLabsClientInterface
         $trimmed = trim($value);
 
         return $trimmed !== '' ? $trimmed : null;
+    }
+
+    protected function normalizePositiveInt(mixed $value): ?int
+    {
+        if (!is_int($value) && !is_string($value)) {
+            return null;
+        }
+
+        if (!preg_match('/^\d+$/', (string) $value)) {
+            return null;
+        }
+
+        $normalized = (int) $value;
+
+        return $normalized >= 0 ? $normalized : null;
     }
 
     private function normalizeGender(mixed $value): ?string

@@ -71,4 +71,37 @@ class ElevenLabsClientTest extends TestCase
         $this->assertSame('parisian', $normalized['labels']['accent']);
         $this->assertSame('fr-FR', $normalized['verifiedLanguages'][0]['locale']);
     }
+
+    public function testNormalizeSharedVoicePreservesLibraryMetadata(): void
+    {
+        $client = new class extends ElevenLabsClient {
+            public function exposeNormalizeSharedVoice(mixed $voice): ?array
+            {
+                return $this->normalizeSharedVoice($voice);
+            }
+        };
+
+        $normalized = $client->exposeNormalizeSharedVoice([
+            'voice_id' => 'shared_voice_1',
+            'public_owner_id' => 'owner_1',
+            'name' => 'Brittney',
+            'description' => 'Bright and social',
+            'preview_url' => 'https://example.com/brittney.mp3',
+            'labels' => [
+                'gender' => 'female',
+                'language' => 'en',
+                'accent' => 'american',
+                'age' => 'young',
+                'use_case' => 'conversational',
+            ],
+        ]);
+
+        $this->assertSame('shared_voice_1', $normalized['voiceId']);
+        $this->assertSame('owner_1', $normalized['publicOwnerId']);
+        $this->assertSame('Brittney', $normalized['name']);
+        $this->assertSame('female', $normalized['gender']);
+        $this->assertSame('conversational', $normalized['category']);
+        $this->assertSame('american', $normalized['labels']['accent']);
+        $this->assertSame('https://example.com/brittney.mp3', $normalized['previewUrl']);
+    }
 }

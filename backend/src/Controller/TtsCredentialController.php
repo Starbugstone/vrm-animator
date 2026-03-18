@@ -190,7 +190,7 @@ class TtsCredentialController extends AbstractController
         LlmCredentialCrypto $credentialCrypto,
         ElevenLabsClientInterface $elevenLabsClient,
     ): JsonResponse {
-        $credential = $credentialRepository->findOwnedCredential($this->getCurrentUser(), $id);
+        $credential = $this->resolveOwnedCredential($credentialRepository, $id);
         if ($credential === null) {
             throw $this->createNotFoundException();
         }
@@ -198,12 +198,88 @@ class TtsCredentialController extends AbstractController
         try {
             $voices = $elevenLabsClient->listVoices($credentialCrypto->decrypt($credential->getEncryptedSecret()));
         } catch (\RuntimeException $exception) {
-            return $this->json(['message' => $exception->getMessage()], Response::HTTP_BAD_GATEWAY);
+            return $this->json(['message' => $exception->getMessage()], $this->resolveUpstreamStatus($exception));
         }
 
         return $this->json([
             'voices' => $voices,
         ]);
+    }
+
+    #[Route('/api/tts/credentials/{id}/voice-library', name: 'api_tts_credential_voice_library', methods: ['GET'])]
+    public function voiceLibrary(
+        int $id,
+        Request $request,
+        TtsCredentialRepository $credentialRepository,
+        LlmCredentialCrypto $credentialCrypto,
+        ElevenLabsClientInterface $elevenLabsClient,
+    ): JsonResponse {
+        $credential = $this->resolveOwnedCredential($credentialRepository, $id);
+        if ($credential === null) {
+            throw $this->createNotFoundException();
+        }
+
+        $filters = [
+            'search' => $this->normalizeNullableString($request->query->get('search')),
+            'language' => $this->normalizeNullableString($request->query->get('language')),
+            'accent' => $this->normalizeNullableString($request->query->get('accent')),
+            'gender' => $this->normalizeNullableString($request->query->get('gender')),
+            'age' => $this->normalizeNullableString($request->query->get('age')),
+            'category' => $this->normalizeNullableString($request->query->get('category')),
+            'pageSize' => $request->query->getInt('pageSize', 100),
+            'page' => $request->query->getInt('page', 0),
+        ];
+
+        try {
+            $catalog = $elevenLabsClient->listSharedVoices(
+                $credentialCrypto->decrypt($credential->getEncryptedSecret()),
+                $filters,
+            );
+        } catch (\RuntimeException $exception) {
+            return $this->json(['message' => $exception->getMessage()], $this->resolveUpstreamStatus($exception));
+        }
+
+        return $this->json($catalog);
+    }
+
+    #[Route('/api/tts/credentials/{id}/voice-library/add', name: 'api_tts_credential_voice_library_add', methods: ['POST'])]
+    public function addVoiceLibraryVoice(
+        int $id,
+        Request $request,
+        TtsCredentialRepository $credentialRepository,
+        LlmCredentialCrypto $credentialCrypto,
+        ElevenLabsClientInterface $elevenLabsClient,
+    ): JsonResponse {
+        $credential = $this->resolveOwnedCredential($credentialRepository, $id);
+        if ($credential === null) {
+            throw $this->createNotFoundException();
+        }
+
+        $payload = json_decode($request->getContent(), true);
+        if (!is_array($payload)) {
+            return $this->json(['message' => 'Invalid JSON.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        $publicUserId = trim((string) ($payload['publicUserId'] ?? $payload['publicOwnerId'] ?? ''));
+        $voiceId = trim((string) ($payload['voiceId'] ?? ''));
+        $name = $this->normalizeNullableString($payload['name'] ?? null);
+
+        if ($publicUserId === '' || $voiceId === '' || $name === null) {
+            return $this->json(['message' => 'publicUserId, voiceId, and name are required.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        try {
+            $result = $elevenLabsClient->addSharedVoice(
+                $credentialCrypto->decrypt($credential->getEncryptedSecret()),
+                $publicUserId,
+                $voiceId,
+                $name,
+            );
+        } catch (\RuntimeException $exception) {
+            return $this->json(['message' => $exception->getMessage()], $this->resolveUpstreamStatus($exception));
+        }
+
+        return $this->json($result, Response::HTTP_CREATED);
     }
 
     /**
@@ -252,6 +328,27 @@ class TtsCredentialController extends AbstractController
         $trimmed = trim($value);
 
         return $trimmed !== '' ? $trimmed : null;
+    }
+
+    private function resolveOwnedCredential(TtsCredentialRepository $credentialRepository, int $id): ?TtsCredential
+    {
+        $credential = $credentialRepository->find($id);
+        if (!$credential instanceof TtsCredential) {
+            return null;
+        }
+
+        return $credential->getOwner()?->getId() === $this->getCurrentUser()->getId()
+            ? $credential
+            : null;
+    }
+
+    private function resolveUpstreamStatus(\RuntimeException $exception): int
+    {
+        $status = $exception->getCode();
+
+        return is_int($status) && $status >= 400 && $status <= 599
+            ? $status
+            : Response::HTTP_BAD_GATEWAY;
     }
 
     private function getCurrentUser(): User
