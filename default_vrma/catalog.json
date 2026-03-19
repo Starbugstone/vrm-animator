@@ -87,6 +87,161 @@
       "emotionTags": ["happy", "celebrate", "excited"]
     },
     {
+      "file": "Angry.vrma",
+      "label": "Angry",
+      "description": "Sharp frustrated gesture for angry or confrontational replies.",
+      "keywords": ["gesture", "angry", "frustrated", "emphasis"],
+      "emotionTags": ["angry", "frustrated", "intense"]
+    },
+    {
+      "file": "Bboy Hip Hop Move.vrma",
+      "label": "Bboy Hip Hop Move",
+      "description": "Energetic hip hop dance move for flashy or high-confidence moments.",
+      "keywords": ["dance", "hip-hop", "showcase", "energy"],
+      "emotionTags": ["playful", "excited", "confident"]
+    },
+    {
+      "file": "Breakdance Freeze Var 2.vrma",
+      "label": "Breakdance Freeze Var 2",
+      "description": "Flashy breakdance freeze for dramatic or showy replies.",
+      "keywords": ["dance", "breakdance", "freeze", "showcase"],
+      "emotionTags": ["excited", "playful", "confident"]
+    },
+    {
+      "file": "Chicken Dance.vrma",
+      "label": "Chicken Dance",
+      "description": "Goofy dance routine for silly or comedic moments.",
+      "keywords": ["dance", "goofy", "comedy", "playful"],
+      "emotionTags": ["playful", "happy", "goofy"]
+    },
+    {
+      "file": "Clapping.vrma",
+      "label": "Clapping",
+      "description": "Applause gesture for praise, approval, or celebration.",
+      "keywords": ["clap", "celebrate", "approval", "applause"],
+      "emotionTags": ["happy", "excited", "supportive"]
+    },
+    {
+      "file": "Dancing Maraschino Step.vrma",
+      "label": "Dancing Maraschino Step",
+      "description": "Lively dance step for upbeat or celebratory replies.",
+      "keywords": ["dance", "celebrate", "lively", "rhythm"],
+      "emotionTags": ["happy", "playful", "excited"]
+    },
+    {
+      "file": "Dancing Twerk.vrma",
+      "label": "Dancing Twerk",
+      "description": "Bold dance move for cheeky or over-the-top reactions.",
+      "keywords": ["dance", "bold", "showcase", "cheeky"],
+      "emotionTags": ["playful", "confident", "cheeky"]
+    },
+    {
+      "file": "Excited.vrma",
+      "label": "Excited",
+      "description": "High-energy reaction for enthusiastic or celebratory beats.",
+      "keywords": ["gesture", "excited", "celebrate", "energy"],
+      "emotionTags": ["excited", "happy", "surprised"]
+    },
+    {
+      "file": "House Dancing.vrma",
+      "label": "House Dancing",
+      "description": "Rhythmic house dance groove for playful or party-like moments.",
+      "keywords": ["dance", "house", "groove", "party"],
+      "emotionTags": ["happy", "playful", "confident"]
+    },
+    {
+      "file": "Jumping Jacks.vrma",
+      "label": "Jumping Jacks",
+      "description": "Energetic exercise-style motion for excited or hyper replies.",
+      "keywords": ["exercise", "jump", "energy", "workout"],
+      "emotionTags": ["excited", "happy", "energetic"]
+    },
+    {
+      "file": "Loser.vrma",
+      "label": "Loser",
+      "description": "Dismissive teasing gesture for playful taunts or mockery.",
+      "keywords": ["gesture", "teasing", "dismissive", "taunt"],
+      "emotionTags": ["teasing", "cheeky", "confident"]
+    },
+    {
+      "file": "Mma Kick.vrma",
+      "label": "MMA Kick",
+      "description": "Sharp kicking action for intense or combative moments.",
+      "keywords": ["kick", "action", "combat", "impact"],
+      "emotionTags": ["intense", "confident", "angry"]
+    },
+    {
+      "file": "Pointing Forward.vrma",
+      "label": "Pointing Forward",
+      "description": "Direct pointing cue for emphasis or giving direction.",
+      "keywords": ["gesture", "point", "direct", "emphasis"],
+      "emotionTags": ["confident", "neutral", "focused"]
+    },
+    {
+      "file": "Praying.vrma",
+      "label": "Praying",
+      "description": "Hands-together plea for earnest, hopeful, or apologetic moments.",
+      "keywords": ["gesture", "prayer", "pleading", "hopeful"],
+      "emotionTags": ["hopeful", "calm", "earnest"]
+    },
+    {
+      "file": "Rejected.vrma",
+      "label": "Rejected",
+      "description": "Firm refusal gesture for dismissive or disagreeing replies.",
+      "keywords": ["gesture", "reject", "no", "dismissive"],
+      "emotionTags": ["dismissive", "annoyed", "confident"]
+    },
+    {
+      "file": "Salsa Dancing.vrma",
+      "label": "Salsa Dancing",
+      "description": "Lively salsa step for warm, playful, or celebratory replies.",
+      "keywords": ["dance", "salsa", "celebrate", "warm"],
+      "emotionTags": ["happy", "playful", "warm"]
+    },
+    {
+      "file": "Standing Greeting.vrma",
+      "label": "Standing Greeting",
+      "description": "Friendly standing hello for introductions or welcoming replies.",
+      "keywords": ["greeting", "hello", "welcome", "friendly"],
+      "emotionTags": ["friendly", "happy", "warm"]
+    },
+    {
+      "file": "Swing Dancing.vrma",
+      "label": "Swing Dancing",
+      "description": "Upbeat swing dance step for energetic or cheerful moments.",
+      "keywords": ["dance", "swing", "celebrate", "upbeat"],
+      "emotionTags": ["happy", "playful", "energetic"]
+    },
+    {
+      "file": "Talking.vrma",
+      "label": "Talking",
+      "description": "Conversational body motion for active speaking moments.",
+      "keywords": ["speech", "talking", "conversation", "body"],
+      "emotionTags": ["neutral", "friendly", "engaged"]
+    },
+    {
+      "file": "Twist Dance.vrma",
+      "label": "Twist Dance",
+      "description": "Playful twist dance for lighthearted celebratory replies.",
+      "keywords": ["dance", "twist", "playful", "celebrate"],
+      "emotionTags": ["happy", "playful", "excited"]
+    },
+    {
+      "file": "Yelling.vrma",
+      "label": "Yelling",
+      "description": "Forceful shout gesture for intense or urgent reactions.",
+      "keywords": ["gesture", "yell", "shout", "emphasis"],
+      "emotionTags": ["angry", "intense", "urgent"]
+    },
+    {
+      "file": "idle/Arm Stretching.vrma",
+      "label": "Arm Stretching",
+      "kind": "idle",
+      "description": "Stretching idle loop for restless or waking-up waiting moments.",
+      "keywords": ["idle", "stretch", "rest", "waiting"],
+      "emotionTags": ["neutral", "calm", "restless"]
+    },
+    {
       "file": "idle/Breathing Idle.vrma",
       "label": "Breathing Idle",
       "kind": "idle",
@@ -175,9 +330,8 @@
       "emotionTags": ["neutral", "calm"]
     },
     {
-      "file": "thinking/Thankful.vrma",
+      "file": "Thankful.vrma",
       "label": "Thankful",
-      "kind": "thinking",
       "description": "Warm reflective waiting motion with a softer appreciative feel.",
       "keywords": ["thinking", "thankful", "warm", "waiting"],
       "emotionTags": ["thinking", "happy", "warm"]

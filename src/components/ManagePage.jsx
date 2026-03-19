@@ -10,12 +10,14 @@ import TtsSettingsPanel from './TtsSettingsPanel.jsx'
 import { createPersistedAvatarAsset } from '../lib/viewerAssets.js'
 
 const SECTIONS = [
-  { id: 'avatar-edit', label: 'Profile' },
-  { id: 'vrm-library', label: 'Avatar Library' },
-  { id: 'vrma-library', label: 'Animation Library' },
-  { id: 'llm-config', label: 'AI Connection' },
-  { id: 'tts-config', label: 'Voice & Speech' },
-  { id: 'chat', label: 'Conversation Test' },
+  { id: 'avatar-edit', label: 'Studio Profile', status: 'Live' },
+  { id: 'vrm-library', label: 'Model Library', status: 'Live' },
+  { id: 'vrma-library', label: 'Animation Library', status: 'Live' },
+  { id: 'llm-config', label: 'AI Routing', status: 'Live' },
+  { id: 'tts-config', label: 'Voice & Speech', status: 'Live' },
+  { id: 'chat', label: 'Conversation Lab', status: 'Live' },
+  { id: 'procedural', label: 'Procedural', status: 'Planned' },
+  { id: 'hologram', label: 'Hologram', status: 'Planned' },
 ]
 
 
@@ -50,44 +52,66 @@ const SECTION_HELP = {
 - Select an existing thread or start a new one
 - Send a message with Enter
 - Use this area to validate model behavior and tags`,
+  procedural: `These controls are planned placeholders from the Stitch redesign.
+
+- The current viewer only exposes a small subset of runtime automation
+- Keep the UI visible so the product flow is coherent
+- Track missing implementation work in TODO.md until the real hooks land`,
+  hologram: `This is the planned control surface for dedicated projection output.
+
+- Layout presets, prism calibration, and display toggles are not wired yet
+- The current software product remains usable without hologram hardware
+- The placeholder keeps the final workflow visible for future implementation`,
 }
 
 const SECTION_COPY = {
   'avatar-edit': {
-    eyebrow: 'Avatar profile',
-    title: 'Identity and memory',
+    eyebrow: 'Studio profile',
+    title: 'Identity, memory, and launch setup',
     description:
-      'Name the avatar, describe its personality, add memory, and choose the AI connection it should use.',
+      'Shape the avatar character, memory, facing direction, and launch-ready defaults from one place.',
   },
   'vrm-library': {
-    eyebrow: 'Avatar library',
-    title: 'Choose or create an avatar',
+    eyebrow: 'Model library',
+    title: 'Choose, preview, and create avatars',
     description:
-      'Start with a shared starter avatar or upload your own VRM or GLB file. Saved avatars become available everywhere in the app.',
+      'Browse starter models, preview them, and either adopt a shared preset or upload your own VRM or GLB.',
   },
   'vrma-library': {
     eyebrow: 'Animation library',
-    title: 'Animation library',
+    title: 'Curate motions and overlays',
     description:
-      'Upload and organize extra VRMA animations. This is optional for first-time setup.',
+      'Upload personal VRMA clips, tag them for the LLM, and keep your motion catalog readable.',
   },
   'llm-config': {
-    eyebrow: 'AI connection',
-    title: 'Connect an AI provider',
+    eyebrow: 'AI routing',
+    title: 'Connect providers and pick models',
     description:
-      'Add one working API key, choose a default model, and keep it active so the avatar can reply.',
+      'Store reusable provider credentials, choose defaults, and keep one reliable model ready for chat.',
   },
   'tts-config': {
     eyebrow: 'Voice & speech',
-    title: 'Connect ElevenLabs voice',
+    title: 'Connect speech playback',
     description:
-      'Attach an ElevenLabs key and voice to the selected avatar, or keep browser speech as the fallback when no remote voice is selected.',
+      'Attach ElevenLabs endpoints now and keep browser speech visible as the fallback path.',
   },
   chat: {
-    eyebrow: 'Conversation test',
-    title: 'Test a conversation',
+    eyebrow: 'Conversation lab',
+    title: 'Test and inspect conversations',
     description:
-      'Review saved conversations and send a test message before moving back to the Viewer.',
+      'Inspect saved threads, send controlled test prompts, and validate the avatar before returning to the workspace.',
+  },
+  procedural: {
+    eyebrow: 'Procedural systems',
+    title: 'Interaction and autonomy controls',
+    description:
+      'This screen now exposes the planned procedural feature set from the redesign so the workflow is visible before the runtime hooks land.',
+  },
+  hologram: {
+    eyebrow: 'Hologram control',
+    title: 'Projection presets and calibration',
+    description:
+      'This placeholder surface maps the future hologram workflow and keeps the interface ready for PIXELXL-style projection tooling.',
   },
 }
 
@@ -537,6 +561,72 @@ function EffectiveAvatarPersona({ avatar, persona }) {
   )
 }
 
+function StatTile({ label, value, tone = 'default', detail }) {
+  const toneClass = tone === 'success'
+    ? 'border-emerald-300/20 bg-emerald-300/10 text-emerald-100'
+    : tone === 'warning'
+      ? 'border-amber-300/20 bg-amber-300/10 text-amber-100'
+      : tone === 'planned'
+        ? 'border-white/10 bg-black/20 text-white/82'
+        : 'border-cyan-300/15 bg-cyan-300/10 text-cyan-100'
+
+  return (
+    <div className={`rounded-[24px] border px-4 py-4 ${toneClass}`}>
+      <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">{label}</div>
+      <div className="mt-2 text-xl font-semibold">{value}</div>
+      {detail ? <div className="mt-2 text-xs leading-5 text-white/60">{detail}</div> : null}
+    </div>
+  )
+}
+
+function PlaceholderSliderRow({ label, value, detail }) {
+  return (
+    <div className="space-y-3 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium text-white/88">{label}</div>
+          {detail ? <div className="mt-1 text-xs text-white/50">{detail}</div> : null}
+        </div>
+        <div className="text-sm font-mono text-cyan-100">{value}</div>
+      </div>
+      <input type="range" min="0" max="100" value="55" disabled className="w-full opacity-70" />
+    </div>
+  )
+}
+
+function PlaceholderToggleRow({ label, enabled, detail, disabled = false }) {
+  return (
+    <div className={`flex items-center justify-between gap-4 rounded-[24px] border border-white/10 px-4 py-4 ${disabled ? 'bg-black/10 opacity-55' : 'bg-black/20'}`}>
+      <div>
+        <div className="text-sm font-medium text-white/88">{label}</div>
+        {detail ? <div className="mt-1 text-xs text-white/50">{detail}</div> : null}
+      </div>
+      <div className={`relative h-6 w-11 rounded-full border ${enabled ? 'border-cyan-300/35 bg-cyan-300/20' : 'border-white/10 bg-white/10'}`}>
+        <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${enabled ? 'right-1' : 'left-1'}`} />
+      </div>
+    </div>
+  )
+}
+
+function PlannedPanel({ eyebrow, title, description, children, footer }) {
+  return (
+    <section className="rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.82)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs uppercase tracking-[0.3em] text-cyan-200/70">{eyebrow}</div>
+          <div className="mt-2 text-2xl font-semibold tracking-tight text-white">{title}</div>
+          <div className="mt-3 max-w-3xl text-sm leading-6 text-white/62">{description}</div>
+        </div>
+        <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/60">
+          Planned
+        </div>
+      </div>
+      <div className="mt-5 space-y-4">{children}</div>
+      {footer ? <div className="mt-5 rounded-[24px] border border-cyan-300/15 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-100">{footer}</div> : null}
+    </section>
+  )
+}
+
 export default function ManagePage({ user, workspace }) {
   const {
     avatars,
@@ -578,6 +668,8 @@ export default function ManagePage({ user, workspace }) {
     saveCredential,
     removeCredential,
     loadTtsVoiceCatalog,
+    searchTtsVoiceLibrary,
+    addVoiceLibraryVoice,
     saveTtsConnection,
     removeTtsConnection,
     saveAvatarTtsConfig,
@@ -746,104 +838,387 @@ export default function ManagePage({ user, workspace }) {
   ), [loadProviderModelCatalog])
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#18355c_0%,_#08111f_36%,_#04070d_100%)] text-white">
-      <div className="mx-auto flex min-h-screen max-w-[1680px] gap-6 px-4 pb-8 pt-6 lg:px-6">
-        <aside className="hidden w-[260px] shrink-0 lg:block">
+    <div className="min-h-screen bg-transparent text-white">
+      <div className="mx-auto flex min-h-screen max-w-[1720px] gap-6 px-4 pb-10 pt-6 lg:px-6">
+        <aside className="hidden w-[300px] shrink-0 xl:block">
           <div className="sticky top-6 space-y-4">
-            <section className="rounded-[32px] border border-white/10 bg-[rgba(6,10,20,0.82)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
-              <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Setup</div>
-              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">Configuration</div>
-              <div className="mt-3 text-sm leading-6 text-white/62">Use the sections below to keep avatar, animations, AI, voice, and chat setup organized.</div>
+            <section className="rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.84)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
+              <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Control Center</div>
+              <div className="mt-3 text-3xl font-semibold tracking-tight text-white">System surfaces</div>
+              <div className="mt-3 text-sm leading-6 text-white/62">
+                The redesigned layout now exposes the full avatar workflow, including planned procedural and hologram modules that will be wired later.
+              </div>
             </section>
 
-            <section className="rounded-[32px] border border-white/10 bg-[rgba(6,10,20,0.82)] p-3 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
+            <section className="rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.84)] p-3 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
               {SECTIONS.map((section) => (
                 <button
                   key={section.id}
                   type="button"
                   onClick={() => setActiveSection(section.id)}
                   disabled={Boolean(busyKey) || isBootstrapping}
-                  className={`mb-2 block w-full rounded-2xl px-4 py-3 text-left text-sm transition last:mb-0 disabled:cursor-not-allowed disabled:opacity-45 ${
+                  className={`mb-2 flex w-full items-center justify-between rounded-[24px] px-4 py-3 text-left text-sm transition last:mb-0 disabled:cursor-not-allowed disabled:opacity-45 ${
                     activeSection === section.id
                       ? 'bg-cyan-300/18 text-cyan-100'
                       : 'bg-white/0 text-white/70 hover:bg-white/8 hover:text-white'
                   }`}
                 >
-                  {section.label}
+                  <span>{section.label}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
+                    section.status === 'Planned'
+                      ? 'border border-white/10 bg-white/5 text-white/55'
+                      : 'border border-emerald-300/20 bg-emerald-300/10 text-emerald-100'
+                  }`}>
+                    {section.status}
+                  </span>
                 </button>
               ))}
             </section>
 
-            <section className="rounded-[32px] border border-white/10 bg-[rgba(6,10,20,0.82)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
-              <div className="text-xs uppercase tracking-[0.28em] text-white/45">Signed in</div>
-              <div className="mt-2 text-sm font-medium text-cyan-100">{user?.displayName || user?.email}</div>
-              <div className="mt-1 text-xs text-white/48">{user?.email}</div>
+            <section className="rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.84)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)]">
+              <div className="text-xs uppercase tracking-[0.28em] text-white/45">Active avatar</div>
+              <div className="mt-2 text-xl font-semibold text-white">{selectedAvatar?.name || 'No avatar selected'}</div>
+              <div className="mt-2 text-sm text-white/60">
+                {effectivePersona?.llmProvider ? `AI: ${effectivePersona.llmProvider}` : 'AI not attached yet'}
+              </div>
+              <div className="mt-1 text-sm text-white/55">
+                {selectedAvatar?.ttsVoiceName ? `Voice: ${selectedAvatar.ttsVoiceName}` : 'Voice: browser fallback'}
+              </div>
+              <div className="mt-4 grid gap-3">
+                <StatTile
+                  label="Studio readiness"
+                  value={hasPersonality ? 'Profile ready' : 'Needs profile'}
+                  tone={hasPersonality ? 'success' : 'warning'}
+                  detail={hasMemoryNotes ? 'Memory notes present.' : 'Memory still empty.'}
+                />
+                <StatTile
+                  label="Signed in"
+                  value={user?.displayName || user?.email}
+                  tone="planned"
+                  detail={user?.email}
+                />
+              </div>
             </section>
           </div>
         </aside>
 
         <div className="min-w-0 flex-1 space-y-6">
-          <header className="rounded-[32px] border border-white/10 bg-[rgba(6,10,20,0.72)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <header className="rounded-[34px] border border-white/10 bg-[rgba(8,15,22,0.78)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
+            <div className="flex flex-col gap-5 2xl:flex-row 2xl:items-end 2xl:justify-between">
               <div>
                 <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">{sectionCopy.eyebrow}</div>
-                <div className="mt-2 flex items-center gap-3">
-                  <div className="text-3xl font-semibold tracking-tight">{sectionCopy.title}</div>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <div className="text-3xl font-semibold tracking-tight text-white">{sectionCopy.title}</div>
                   <HelpPopover title={`${sectionCopy.title} help`} content={SECTION_HELP[activeSection]} />
                 </div>
-                <div className="mt-3 max-w-3xl text-sm leading-6 text-white/62">
-                  {sectionCopy.description}
-                </div>
+                <div className="mt-3 max-w-4xl text-sm leading-6 text-white/62">{sectionCopy.description}</div>
               </div>
 
-              <div className="min-w-[320px] rounded-[28px] border border-white/10 bg-black/20 px-4 py-4">
-                <div className="text-xs uppercase tracking-[0.24em] text-white/45">Current avatar</div>
-                <div className="mt-2 text-lg font-medium text-white">{selectedAvatar?.name || 'No avatar selected'}</div>
-                <div className="mt-2 text-sm text-white/58">
-                  {effectivePersona?.llmProvider
-                    ? `AI: ${effectivePersona.llmProvider}`
-                    : 'AI: not connected yet'}
-                </div>
-                <div className="mt-1 text-sm text-white/50">
-                  {selectedAvatar?.ttsVoiceName
-                    ? `Voice: ${selectedAvatar.ttsVoiceName}`
-                    : 'Voice: browser fallback'}
-                </div>
+              <div className="grid min-w-[320px] gap-3 sm:grid-cols-2">
+                <StatTile
+                  label="Current avatar"
+                  value={selectedAvatar?.name || 'No avatar selected'}
+                  detail={selectedAvatar?.filename || 'Choose one from Model Library'}
+                />
+                <StatTile
+                  label="Chat route"
+                  value={hasActiveCredential ? (effectivePersona?.llmProvider || 'Ready') : 'Not connected'}
+                  tone={hasActiveCredential ? 'success' : 'warning'}
+                  detail={selectedAvatar?.ttsVoiceName ? `Voice ${selectedAvatar.ttsVoiceName}` : 'Browser speech fallback'}
+                />
               </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <StatTile
+                label="Personal avatars"
+                value={avatars.length}
+                tone={avatars.length > 0 ? 'success' : 'warning'}
+                detail={hasAvatarLibrary ? 'Private library available.' : 'Add a model to unlock editing and chat.'}
+              />
+              <StatTile
+                label="Animations"
+                value={animations.length}
+                tone={animations.length > 0 ? 'success' : 'planned'}
+                detail={animations.length > 0 ? 'Custom motion library present.' : 'Default motions only for now.'}
+              />
+              <StatTile
+                label="Memory"
+                value={hasMemoryNotes ? 'Primed' : 'Blank'}
+                tone={hasMemoryNotes ? 'success' : 'warning'}
+                detail={hasMemoryNotes ? `${memoryRevisions.length} saved revisions.` : 'Add relationship notes before long chats.'}
+              />
+              <StatTile
+                label="Redesign coverage"
+                value="Core + placeholders"
+                tone="planned"
+                detail="Procedural and hologram surfaces are visible but still pending implementation."
+              />
             </div>
 
             {(isBootstrapping || busyKey) ? (
               <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-xs text-cyan-100">
                 <span className="h-4 w-4 rounded-full border-2 border-cyan-100/30 border-t-cyan-100 animate-spin" />
-                {isBootstrapping ? "Syncing backend workspace..." : "Saving changes..."}
+                {isBootstrapping ? 'Syncing backend workspace...' : 'Saving changes...'}
               </div>
             ) : null}
             {error ? <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{error}</div> : null}
             {notice ? <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-100">{notice}</div> : null}
           </header>
 
-          <div className="grid gap-4 lg:hidden">
+          <div className="grid gap-3 xl:hidden sm:grid-cols-2">
             {SECTIONS.map((section) => (
               <button
                 key={section.id}
                 type="button"
                 onClick={() => setActiveSection(section.id)}
                 disabled={Boolean(busyKey) || isBootstrapping}
-                className={`rounded-2xl px-4 py-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                className={`rounded-[24px] px-4 py-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-45 ${
                   activeSection === section.id
                     ? 'bg-cyan-300/18 text-cyan-100'
-                    : 'border border-white/10 bg-[rgba(6,10,20,0.72)] text-white/70'
+                    : 'border border-white/10 bg-[rgba(8,15,22,0.78)] text-white/70'
                 }`}
               >
-                {section.label}
+                <div className="font-medium">{section.label}</div>
+                <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-white/45">{section.status}</div>
               </button>
             ))}
           </div>
 
           {activeSection === 'avatar-edit' ? (
             <div className="space-y-5">
-              <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+              <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.2fr)_340px]">
                 <div className="space-y-5">
+                  <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+                    <div className="space-y-5">
+                      <AvatarLibraryPanel
+                        avatars={avatars}
+                        selectedAvatarId={selectedAvatarId}
+                        onSelect={setSelectedAvatarId}
+                        onDelete={(avatarId) => runAction('avatar-delete', () => removeAvatar(avatarId), 'Avatar deleted.')}
+                        busy={busyKey === 'avatar-delete'}
+                      />
+                      <EffectiveAvatarPersona avatar={selectedAvatar} persona={effectivePersona} />
+                    </div>
+
+                    <AvatarPreviewCard
+                      asset={selectedAvatarPreviewAsset}
+                      file={null}
+                      helper="Rotate the avatar until the face is right, then save that direction as the default Viewer starting pose."
+                      emptyLabel="Create an avatar in Model Library, then return here to edit its identity and memory."
+                      defaultFacingYaw={selectedAvatar?.defaultFacingYaw || 0}
+                      onSaveDefaultFacing={selectedAvatar
+                        ? (defaultFacingYaw) => runAction(
+                          'avatar-facing',
+                          () => saveAvatarFacing(selectedAvatar.id, defaultFacingYaw),
+                          'Avatar starting direction saved.',
+                        )
+                        : null}
+                      saveFacingBusy={busyKey === 'avatar-facing'}
+                    />
+                  </div>
+
+                  <div className="grid gap-5 xl:grid-cols-2">
+                    <AvatarIdentityPanel
+                      avatar={selectedAvatar}
+                      credentialId={effectivePersona?.llmCredentialId || ''}
+                      credentials={credentials}
+                      ttsCredentials={ttsCredentials}
+                      ttsVoicesByCredential={ttsVoicesByCredential}
+                      onLoadTtsVoices={(credentialId, options) => loadTtsVoiceCatalog(credentialId, options)}
+                      onSearchTtsVoiceLibrary={(credentialId, query) => searchTtsVoiceLibrary(credentialId, query)}
+                      onAddTtsVoiceLibraryVoice={(credentialId, payload) => addVoiceLibraryVoice(credentialId, payload)}
+                      onPreviewTts={(payload, options) => previewAvatarTts(selectedAvatar.id, payload, options)}
+                      busy={avatarAutosaveBusy}
+                      onSave={saveAvatarProfileAutosave}
+                    />
+
+                    <MemoryPanel
+                      memory={memory}
+                      revisions={memoryRevisions}
+                      busy={busyKey === 'memory-save' || busyKey === 'memory-reset' || busyKey === 'memory-compress'}
+                      onSave={(payload) => runAction('memory-save', () => saveMemory(selectedAvatar.id, payload), 'Memory updated.')}
+                      onCompress={() => runAction(
+                        'memory-compress',
+                        () => compressMemory(selectedAvatar.id, { revision: memory.revision }),
+                        (result) => result?.compressionRun?.summary || 'Memory compression finished.',
+                      )}
+                      onReset={() => runAction('memory-reset', async () => {
+                        const result = await resetMemory(selectedAvatar.id)
+
+                        if (typeof window !== 'undefined') {
+                          window.dispatchEvent(new CustomEvent('viewer:reset-speech-state', {
+                            detail: { avatarId: selectedAvatar.id },
+                          }))
+                        }
+
+                        return result
+                      }, 'Bot memory and speech state reset.')}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-5">
+                  <section className="rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.82)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+                    <div className="text-xs uppercase tracking-[0.3em] text-cyan-200/70">Launch checklist</div>
+                    <div className="mt-4 grid gap-3">
+                      <StatTile
+                        label="Identity"
+                        value={hasPersonality ? 'Ready' : 'Missing'}
+                        tone={hasPersonality ? 'success' : 'warning'}
+                        detail="Backstory and personality make the starter flow clearer."
+                      />
+                      <StatTile
+                        label="Memory"
+                        value={hasMemoryNotes ? 'Seeded' : 'Add notes'}
+                        tone={hasMemoryNotes ? 'success' : 'warning'}
+                        detail="Relationship notes improve first conversations."
+                      />
+                      <StatTile
+                        label="AI"
+                        value={hasActiveCredential ? 'Connected' : 'Connect one'}
+                        tone={hasActiveCredential ? 'success' : 'warning'}
+                        detail="A saved active provider is required before Viewer chat."
+                      />
+                    </div>
+                  </section>
+
+                  <section className="rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.82)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+                    <div className="text-xs uppercase tracking-[0.3em] text-cyan-200/70">Redesign notes</div>
+                    <div className="mt-3 text-sm leading-6 text-white/62">
+                      The new Stitch layout adds room for procedural and hologram surfaces. Those screens are visible in the nav now so users can understand where those workflows will live later.
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeSection === 'vrm-library' ? (
+            <div className="space-y-5">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                <StatTile
+                  label="Shared presets"
+                  value={sharedAvatarPresets.length}
+                  detail="Starter avatars available to every account."
+                />
+                <StatTile
+                  label="My models"
+                  value={avatars.length}
+                  tone={avatars.length > 0 ? 'success' : 'warning'}
+                  detail="Personal avatars appear in Manage and Viewer."
+                />
+                <StatTile
+                  label="Selected preset"
+                  value={selectedSharedPreset?.label || 'None'}
+                  tone="planned"
+                  detail="Preview it before creating your own copy."
+                />
+                <StatTile
+                  label="Upload state"
+                  value={avatarUpload.file ? 'File selected' : 'Idle'}
+                  tone={avatarUpload.file ? 'success' : 'planned'}
+                  detail={avatarUpload.file?.name || 'Choose a VRM or GLB to start.'}
+                />
+              </div>
+
+              <div className="grid gap-5 2xl:grid-cols-[360px_minmax(0,1fr)]">
+                <div className="space-y-5">
+                  <AvatarPreviewCard
+                    asset={previewAsset}
+                    file={avatarUpload.file}
+                    helper="Preview the selected shared preset or the local file you are about to upload."
+                    emptyLabel="Select a shared preset or choose a VRM or GLB file to preview it before creation."
+                  />
+
+                  <AvatarUploadCard
+                    busy={busyKey === 'avatar-upload'}
+                    draft={avatarUpload}
+                    onChange={(key, value) => {
+                      setAvatarUpload((current) => ({ ...current, [key]: value }))
+                      if (key === 'file') {
+                        setCustomAvatarDraft(EMPTY_CUSTOM_AVATAR)
+                      }
+                    }}
+                    onSubmit={() =>
+                      runAction('avatar-upload', async () => {
+                        const avatar = await saveAvatarUpload(avatarUpload)
+                        await saveAvatarIdentity(avatar.id, {
+                          name: avatarUpload.name || avatar.name,
+                          backstory: avatarUpload.backstory,
+                          personality: avatarUpload.personality,
+                          llmCredentialId: null,
+                        })
+                        setAvatarUpload(EMPTY_AVATAR_UPLOAD)
+                        setSelectedAvatarId(String(avatar.id))
+                        setActiveSection('avatar-edit')
+                      }, 'Avatar uploaded.')
+                    }
+                  />
+                </div>
+
+                <div className="space-y-5">
+                  <div className="grid gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+                    <SharedPresetCard
+                      items={sharedAvatarPresets}
+                      selectedId={customAvatarDraft.sharedAvatarId}
+                      onSelect={(presetId) => {
+                        const nextSharedAvatar = sharedAvatarPresets.find((entry) => entry.id === presetId)
+                        setCustomAvatarDraft(buildSharedAvatarDraft(nextSharedAvatar))
+                        setAvatarUpload(EMPTY_AVATAR_UPLOAD)
+                      }}
+                    />
+
+                    <SharedAvatarBuilder
+                      sharedAvatars={sharedAvatarPresets}
+                      draft={customAvatarDraft}
+                      busy={busyKey === 'custom-avatar-create'}
+                      onChange={(key, value) => {
+                        if (key === 'sharedAvatarId') {
+                          const nextSharedAvatar = sharedAvatarPresets.find((entry) => entry.id === value)
+                          setCustomAvatarDraft(buildSharedAvatarDraft(nextSharedAvatar))
+                          return
+                        }
+
+                        setCustomAvatarDraft((current) => ({ ...current, [key]: value }))
+                      }}
+                      onSubmit={() =>
+                        runAction('custom-avatar-create', async () => {
+                          const baseAvatar = sharedAvatarPresets.find((entry) => entry.id === customAvatarDraft.sharedAvatarId)
+                          if (!baseAvatar) {
+                            throw new Error('Select a shared avatar first.')
+                          }
+
+                          const createdAvatar = await adoptSharedAvatar(baseAvatar, {
+                            name: customAvatarDraft.name,
+                            backstory: customAvatarDraft.backstory,
+                            personality: customAvatarDraft.personality,
+                            presentationGender: baseAvatar.presentationGender || '',
+                          })
+
+                          await saveAvatarIdentity(createdAvatar.id, {
+                            name: customAvatarDraft.name || createdAvatar.name,
+                            backstory: customAvatarDraft.backstory,
+                            personality: customAvatarDraft.personality,
+                            llmCredentialId: null,
+                          })
+
+                          if (customAvatarDraft.memory.trim()) {
+                            const memoryState = await ensureMemory(createdAvatar.id, { force: true })
+                            await saveMemory(createdAvatar.id, {
+                              markdownContent: customAvatarDraft.memory,
+                              revision: memoryState.memory?.revision || 1,
+                            })
+                          }
+
+                          setSelectedAvatarId(String(createdAvatar.id))
+                          setCustomAvatarDraft(EMPTY_CUSTOM_AVATAR)
+                          setActiveSection('avatar-edit')
+                        }, 'Custom avatar created.')
+                      }
+                    />
+                  </div>
+
                   <AvatarLibraryPanel
                     avatars={avatars}
                     selectedAvatarId={selectedAvatarId}
@@ -851,257 +1226,248 @@ export default function ManagePage({ user, workspace }) {
                     onDelete={(avatarId) => runAction('avatar-delete', () => removeAvatar(avatarId), 'Avatar deleted.')}
                     busy={busyKey === 'avatar-delete'}
                   />
-
-                  <EffectiveAvatarPersona avatar={selectedAvatar} persona={effectivePersona} />
                 </div>
-
-                <AvatarPreviewCard
-                  asset={selectedAvatarPreviewAsset}
-                  file={null}
-                  helper="The preview follows the selected avatar. Rotate it until the face looks right, then save that direction as the default start."
-                  emptyLabel="Create an avatar in VRM Uploads, then return here to edit its identity and memory."
-                  defaultFacingYaw={selectedAvatar?.defaultFacingYaw || 0}
-                  onSaveDefaultFacing={selectedAvatar
-                    ? (defaultFacingYaw) => runAction(
-                      'avatar-facing',
-                      () => saveAvatarFacing(selectedAvatar.id, defaultFacingYaw),
-                      'Avatar starting direction saved.',
-                    )
-                    : null}
-                  saveFacingBusy={busyKey === 'avatar-facing'}
-                />
-              </div>
-
-              <div className="grid gap-5 xl:grid-cols-2">
-                <AvatarIdentityPanel
-                  avatar={selectedAvatar}
-                  credentialId={effectivePersona?.llmCredentialId || ''}
-                  credentials={credentials}
-                  ttsCredentials={ttsCredentials}
-                  ttsVoicesByCredential={ttsVoicesByCredential}
-                  onLoadTtsVoices={(credentialId) => loadTtsVoiceCatalog(credentialId)}
-                  onPreviewTts={(payload, options) => previewAvatarTts(selectedAvatar.id, payload, options)}
-                  busy={avatarAutosaveBusy}
-                  onSave={saveAvatarProfileAutosave}
-                />
-
-                <MemoryPanel
-                  memory={memory}
-                  revisions={memoryRevisions}
-                  busy={busyKey === 'memory-save' || busyKey === 'memory-reset' || busyKey === 'memory-compress'}
-                  onSave={(payload) => runAction('memory-save', () => saveMemory(selectedAvatar.id, payload), 'Memory updated.')}
-                  onCompress={() => runAction(
-                    'memory-compress',
-                    () => compressMemory(selectedAvatar.id, { revision: memory.revision }),
-                    (result) => result?.compressionRun?.summary || 'Memory compression finished.',
-                  )}
-                  onReset={() => runAction('memory-reset', async () => {
-                    const result = await resetMemory(selectedAvatar.id)
-
-                    if (typeof window !== 'undefined') {
-                      window.dispatchEvent(new CustomEvent('viewer:reset-speech-state', {
-                        detail: { avatarId: selectedAvatar.id },
-                      }))
-                    }
-
-                    return result
-                  }, 'Bot memory and speech state reset.')}
-                />
-              </div>
-            </div>
-          ) : null}
-
-          {activeSection === 'vrm-library' ? (
-            <div className="space-y-5">
-              <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-                <SharedPresetCard
-                  items={sharedAvatarPresets}
-                  selectedId={customAvatarDraft.sharedAvatarId}
-                  onSelect={(presetId) => {
-                    const nextSharedAvatar = sharedAvatarPresets.find((entry) => entry.id === presetId)
-                    setCustomAvatarDraft(buildSharedAvatarDraft(nextSharedAvatar))
-                    setAvatarUpload(EMPTY_AVATAR_UPLOAD)
-                  }}
-                />
-
-                <AvatarPreviewCard
-                  asset={previewAsset}
-                  file={avatarUpload.file}
-                  helper="Preview the selected shared preset or the local VRM file you are about to upload."
-                  emptyLabel="Select a shared preset or choose a VRM or GLB file to preview it before creation."
-                />
-              </div>
-
-              <div className="grid gap-5 xl:grid-cols-2">
-                <SharedAvatarBuilder
-                  sharedAvatars={sharedAvatarPresets}
-                  draft={customAvatarDraft}
-                  busy={busyKey === 'custom-avatar-create'}
-                  onChange={(key, value) => {
-                    if (key === 'sharedAvatarId') {
-                      const nextSharedAvatar = sharedAvatarPresets.find((entry) => entry.id === value)
-                      setCustomAvatarDraft(buildSharedAvatarDraft(nextSharedAvatar))
-                      return
-                    }
-
-                    setCustomAvatarDraft((current) => ({ ...current, [key]: value }))
-                  }}
-                  onSubmit={() =>
-                    runAction('custom-avatar-create', async () => {
-                      const baseAvatar = sharedAvatarPresets.find((entry) => entry.id === customAvatarDraft.sharedAvatarId)
-                      if (!baseAvatar) {
-                        throw new Error('Select a shared avatar first.')
-                      }
-
-                      const createdAvatar = await adoptSharedAvatar(baseAvatar, {
-                        name: customAvatarDraft.name,
-                        backstory: customAvatarDraft.backstory,
-                        personality: customAvatarDraft.personality,
-                        presentationGender: baseAvatar.presentationGender || '',
-                      })
-
-                      await saveAvatarIdentity(createdAvatar.id, {
-                        name: customAvatarDraft.name || createdAvatar.name,
-                        backstory: customAvatarDraft.backstory,
-                        personality: customAvatarDraft.personality,
-                        llmCredentialId: null,
-                      })
-
-                      if (customAvatarDraft.memory.trim()) {
-                        const memoryState = await ensureMemory(createdAvatar.id, { force: true })
-                        await saveMemory(createdAvatar.id, {
-                          markdownContent: customAvatarDraft.memory,
-                          revision: memoryState.memory?.revision || 1,
-                        })
-                      }
-
-                      setSelectedAvatarId(String(createdAvatar.id))
-                      setCustomAvatarDraft(EMPTY_CUSTOM_AVATAR)
-                      setActiveSection('avatar-edit')
-                    }, 'Custom avatar created.')
-                  }
-                />
-
-                <AvatarUploadCard
-                  busy={busyKey === 'avatar-upload'}
-                  draft={avatarUpload}
-                  onChange={(key, value) => {
-                    setAvatarUpload((current) => ({ ...current, [key]: value }))
-                    if (key === 'file') {
-                      setCustomAvatarDraft(EMPTY_CUSTOM_AVATAR)
-                    }
-                  }}
-                  onSubmit={() =>
-                    runAction('avatar-upload', async () => {
-                      const avatar = await saveAvatarUpload(avatarUpload)
-                      await saveAvatarIdentity(avatar.id, {
-                        name: avatarUpload.name || avatar.name,
-                        backstory: avatarUpload.backstory,
-                        personality: avatarUpload.personality,
-                        llmCredentialId: null,
-                      })
-                      setAvatarUpload(EMPTY_AVATAR_UPLOAD)
-                      setSelectedAvatarId(String(avatar.id))
-                      setActiveSection('avatar-edit')
-                    }, 'Avatar uploaded.')
-                  }
-                />
               </div>
             </div>
           ) : null}
 
           {activeSection === 'vrma-library' ? (
-            <div className="grid gap-5 xl:grid-cols-2">
-              <AnimationUploadCard
-                busy={busyKey === 'animation-upload'}
-                draft={animationUpload}
-                onChange={(key, value) => setAnimationUpload((current) => ({ ...current, [key]: value }))}
-                onSubmit={() =>
-                  runAction('animation-upload', async () => {
-                    const animation = await saveAnimationUpload({
-                      ...animationUpload,
-                      keywords: toList(animationUpload.keywords),
-                      emotionTags: toList(animationUpload.emotionTags),
-                    })
-                    setAnimationUpload(EMPTY_ANIMATION_UPLOAD)
-                    setSelectedAnimationId(String(animation.id))
-                  }, 'Animation uploaded.')
-                }
-              />
+            <div className="space-y-5">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                <StatTile label="Uploaded clips" value={animations.length} detail="Personal VRMA files stored in your library." />
+                <StatTile label="Selected clip" value={selectedAnimation?.name || 'None'} tone="planned" detail={selectedAnimation?.filename || 'Pick one from the list.'} />
+                <StatTile label="Thinking clips" value={animations.filter((entry) => entry.kind === 'thinking').length} tone="planned" detail="Reserved for the waiting state." />
+                <StatTile label="Expression overlays" value={animations.filter((entry) => entry.kind === 'expression').length} tone="planned" detail="Facial-only overlays should stay coherent." />
+              </div>
 
-              <AssetListCard
-                title="My animations"
-                subtitle="Edit or delete the uploaded animation records in your personal library."
-                items={animations}
-                selectedId={selectedAnimationId}
-                onSelect={setSelectedAnimationId}
-                onDelete={() => selectedAnimation && runAction('animation-delete', () => removeAnimation(selectedAnimation.id), 'Animation deleted.')}
-                emptyLabel="No animations yet"
-                itemLabel={(item) => `${item.kind}: ${item.name}`}
-                busy={busyKey === 'animation-delete'}
-              />
-
-              <div className="xl:col-span-2">
-                <AnimationMetadataPanel
-                  animation={selectedAnimation}
-                  busy={busyKey === 'animation-save'}
-                  onSave={(payload) =>
-                    runAction('animation-save', () => saveAnimationMetadata(selectedAnimation.id, payload), 'Animation metadata saved.')
+              <div className="grid gap-5 xl:grid-cols-2">
+                <AnimationUploadCard
+                  busy={busyKey === 'animation-upload'}
+                  draft={animationUpload}
+                  onChange={(key, value) => setAnimationUpload((current) => ({ ...current, [key]: value }))}
+                  onSubmit={() =>
+                    runAction('animation-upload', async () => {
+                      const animation = await saveAnimationUpload({
+                        ...animationUpload,
+                        keywords: toList(animationUpload.keywords),
+                        emotionTags: toList(animationUpload.emotionTags),
+                      })
+                      setAnimationUpload(EMPTY_ANIMATION_UPLOAD)
+                      setSelectedAnimationId(String(animation.id))
+                    }, 'Animation uploaded.')
                   }
                 />
+
+                <AssetListCard
+                  title="My animations"
+                  subtitle="Edit or delete the uploaded animation records in your personal library."
+                  items={animations}
+                  selectedId={selectedAnimationId}
+                  onSelect={setSelectedAnimationId}
+                  onDelete={() => selectedAnimation && runAction('animation-delete', () => removeAnimation(selectedAnimation.id), 'Animation deleted.')}
+                  emptyLabel="No animations yet"
+                  itemLabel={(item) => `${item.kind}: ${item.name}`}
+                  busy={busyKey === 'animation-delete'}
+                />
+
+                <div className="xl:col-span-2">
+                  <AnimationMetadataPanel
+                    animation={selectedAnimation}
+                    busy={busyKey === 'animation-save'}
+                    onSave={(payload) =>
+                      runAction('animation-save', () => saveAnimationMetadata(selectedAnimation.id, payload), 'Animation metadata saved.')
+                    }
+                  />
+                </div>
               </div>
             </div>
           ) : null}
 
           {activeSection === 'llm-config' ? (
-            <LlmSettingsPanel
-              providers={providers}
-              credentials={credentials}
-              models={providerModels}
-              busy={busyKey === 'credential-save' || busyKey === 'credential-delete'}
-              modelsBusy={isModelsLoading}
-              onLoadModels={handleLoadProviderModels}
-              onSaveCredential={(payload) => runAction('credential-save', () => saveCredential(payload), 'Credential saved.')}
-              onDeleteCredential={(credentialId) => runAction('credential-delete', () => removeCredential(credentialId), 'Credential deleted.')}
-            />
+            <div className="space-y-5">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                <StatTile label="Providers" value={providers.length} detail="OpenRouter, OpenAI, Gemini, DeepSeek, GLM, and MiniMax are available." />
+                <StatTile label="Saved credentials" value={credentials.length} tone={credentials.length > 0 ? 'success' : 'warning'} detail="At least one active key is needed for chat." />
+                <StatTile label="Selected avatar route" value={effectivePersona?.llmProvider || 'Not attached'} tone={hasActiveCredential ? 'success' : 'warning'} detail={effectivePersona?.llmCredentialId ? 'Primary persona has an active connection.' : 'Attach one from Studio Profile.'} />
+                <StatTile label="Model catalog" value={isModelsLoading ? 'Loading' : 'Ready'} tone={isModelsLoading ? 'warning' : 'success'} detail="Model search stays provider-specific." />
+              </div>
+
+              <LlmSettingsPanel
+                providers={providers}
+                credentials={credentials}
+                models={providerModels}
+                busy={busyKey === 'credential-save' || busyKey === 'credential-delete'}
+                modelsBusy={isModelsLoading}
+                onLoadModels={handleLoadProviderModels}
+                onSaveCredential={(payload) => runAction('credential-save', () => saveCredential(payload), 'Credential saved.')}
+                onDeleteCredential={(credentialId) => runAction('credential-delete', () => removeCredential(credentialId), 'Credential deleted.')}
+              />
+
+              <PlannedPanel
+                eyebrow="Planned AI controls"
+                title="Routing, fallback, and policy presets"
+                description="These options were present in the Stitch redesign but do not have backend support yet."
+                footer="The current live behavior still uses one chosen provider/model per saved credential. Multi-step routing and policy presets remain TODO work."
+              >
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <PlaceholderToggleRow label="Automatic fallback chain" enabled detail="Retry with a secondary provider when the primary route fails." />
+                  <PlaceholderToggleRow label="Cost-aware routing" enabled={false} detail="Prefer cheaper models for low-stakes turns." />
+                  <PlaceholderSliderRow label="Reasoning budget" value="Balanced" detail="Expose a simpler user-facing depth control later." />
+                  <PlaceholderSliderRow label="Response verbosity" value="Medium" detail="Future UX control for concise versus expansive replies." />
+                </div>
+              </PlannedPanel>
+            </div>
           ) : null}
 
           {activeSection === 'tts-config' ? (
-            <TtsSettingsPanel
-              providers={ttsProviders}
-              credentials={ttsCredentials}
-              busy={busyKey === 'tts-credential-save' || busyKey === 'tts-credential-delete'}
-              onSaveCredential={(payload) => runAction('tts-credential-save', () => saveTtsConnection(payload), 'ElevenLabs connection saved.')}
-              onDeleteCredential={(credentialId) => runAction('tts-credential-delete', () => removeTtsConnection(credentialId), 'ElevenLabs connection deleted.')}
-            />
+            <div className="space-y-5">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                <StatTile label="Voice providers" value={ttsProviders.length} detail="ElevenLabs is the current supported backend TTS provider." />
+                <StatTile label="Saved endpoints" value={ttsCredentials.length} tone={ttsCredentials.length > 0 ? 'success' : 'warning'} detail="Attach endpoints first, then pick voices per avatar." />
+                <StatTile label="Selected avatar voice" value={selectedAvatar?.ttsVoiceName || 'Browser fallback'} tone={selectedAvatar?.ttsVoiceName ? 'success' : 'planned'} detail={selectedAvatar?.speechLanguage ? `Language ${selectedAvatar.speechLanguage}` : 'Language auto detect.'} />
+                <StatTile label="Voice catalog cache" value={Object.keys(ttsVoicesByCredential).length} tone="planned" detail="Loaded voice lists stay scoped by credential." />
+              </div>
+
+              <TtsSettingsPanel
+                providers={ttsProviders}
+                credentials={ttsCredentials}
+                busy={busyKey === 'tts-credential-save' || busyKey === 'tts-credential-delete'}
+                onSaveCredential={(payload) => runAction('tts-credential-save', () => saveTtsConnection(payload), 'ElevenLabs connection saved.')}
+                onDeleteCredential={(credentialId) => runAction('tts-credential-delete', () => removeTtsConnection(credentialId), 'ElevenLabs connection deleted.')}
+              />
+
+              <PlannedPanel
+                eyebrow="Planned speech controls"
+                title="Voice automation and delivery tuning"
+                description="The redesign included deeper speech direction options that are not connected yet."
+                footer="Current production behavior supports backend-streamed ElevenLabs audio and browser speech fallback. Emotional voice mapping and advanced delivery tuning are still pending."
+              >
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <PlaceholderToggleRow label="Emotion-aware voice switching" enabled={false} detail="Map reply mood to voice style or preset." />
+                  <PlaceholderToggleRow label="Auto language lock" enabled detail="Stick to one language for a session unless explicitly changed." />
+                  <PlaceholderSliderRow label="Speech cadence" value="1.0x" detail="Future per-avatar pacing control." />
+                  <PlaceholderSliderRow label="Expressiveness" value="72%" detail="Planned abstraction above raw provider options." />
+                </div>
+              </PlannedPanel>
+            </div>
           ) : null}
 
           {activeSection === 'chat' ? (
-            <ChatAdminPanel
-              avatar={selectedAvatar}
-              conversations={conversations}
-              messages={chatMessages}
-              credentials={credentials}
-              activeConversationId={activeConversationId}
-              busy={busyKey === 'chat-send'}
-              loadingConversations={false}
-              loadingMessages={false}
-              onConversationSelect={(conversationId) => {
-                setActiveConversationId(conversationId)
-                if (conversationId) {
-                  ensureConversationMessages(conversationId).catch((nextError) => setNotice(nextError.message))
+            <div className="space-y-5">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                <StatTile label="Saved threads" value={conversations.length} detail="Conversation history for the selected avatar." />
+                <StatTile label="Loaded messages" value={chatMessages.length} tone="planned" detail="Messages for the active thread in the lab." />
+                <StatTile label="Persona route" value={effectivePersona?.name || selectedAvatar?.name || 'None'} tone={selectedAvatar ? 'success' : 'warning'} detail={hasActiveCredential ? 'Ready for controlled testing.' : 'Attach AI before sending.'} />
+                <StatTile label="Viewer handoff" value="Available" tone="success" detail="Use Workspace after validating replies here." />
+              </div>
+
+              <ChatAdminPanel
+                avatar={selectedAvatar}
+                conversations={conversations}
+                messages={chatMessages}
+                credentials={credentials}
+                activeConversationId={activeConversationId}
+                busy={busyKey === 'chat-send'}
+                loadingConversations={false}
+                loadingMessages={false}
+                onConversationSelect={(conversationId) => {
+                  setActiveConversationId(conversationId)
+                  if (conversationId) {
+                    ensureConversationMessages(conversationId).catch((nextError) => setNotice(nextError.message))
+                  }
+                }}
+                onSendMessage={(payload) =>
+                  runAction('chat-send', async () => {
+                    const response = await sendChatMessage(selectedAvatar.id, {
+                      ...payload,
+                      personaId: effectivePersona?.id || undefined,
+                    })
+                    setActiveConversationId(response.conversation.id)
+                  }, 'Message sent.')
                 }
-              }}
-              onSendMessage={(payload) =>
-                runAction('chat-send', async () => {
-                  const response = await sendChatMessage(selectedAvatar.id, {
-                    ...payload,
-                    personaId: effectivePersona?.id || undefined,
-                  })
-                  setActiveConversationId(response.conversation.id)
-                }, 'Message sent.')
-              }
-            />
+              />
+            </div>
+          ) : null}
+
+          {activeSection === 'procedural' ? (
+            <div className="space-y-5">
+              <PlannedPanel
+                eyebrow="Procedural stack"
+                title="Interaction and autonomous behavior"
+                description={`These redesigned controls are placeholders for future runtime systems. ${selectedAvatar ? `${selectedAvatar.name} is the current target avatar.` : 'Select an avatar to see how these controls will eventually apply.'}`}
+                footer="Current live runtime control remains limited to the existing Viewer motion, speech, and camera options. The cards below are visual placeholders only."
+              >
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <PlaceholderSliderRow label="Blink speed" value="1.2s" detail="Planned control for average blink interval." />
+                  <PlaceholderSliderRow label="Blink variation" value="45%" detail="Randomness around the base blink cadence." />
+                  <PlaceholderSliderRow label="Breathing intensity" value="0.65" detail="Subtle chest and shoulder motion control." />
+                  <PlaceholderToggleRow label="Shoulder movement" enabled detail="Blend shoulder lift into the breathing loop." />
+                </div>
+              </PlannedPanel>
+
+              <PlannedPanel
+                eyebrow="Lip sync"
+                title="Mic input, sensitivity, and vowel shaping"
+                description="The redesign called for live input controls and vowel meters. None of those hooks exist in the current runtime yet."
+              >
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <PlaceholderToggleRow label="Studio microphone routing" enabled detail="Use a chosen capture input for future live lip sync." />
+                  <PlaceholderSliderRow label="Sensitivity threshold" value="-42dB" detail="Ignore room noise below this level." />
+                  <PlaceholderToggleRow label="Real-time vowel monitor" enabled={false} detail="Show detected A / E / O emphasis during capture." />
+                  <PlaceholderToggleRow label="Background gate" enabled detail="Mute low-level idle hum from the mic path." />
+                </div>
+              </PlannedPanel>
+
+              <PlannedPanel
+                eyebrow="Interaction"
+                title="Hitboxes and tactile response"
+                description="These planned toggles match the redesigned interaction settings screen."
+              >
+                <div className="grid gap-4 xl:grid-cols-3">
+                  <PlaceholderToggleRow label="Head reactivity" enabled detail="Head tracking and pet interaction responses." />
+                  <PlaceholderToggleRow label="Hand collision" enabled detail="Future self-collision and object contact." />
+                  <PlaceholderToggleRow label="Body physics" enabled={false} detail="Clothing and hair dynamics." />
+                </div>
+              </PlannedPanel>
+            </div>
+          ) : null}
+
+          {activeSection === 'hologram' ? (
+            <div className="space-y-5">
+              <PlannedPanel
+                eyebrow="Projection presets"
+                title="Hologram layout and control center"
+                description="This placeholder screen maps the future dedicated projection workflow for PIXELXL-style prism output and related hologram hardware."
+                footer="No separate hologram window, prism renderer, or calibration transport is implemented yet. The layout remains visible here so the future workflow is explicit."
+              >
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {['Looking Glass', "Pepper's Ghost", 'PIXELXL Prism', 'SBS Mode', 'Top-Bottom', 'Custom'].map((preset) => (
+                    <div
+                      key={preset}
+                      className={`rounded-[24px] border px-4 py-5 ${preset === 'PIXELXL Prism' ? 'border-cyan-300/35 bg-cyan-300/10 text-cyan-100' : 'border-white/10 bg-black/20 text-white/78'}`}
+                    >
+                      <div className="text-lg font-semibold">{preset}</div>
+                      <div className="mt-2 text-sm text-white/58">
+                        {preset === 'PIXELXL Prism' ? 'Primary target for the planned four-view hologram pipeline.' : 'Placeholder preset card from the redesign.'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </PlannedPanel>
+
+              <PlannedPanel
+                eyebrow="Calibration"
+                title="Projection tuning and display flags"
+                description="Future controls for contrast, offsets, view mirroring, and stereoscopic display behavior."
+              >
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <PlaceholderSliderRow label="View offset" value="14mm" detail="Shift the projected prism framing." />
+                  <PlaceholderSliderRow label="Projection contrast" value="82%" detail="Brightness and contrast tuning for hardware output." />
+                  <PlaceholderToggleRow label="Transparent background" enabled detail="Hide standard scene background for projection clarity." />
+                  <PlaceholderToggleRow label="Stereoscopic rendering" enabled={false} detail="Disabled until a real renderer path exists." disabled />
+                </div>
+              </PlannedPanel>
+            </div>
           ) : null}
         </div>
       </div>

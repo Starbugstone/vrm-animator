@@ -1,6 +1,6 @@
 ## TODO
 
-Updated: 2026-03-15
+Updated: 2026-03-18
 
 This file is intentionally short. `devlog.md` holds the product narrative and end goal; this file is the working task list for the next implementation window.
 
@@ -48,6 +48,7 @@ This baseline has been verified against the current repository. The next phase s
 - keep validating provider-specific stream quirks like MiniMax cumulative deltas and reasoning fields against real accounts
 - harden the streamed event contract for text, cue, memory, and completion events
 - continue tightening cue validation against allowed avatar animation metadata
+- keep refining the new stage-direction normalization so raw provider habits like `*smiles*`, long descriptive action lines, legacy equals-style cue bundles, and `[laughing]` stay hidden from visible chat while still mapping cleanly into allowed avatar cues and compact ElevenLabs speech actions such as `[giggles]`, without stripping real spoken emphasis like `*say*`
 - harden retries, timeouts, and provider failure handling
 - keep provider model catalogs current as OpenAI, Gemini, DeepSeek, GLM, and MiniMax release new models
 - keep model-specific prompt budgets aligned with provider model metadata as catalogs evolve
@@ -70,10 +71,15 @@ This baseline has been verified against the current repository. The next phase s
 - keep bundle splitting healthy so Three/VRM code does not dominate the main app chunk
 - remove any new duplicated transformation logic as it appears
 - improve UX without weakening backend authority
+- keep the new Viewer debug rail useful without turning it into a separate source of truth; if turn-history debug persistence is needed later, back it with the backend instead of reconstructing prompts in the browser
 - add a guided tour / setup flow that walks non-technical users through avatar selection, identity setup, LLM setup, and first chat
 - keep every setup surface biased toward plain language, clear sequencing, and obvious next actions
 - surface prerequisites early so users are told what is needed before they hit blocked states
 - make the core software experience feel complete even without any hologram hardware
+- finish wiring the new Stitch-driven Control Center and Workspace redesign now that the shell and placeholder screens are live
+- replace the new placeholder procedural controls with real runtime-backed settings for blinking, breathing, lip sync input, and tactile interaction
+- replace the new placeholder hologram control center with a real projection window, calibration transport, and PIXELXL prism preset handling
+- decide whether the Viewer should keep its current select dropdown for avatar switching or move fully to the planned searchable visual card list with avatar snapshots
 
 ### 5. Voice and hologram path
 
@@ -81,7 +87,8 @@ This baseline has been verified against the current repository. The next phase s
 - harden the new ElevenLabs BYOK streaming TTS path now that avatar-level voice routing exists
 - keep the browser-speech fallback reliable whenever an avatar has no ElevenLabs voice selected or remote playback fails
 - route future browser boundary timing and ElevenLabs timestamp/alignment data through the new centralized speech clock before adding more reply-sync logic
-- monitor how the refreshed ElevenLabs voice search and language-aware filtering behave against large real-world voice libraries
+- monitor how the refreshed ElevenLabs voice search, stricter avatar language/sex matching, the new tabbed Voice Library flow, and direct library sample playback behave against large real-world voice libraries
+- keep broadening language matching in the ElevenLabs picker as more real-world metadata variants show up, especially labels that use full language names instead of locale codes
 - decide whether more ElevenLabs controls should live at the credential level, avatar level, or stay hidden for first-time users
 - add STT after TTS
 - only then move toward dedicated hologram hardware output
@@ -113,10 +120,13 @@ Before closing a feature set, the minimum checks should be:
   - the stream transport now uses stall detection instead of a strict 60-second total timeout, can fall back to non-streamed completion when no usable streamed text arrives, and preserves partial viewer text on mid-stream failure
   - streamed cue events now include backend-resolved asset ids for movement and expression playback so the viewer no longer has to make the final streamed cue choice locally
   - viewer-side chat now consumes streamed text and cue events, plays movement and facial overlays from backend-resolved cues, and uses browser speech synthesis for spoken replies
+  - the Viewer right rail now includes an LLM debug log for recent turns, showing the exact upstream prompt message payload and raw completion text so memory and prompt behavior can be inspected without opening backend logs
+  - the Viewer left rail, stage, and right rail now keep independent desktop scrolling so long side panels do not push the avatar out of view
   - Manage now includes a dedicated `Voice & speech` section with backend-backed ElevenLabs BYOK credentials, per-avatar speech routing, avatar sex tags, voice overrides, and clear browser-speech fallback behavior
   - avatars now persist `presentationGender` plus optional ElevenLabs voice attachment so shared starter avatars can default to a sensible voice filter without forcing a hard lock
   - avatars now also persist a `defaultFacingYaw`, and the Manage profile preview can save the current rotated T-pose view as the avatar's default starting direction for both Manage and Viewer loads
   - the viewer now prefers streamed ElevenLabs audio playback when an avatar has a saved remote voice, while falling back to browser speech if no remote voice is configured or playback fails
+  - chat parsing now strips raw stage-direction markers like `*smiles*`, `**laughs**`, long descriptive action blocks, legacy bracket bundles like `[emotion=playful | anim:Dance Twirl | delay:1.2s]`, and `[laughing]` from visible assistant text, resolves matching cues against allowed avatar assets when possible, keeps short spoken-emphasis markers like `*say*` visible, and exposes a dedicated speech-only text variant for ElevenLabs playback with compact actions such as `[giggles]`
   - assistant replies may append long-term memory entries through the restricted inline `{memory:...}` bridge, persisted through the existing avatar memory revision flow
   - memory responses now include approximate prompt-footprint diagnostics, active provider/model details, and the exact memory-related prompt blocks shown in the Manage memory panel
   - the Manage memory panel can now trigger manual LLM-backed compression through `/api/avatars/{id}/memory/compress`, with the compressed result saved as a normal revision
@@ -130,6 +140,7 @@ Before closing a feature set, the minimum checks should be:
 ## Follow-Up After Initial Release
 
 - Expand beyond the first ElevenLabs voice flow only after the current TTS setup proves reliable in real use.
+- Keep validating edge cases where an avatar language or sex change leaves an older saved ElevenLabs voice selected, so the picker stays explicit about hidden mismatches instead of silently showing the wrong voice inside `Available voices`.
 - Add STT once TTS is stable.
 - Evaluate structured output in addition to inline cue tags if provider support is consistent.
 - Continue iterating on semantic memory summarization now that the first manual compression path exists.

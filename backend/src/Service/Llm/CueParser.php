@@ -14,6 +14,7 @@ class CueParser
      *
      * @return array{
      *   text:string,
+     *   speechText:string,
      *   emotionTags:list<string>,
      *   animationTags:list<string>,
      *   memoryEntries:list<array{scope:string,value:string}>,
@@ -27,16 +28,58 @@ class CueParser
         $memoryEntries = [];
         $timeline = [];
         $plainText = '';
+        $speechText = '';
         $animationLookup = $this->buildAnimationLookup($assets);
         $expressionAssets = array_values(array_filter($assets, static fn (CueAsset $asset): bool => $asset->isExpression()));
 
-        $parts = preg_split('/(\{(?:emotion|anim|memory):[^}]+\}|\[[^\]]*(?:emotion|anim|memory|delay)\s*:[^\]]+\])/i', $rawContent, -1, PREG_SPLIT_DELIM_CAPTURE);
-        foreach ($parts ?: [$rawContent] as $part) {
-            if (!is_string($part) || $part === '') {
+        $length = strlen($rawContent);
+        $offset = 0;
+
+        while ($offset < $length) {
+            $tagStart = $this->findNextCueStart($rawContent, $offset);
+            if ($tagStart === false) {
+                $normalizedText = $this->normalizeTextSegment(substr($rawContent, $offset));
+                if ($normalizedText !== '') {
+                    $plainText .= $normalizedText;
+                    $speechText .= $normalizedText;
+                    $timeline[] = ['type' => 'text', 'value' => $normalizedText];
+                }
+                break;
+            }
+
+            if ($tagStart > $offset) {
+                $normalizedText = $this->normalizeTextSegment(substr($rawContent, $offset, $tagStart - $offset));
+                if ($normalizedText !== '') {
+                    $plainText .= $normalizedText;
+                    $speechText .= $normalizedText;
+                    $timeline[] = ['type' => 'text', 'value' => $normalizedText];
+                }
+            }
+
+            $tokenMeta = $this->extractCueLikeToken($rawContent, $tagStart);
+            if ($tokenMeta === null) {
+                $normalizedText = $this->normalizeTextSegment(substr($rawContent, $tagStart, 1));
+                if ($normalizedText !== '') {
+                    $plainText .= $normalizedText;
+                    $speechText .= $normalizedText;
+                    $timeline[] = ['type' => 'text', 'value' => $normalizedText];
+                }
+                $offset = $tagStart + 1;
                 continue;
             }
 
-            $parsedTokens = $this->parseCueTokenBundle($part, $animationLookup, $expressionAssets);
+            if (!$tokenMeta['complete']) {
+                $normalizedText = $this->normalizeTextSegment(substr($rawContent, $tagStart));
+                if ($normalizedText !== '') {
+                    $plainText .= $normalizedText;
+                    $speechText .= $normalizedText;
+                    $timeline[] = ['type' => 'text', 'value' => $normalizedText];
+                }
+                break;
+            }
+
+            $token = $tokenMeta['token'];
+            $parsedTokens = $this->parseCueTokenBundle($token, $animationLookup, $expressionAssets);
             if ($parsedTokens !== null) {
                 foreach ($parsedTokens as $entry) {
                     if (($entry['type'] ?? '') === 'emotion') {
@@ -62,20 +105,48 @@ class CueParser
                     $timeline[] = $entry;
                 }
 
+                $offset = $tokenMeta['end'] + 1;
                 continue;
             }
 
-            $normalizedText = $this->normalizeTextSegment($part);
+            $parsedPerformance = $this->parsePerformanceToken($token, $animationLookup, $expressionAssets);
+            if ($parsedPerformance !== null) {
+                foreach ($parsedPerformance['timeline'] as $entry) {
+                    if (($entry['type'] ?? '') === 'emotion') {
+                        $emotionTags[] = (string) ($entry['value'] ?? '');
+                    }
+
+                    if (($entry['type'] ?? '') === 'animation') {
+                        $animationTags[] = (string) ($entry['value'] ?? '');
+                    }
+
+                    $timeline[] = $entry;
+                }
+
+                if ($parsedPerformance['speechText'] !== null) {
+                    $speechText .= $parsedPerformance['speechText'];
+                }
+
+                $offset = $tokenMeta['end'] + 1;
+                continue;
+            }
+
+            $normalizedText = $this->normalizeTextSegment($token);
             if ($normalizedText !== '') {
                 $plainText .= $normalizedText;
+                $speechText .= $normalizedText;
                 $timeline[] = ['type' => 'text', 'value' => $normalizedText];
             }
+
+            $offset = $tokenMeta['end'] + 1;
         }
 
         $stripped = trim($plainText);
+        $strippedSpeech = trim($this->normalizeTextSegment($speechText));
 
         return [
             'text' => $stripped,
+            'speechText' => $strippedSpeech,
             'emotionTags' => array_values(array_unique($emotionTags)),
             'animationTags' => array_values(array_unique($animationTags)),
             'memoryEntries' => array_values($memoryEntries),
@@ -113,19 +184,35 @@ class CueParser
                 }
             }
 
-            $tagEnd = strpos($rawContent, $rawContent[$tagStart] === '[' ? ']' : '}', $tagStart);
-            if ($tagEnd === false) {
+            $tokenMeta = $this->extractCueLikeToken($rawContent, $tagStart);
+            if ($tokenMeta === null) {
+                $text = $this->normalizeTextSegment(substr($rawContent, $tagStart, 1));
+                if ($text !== '') {
+                    $timeline[] = ['type' => 'text', 'value' => $text];
+                }
+                $offset = $tagStart + 1;
+                continue;
+            }
+
+            if (!$tokenMeta['complete']) {
                 $offset = $tagStart;
                 break;
             }
 
-            $token = substr($rawContent, $tagStart, $tagEnd - $tagStart + 1);
+            $token = $tokenMeta['token'];
             $parsedTokens = $this->parseCueTokenBundle($token, $animationLookup, $expressionAssets);
 
             if ($parsedTokens === null) {
-                $text = $this->normalizeTextSegment($token);
-                if ($text !== '') {
-                    $timeline[] = ['type' => 'text', 'value' => $text];
+                $parsedPerformance = $this->parsePerformanceToken($token, $animationLookup, $expressionAssets);
+                if ($parsedPerformance === null) {
+                    $text = $this->normalizeTextSegment($token);
+                    if ($text !== '') {
+                        $timeline[] = ['type' => 'text', 'value' => $text];
+                    }
+                } else {
+                    foreach ($parsedPerformance['timeline'] as $entry) {
+                        $timeline[] = $entry;
+                    }
                 }
             } else {
                 foreach ($parsedTokens as $entry) {
@@ -133,7 +220,7 @@ class CueParser
                 }
             }
 
-            $offset = $tagEnd + 1;
+            $offset = $tokenMeta['end'] + 1;
         }
 
         return [
@@ -342,7 +429,7 @@ class CueParser
                 continue;
             }
 
-            if (preg_match('/^(emotion|anim|memory|delay)\s*:\s*(.+)$/i', $segment, $matches) !== 1) {
+            if (preg_match('/^(emotion|anim|animation|memory|delay)\s*[:=]\s*(.+)$/i', $segment, $matches) !== 1) {
                 if ($isBracketToken) {
                     return null;
                 }
@@ -353,6 +440,9 @@ class CueParser
             $matchedCue = true;
             $type = strtolower((string) ($matches[1] ?? ''));
             $value = trim((string) ($matches[2] ?? ''));
+            if ($type === 'animation') {
+                $type = 'anim';
+            }
 
             $rawSegments[] = [
                 'type' => $type,
@@ -421,19 +511,364 @@ class CueParser
         return $timeline;
     }
 
+    /**
+     * @param array<string, CueAsset> $animationLookup
+     * @param list<CueAsset> $expressionAssets
+     * @return array{timeline:list<array<string, mixed>>,speechText:?string}|null
+     */
+    private function parsePerformanceToken(string $token, array $animationLookup, array $expressionAssets): ?array
+    {
+        $trimmed = trim($token);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        $isBracketToken = str_starts_with($trimmed, '[') && str_ends_with($trimmed, ']');
+        $isAsteriskToken = str_starts_with($trimmed, '**') && str_ends_with($trimmed, '**')
+            || str_starts_with($trimmed, '*') && str_ends_with($trimmed, '*');
+
+        if (!$isBracketToken && !$isAsteriskToken) {
+            return null;
+        }
+
+        $inner = trim($isAsteriskToken && str_starts_with($trimmed, '**')
+            ? substr($trimmed, 2, -2)
+            : substr($trimmed, 1, -1));
+
+        if ($inner === '') {
+            return null;
+        }
+
+        if ($isBracketToken && preg_match('/^(emotion|anim|memory|delay)\s*:/i', $inner) === 1) {
+            return null;
+        }
+
+        $speechActionLabel = $this->resolveSpeechActionLabel($inner);
+
+        if (!$this->looksLikeStageDirection($inner, $isBracketToken, $speechActionLabel)) {
+            return null;
+        }
+
+        $timeline = [];
+        $resolvedAnimation = $this->resolveStageDirectionAnimation($inner, $animationLookup);
+        $resolvedEmotion = $this->resolveStageDirectionEmotion($inner);
+
+        if ($resolvedEmotion !== null) {
+            $timeline[] = $this->buildCueTimelineEntry(
+                'emotion',
+                $resolvedEmotion,
+                $this->resolveExpressionAsset($expressionAssets, $resolvedEmotion),
+            );
+        }
+
+        if ($resolvedAnimation !== null) {
+            $timeline[] = $this->buildCueTimelineEntry('animation', $resolvedAnimation->label, $resolvedAnimation);
+        }
+
+        return [
+            'timeline' => $timeline,
+            'speechText' => $speechActionLabel !== null ? '['.$speechActionLabel.']' : ($isBracketToken ? '['.$this->normalizeSpeechActionLabel($inner).']' : null),
+        ];
+    }
+
+    private function looksLikeStageDirection(string $value, bool $isBracketToken, ?string $speechActionLabel = null): bool
+    {
+        $normalized = $this->normalizeStageDirectionText($value);
+        if ($normalized === '') {
+            return false;
+        }
+
+        if (preg_match('/\n/u', $value) === 1) {
+            return false;
+        }
+
+        $wordCount = preg_match_all('/[a-z0-9]+/i', $normalized);
+        if (!is_int($wordCount) || $wordCount < 1) {
+            return false;
+        }
+
+        $resolvedEmotion = $this->resolveStageDirectionEmotion($value);
+        $hasStageKeyword = $this->hasStageDirectionKeyword($normalized);
+        $hasDescriptiveStageContext = preg_match(
+            '/\b(he|she|they|his|her|their|wings?|hands?|arms?|eyes?|voice|body|head|tail|hair|smile|grin)\b/i',
+            $normalized,
+        ) === 1;
+
+        if ($isBracketToken) {
+            if ($wordCount > 6) {
+                return false;
+            }
+
+            return $speechActionLabel !== null || $resolvedEmotion !== null || $hasStageKeyword;
+        }
+
+        if ($speechActionLabel !== null) {
+            return true;
+        }
+
+        if ($wordCount === 1 && !$hasStageKeyword && $resolvedEmotion === null) {
+            return false;
+        }
+
+        if ($wordCount <= 2 && !$hasStageKeyword && !$hasDescriptiveStageContext) {
+            return false;
+        }
+
+        if ($wordCount > 24) {
+            return false;
+        }
+
+        if ($resolvedEmotion !== null && ($wordCount > 1 || $hasDescriptiveStageContext)) {
+            return true;
+        }
+
+        return $hasStageKeyword;
+    }
+
+    private function hasStageDirectionKeyword(string $value): bool
+    {
+        return preg_match(
+            '/\b(smile|grin|laugh|giggl|chuckl|snicker|wink|nod|wave|shrug|sigh|gasp|whisper|shout|yell|pause|blush|cry|sob|groan|yawn|ponder|think|stare|glance|look|bow|clap|point|smirk|flutter)\w*\b/i',
+            $value,
+        ) === 1;
+    }
+
+    private function resolveStageDirectionEmotion(string $value): ?string
+    {
+        $normalized = $this->normalizeStageDirectionText($value);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $candidates = array_values(array_unique(array_filter(array_merge(
+            [$normalized],
+            preg_split('/\s+/', $normalized) ?: [],
+        ))));
+
+        foreach ($candidates as $candidate) {
+            $emotion = $this->emotionVocabulary->normalize($candidate);
+            if ($emotion !== null) {
+                return $emotion;
+            }
+        }
+
+        if (preg_match('/\b(laugh|giggl|chuckl|snicker)\w*\b/i', $normalized) === 1) {
+            return 'happy';
+        }
+
+        if (preg_match('/\b(whisper|murmur)\w*\b/i', $normalized) === 1) {
+            return 'calm';
+        }
+
+        if (preg_match('/\b(sigh|cry|sob)\w*\b/i', $normalized) === 1) {
+            return 'sad';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, CueAsset> $animationLookup
+     */
+    private function resolveStageDirectionAnimation(string $value, array $animationLookup): ?CueAsset
+    {
+        $normalized = $this->normalizeStageDirectionText($value);
+        if ($normalized === '') {
+            return null;
+        }
+
+        foreach ($this->buildStageDirectionCandidates($normalized) as $candidate) {
+            $key = $this->normalizeAnimationToken($candidate);
+            if ($key === '') {
+                continue;
+            }
+
+            if (array_key_exists($key, $animationLookup)) {
+                return $animationLookup[$key];
+            }
+
+            foreach ($this->buildTokenVariants($key) as $variant) {
+                if (array_key_exists($variant, $animationLookup)) {
+                    return $animationLookup[$variant];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeStageDirectionText(string $value): string
+    {
+        $normalized = strtolower(trim($value));
+        $normalized = preg_replace('/[^a-z0-9\s\'-]+/i', ' ', $normalized) ?? $normalized;
+        $normalized = preg_replace('/\s+/', ' ', $normalized) ?? $normalized;
+
+        return trim($normalized);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function buildStageDirectionCandidates(string $value): array
+    {
+        $candidates = [$value];
+        $words = preg_split('/\s+/', $value) ?: [];
+        $filteredWords = array_values(array_filter(
+            $words,
+            static fn (string $word): bool => !in_array($word, [
+                'a',
+                'an',
+                'the',
+                'and',
+                'then',
+                'softly',
+                'gently',
+                'quietly',
+                'lightly',
+                'slightly',
+                'warmly',
+                'briefly',
+                'suddenly',
+                'lets',
+                'let',
+                'out',
+                'gives',
+                'give',
+                'with',
+                'their',
+                'his',
+                'her',
+            ], true),
+        ));
+
+        if ($filteredWords !== []) {
+            $candidates[] = implode(' ', $filteredWords);
+            $candidates[] = $filteredWords[0];
+        }
+
+        return array_values(array_unique(array_filter($candidates)));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function buildTokenVariants(string $value): array
+    {
+        $variants = [$value];
+        $length = strlen($value);
+
+        if ($length > 4 && str_ends_with($value, 'ing')) {
+            $variants[] = substr($value, 0, -3);
+        }
+
+        if ($length > 3 && str_ends_with($value, 'ed')) {
+            $variants[] = substr($value, 0, -2);
+        }
+
+        if ($length > 3 && str_ends_with($value, 'es')) {
+            $variants[] = substr($value, 0, -2);
+        }
+
+        if ($length > 2 && str_ends_with($value, 's')) {
+            $variants[] = substr($value, 0, -1);
+        }
+
+        return array_values(array_unique(array_filter($variants)));
+    }
+
+    private function normalizeSpeechActionLabel(string $value): string
+    {
+        return preg_replace('/\s+/', ' ', trim($value)) ?? trim($value);
+    }
+
+    private function resolveSpeechActionLabel(string $value): ?string
+    {
+        $normalized = $this->normalizeStageDirectionText($value);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $map = [
+            '/\bgiggl\w*\b/i' => 'giggles',
+            '/\b(laugh|chuckl|snicker)\w*\b/i' => 'laughing',
+            '/\bsigh\w*\b/i' => 'sighs',
+            '/\bgasp\w*\b/i' => 'gasps',
+            '/\byawn\w*\b/i' => 'yawns',
+            '/\b(cry|sob)\w*\b/i' => 'sobs',
+            '/\bgroan\w*\b/i' => 'groans',
+            '/\b(whisper|murmur)\w*\b/i' => 'whispers',
+            '/\b(shout|yell)\w*\b/i' => 'shouts',
+        ];
+
+        foreach ($map as $pattern => $label) {
+            if (preg_match($pattern, $normalized) === 1) {
+                return $label;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{token:string,end:int,complete:bool}|null
+     */
+    private function extractCueLikeToken(string $rawContent, int $start): ?array
+    {
+        $leading = $rawContent[$start] ?? null;
+        if ($leading === null) {
+            return null;
+        }
+
+        if ($leading === '{') {
+            $end = strpos($rawContent, '}', $start);
+
+            return [
+                'token' => $end === false ? substr($rawContent, $start) : substr($rawContent, $start, $end - $start + 1),
+                'end' => $end === false ? strlen($rawContent) - 1 : $end,
+                'complete' => $end !== false,
+            ];
+        }
+
+        if ($leading === '[') {
+            $end = strpos($rawContent, ']', $start);
+
+            return [
+                'token' => $end === false ? substr($rawContent, $start) : substr($rawContent, $start, $end - $start + 1),
+                'end' => $end === false ? strlen($rawContent) - 1 : $end,
+                'complete' => $end !== false,
+            ];
+        }
+
+        if ($leading !== '*') {
+            return null;
+        }
+
+        $delimiter = ($rawContent[$start + 1] ?? null) === '*' ? '**' : '*';
+        $searchOffset = $start + strlen($delimiter);
+        $end = strpos($rawContent, $delimiter, $searchOffset);
+
+        return [
+            'token' => $end === false ? substr($rawContent, $start) : substr($rawContent, $start, $end - $start + strlen($delimiter)),
+            'end' => $end === false ? strlen($rawContent) - 1 : $end + strlen($delimiter) - 1,
+            'complete' => $end !== false,
+        ];
+    }
+
     private function findNextCueStart(string $rawContent, int $offset): int|false
     {
         $braceStart = strpos($rawContent, '{', $offset);
         $bracketStart = strpos($rawContent, '[', $offset);
+        $asteriskStart = strpos($rawContent, '*', $offset);
 
-        if ($braceStart === false) {
-            return $bracketStart;
+        $starts = array_values(array_filter(
+            [$braceStart, $bracketStart, $asteriskStart],
+            static fn (int|false $value): bool => $value !== false,
+        ));
+
+        if ($starts === []) {
+            return false;
         }
 
-        if ($bracketStart === false) {
-            return $braceStart;
-        }
-
-        return min($braceStart, $bracketStart);
+        return min($starts);
     }
 }

@@ -37,6 +37,35 @@ export function listTtsVoices(token, credentialId) {
   }).then((data) => data.voices || [])
 }
 
+export function listTtsVoiceLibrary(token, credentialId, query = {}) {
+  const searchParams = new URLSearchParams()
+
+  Object.entries(query).forEach(([key, value]) => {
+    if (value === null || value === undefined || value === '') {
+      return
+    }
+
+    searchParams.set(key, String(value))
+  })
+
+  const suffix = searchParams.toString() ? `?${searchParams.toString()}` : ''
+
+  return apiRequest(`/api/tts/credentials/${credentialId}/voice-library${suffix}`, {
+    token,
+  }).then((data) => ({
+    voices: data.voices || [],
+    nextPage: Number.isInteger(data.nextPage) ? data.nextPage : null,
+  }))
+}
+
+export function addTtsVoiceLibraryVoice(token, credentialId, payload) {
+  return apiRequest(`/api/tts/credentials/${credentialId}/voice-library/add`, {
+    method: 'POST',
+    token,
+    json: payload,
+  })
+}
+
 export function fetchAvatarTtsSettings(token, avatarId) {
   return apiRequest(`/api/avatars/${avatarId}/tts`, { token })
 }

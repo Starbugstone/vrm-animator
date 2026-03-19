@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildVoiceFacetOptions,
   filterVoicesForAvatar,
   getEffectiveSpeechLanguage,
   getEffectiveVoiceGender,
+  getVoiceFacetValues,
   getVoiceLanguages,
   hasRemoteTtsConfiguration,
   matchesVoiceSearch,
   normalizeGenderTag,
+  voiceMatchesFacetFilters,
   voiceMatchesLanguage,
 } from './ttsVoices.js'
 
@@ -55,6 +58,18 @@ describe('ttsVoices', () => {
     }).map((voice) => voice.id)).toEqual(['1', '3'])
   })
 
+  it('drops mismatched language-tagged voices when the avatar language changes', () => {
+    const voices = [
+      { id: '1', name: 'Claire', language: 'fr', locale: 'fr-FR' },
+      { id: '2', name: 'Adam', language: 'en', locale: 'en-US' },
+      { id: '3', name: 'Mystery' },
+    ]
+
+    expect(filterVoicesForAvatar(voices, {
+      speechLanguage: 'de-DE',
+    }).map((voice) => voice.id)).toEqual(['3'])
+  })
+
   it('matches languages from verified language metadata as well as top-level locale fields', () => {
     const voice = {
       id: '1',
@@ -66,6 +81,18 @@ describe('ttsVoices', () => {
 
     expect(voiceMatchesLanguage(voice, 'fr-FR')).toBe(true)
     expect(getVoiceLanguages(voice)).toEqual(['fr'])
+  })
+
+  it('matches plain-language labels like French and English from ElevenLabs metadata', () => {
+    const voices = [
+      { id: '1', name: 'Claire', language: 'French' },
+      { id: '2', name: 'Adam', language: 'English' },
+      { id: '3', name: 'Mystery' },
+    ]
+
+    expect(filterVoicesForAvatar(voices, {
+      speechLanguage: 'fr-FR',
+    }).map((voice) => voice.id)).toEqual(['1', '3'])
   })
 
   it('searches across voice names and tags', () => {
@@ -84,6 +111,64 @@ describe('ttsVoices', () => {
     expect(matchesVoiceSearch(voice, 'julien parisian')).toBe(true)
     expect(matchesVoiceSearch(voice, 'narration fr')).toBe(true)
     expect(matchesVoiceSearch(voice, 'german')).toBe(false)
+  })
+
+  it('extracts and sorts voice facet options from loaded metadata', () => {
+    const voices = [
+      {
+        id: '1',
+        name: 'Claire',
+        category: 'premade',
+        labels: {
+          use_case: 'narration',
+          age: 'young',
+          accent: 'parisian',
+        },
+      },
+      {
+        id: '2',
+        name: 'Adam',
+        category: 'cloned',
+        labels: {
+          use_case: 'conversational',
+          age: 'middle aged',
+        },
+        verifiedLanguages: [
+          { accent: 'midwestern' },
+        ],
+      },
+    ]
+
+    expect(buildVoiceFacetOptions(voices)).toEqual({
+      categories: ['cloned', 'premade'],
+      useCases: ['conversational', 'narration'],
+      accents: ['midwestern', 'parisian'],
+      ages: ['middle aged', 'young'],
+    })
+    expect(getVoiceFacetValues(voices[0], 'useCase')).toEqual(['narration'])
+  })
+
+  it('matches explicit facet filters against voice metadata', () => {
+    const voice = {
+      id: '1',
+      name: 'Claire',
+      category: 'premade',
+      labels: {
+        use_case: 'narration',
+        age: 'young',
+      },
+      verifiedLanguages: [
+        { accent: 'parisian' },
+      ],
+    }
+
+    expect(voiceMatchesFacetFilters(voice, {
+      category: 'premade',
+      useCase: 'narration',
+      accent: 'parisian',
+      age: 'young',
+    })).toBe(true)
+    expect(voiceMatchesFacetFilters(voice, { accent: 'midwestern' })).toBe(false)
   })
 
   it('detects when an avatar has a remote TTS configuration', () => {

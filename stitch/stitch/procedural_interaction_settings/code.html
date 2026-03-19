@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#0db9f2",
+                        "background-light": "#f5f8f8",
+                        "background-dark": "#101e22",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        input[type='range'] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+        input[type='range']::-webkit-slider-runnable-track {
+            background: #1e353c;
+            height: 6px;
+            border-radius: 9999px;
+        }
+        input[type='range']::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            background: #0db9f2;
+            border-radius: 50%;
+            margin-top: -5px;
+            box-shadow: 0 0 10px rgba(13, 185, 242, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+<div class="relative flex h-auto min-screen w-full flex-col bg-background-light dark:bg-background-dark overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<!-- Top Navigation -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-slate-200 dark:border-slate-800 px-6 py-4 lg:px-40">
+<div class="flex items-center gap-4">
+<div class="text-primary">
+<span class="material-symbols-outlined text-3xl">deployed_code</span>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-tight">VRM-Animator Pro</h2>
+</div>
+<div class="flex gap-3">
+<button class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-200/50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-primary transition-colors">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30">
+<span class="material-symbols-outlined text-primary">person</span>
+</div>
+</div>
+</header>
+<main class="flex-1 flex justify-center py-8 px-4 lg:px-40">
+<div class="max-w-[1000px] w-full flex flex-col md:flex-row gap-8">
+<!-- Sidebar Navigation -->
+<aside class="w-full md:w-64 shrink-0 flex flex-col gap-2">
+<div class="flex items-center gap-3 p-3 mb-4">
+<div class="size-12 rounded-xl bg-gradient-to-br from-primary to-blue-600 flex items-center justify-center shadow-lg shadow-primary/20" data-alt="Abstract blue energy orb icon">
+<span class="material-symbols-outlined text-white">face_6</span>
+</div>
+<div>
+<h3 class="font-bold text-sm">Active Avatar</h3>
+<p class="text-xs text-slate-500 dark:text-slate-400">Cyber_Idol_v2.vrm</p>
+</div>
+</div>
+<nav class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-slate-200 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined text-[20px]">dashboard</span>
+<span class="text-sm font-medium">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/10 text-primary border border-primary/20" href="#">
+<span class="material-symbols-outlined text-[20px]">auto_fix_high</span>
+<span class="text-sm font-semibold">Procedural</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-slate-200 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined text-[20px]">videocam</span>
+<span class="text-sm font-medium">Tracking</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-slate-200 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined text-[20px]">memory</span>
+<span class="text-sm font-medium">Hardware</span>
+</a>
+</nav>
+</aside>
+<!-- Content Area -->
+<div class="flex-1 flex flex-col gap-6">
+<div class="flex flex-col gap-2">
+<h1 class="text-3xl font-bold tracking-tight">Interaction &amp; Procedural</h1>
+<p class="text-slate-500 dark:text-slate-400">Fine-tune your avatar's lifelike interactions and autonomous behavior.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Eye Blinking Section -->
+<div class="glass-card rounded-2xl p-6 flex flex-col gap-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">visibility</span>
+<h3 class="font-bold text-lg">Eye Blinking</h3>
+</div>
+<div class="flex flex-col gap-4">
+<div class="space-y-2">
+<div class="flex justify-between text-sm">
+<label class="font-medium opacity-80">Blink Speed</label>
+<span class="text-primary font-mono">1.2s</span>
+</div>
+<input class="w-full h-1.5 bg-slate-800 rounded-full appearance-none cursor-pointer" max="5.0" min="0.1" step="0.1" type="range" value="1.2"/>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-sm">
+<label class="font-medium opacity-80">Frequency Variation</label>
+<span class="text-primary font-mono">45%</span>
+</div>
+<input class="w-full h-1.5 bg-slate-800 rounded-full appearance-none cursor-pointer" max="100" min="0" step="1" type="range" value="45"/>
+</div>
+</div>
+</div>
+<!-- Breathing Section -->
+<div class="glass-card rounded-2xl p-6 flex flex-col gap-6">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">air</span>
+<h3 class="font-bold text-lg">Breathing</h3>
+</div>
+<div class="flex flex-col gap-4">
+<div class="space-y-2">
+<div class="flex justify-between text-sm">
+<label class="font-medium opacity-80">Inhalation Intensity</label>
+<span class="text-primary font-mono">0.65</span>
+</div>
+<input class="w-full h-1.5 bg-slate-800 rounded-full appearance-none cursor-pointer" max="1" min="0" step="0.01" type="range" value="0.65"/>
+</div>
+<div class="flex items-center justify-between pt-2">
+<label class="text-sm font-medium opacity-80">Shoulder Movement</label>
+<button class="relative inline-flex h-6 w-11 items-center rounded-full bg-primary shadow-inner">
+<span class="inline-block h-4 w-4 transform rounded-full bg-white transition translate-x-6"></span>
+</button>
+</div>
+</div>
+</div>
+<!-- Lip Sync Section -->
+<div class="glass-card rounded-2xl p-6 flex flex-col gap-6 md:col-span-2">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">mic</span>
+<h3 class="font-bold text-lg">Lip Sync</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="flex flex-col gap-4">
+<div class="space-y-2">
+<label class="text-sm font-medium opacity-80">Microphone Input</label>
+<select class="w-full bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none">
+<option>Default - Studio Mic (XLR-3)</option>
+<option>Built-in Microphone</option>
+<option>Virtual Audio Cable</option>
+</select>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-sm">
+<label class="font-medium opacity-80">Sensitivity Threshold</label>
+<span class="text-primary font-mono">-42dB</span>
+</div>
+<input class="w-full h-1.5 bg-slate-800 rounded-full appearance-none cursor-pointer" max="0" min="-60" step="1" type="range" value="-42"/>
+</div>
+</div>
+<div class="flex flex-col justify-center gap-4 bg-slate-900/50 rounded-xl p-4 border border-white/5">
+<div class="flex items-center gap-4">
+<div class="h-1 flex-1 bg-slate-800 rounded-full overflow-hidden flex gap-0.5">
+<div class="h-full bg-primary/40 w-full"></div>
+<div class="h-full bg-primary w-24"></div>
+<div class="h-full bg-slate-700 flex-1"></div>
+</div>
+<span class="text-[10px] uppercase font-bold text-slate-500">Input Level</span>
+</div>
+<div class="flex justify-around">
+<div class="flex flex-col items-center">
+<div class="text-xl font-bold text-primary italic">A</div>
+<div class="text-[10px] opacity-50 uppercase">Vowel</div>
+</div>
+<div class="flex flex-col items-center opacity-30">
+<div class="text-xl font-bold italic">E</div>
+<div class="text-[10px] uppercase">Vowel</div>
+</div>
+<div class="flex flex-col items-center opacity-30">
+<div class="text-xl font-bold italic">O</div>
+<div class="text-[10px] uppercase">Vowel</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Hitboxes / Interaction Section -->
+<div class="glass-card rounded-2xl p-6 flex flex-col gap-6 md:col-span-2">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">touch_app</span>
+<h3 class="font-bold text-lg">Hitboxes &amp; Tactile Interaction</h3>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-sm font-medium opacity-60">Master Switch</span>
+<button class="relative inline-flex h-6 w-11 items-center rounded-full bg-primary shadow-inner">
+<span class="inline-block h-4 w-4 transform rounded-full bg-white transition translate-x-6"></span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+<div class="p-4 rounded-xl border border-white/5 bg-slate-900/40 hover:bg-slate-900/60 transition-colors">
+<div class="flex justify-between items-start mb-2">
+<span class="material-symbols-outlined text-primary/70">face</span>
+<input checked="" class="rounded border-slate-700 text-primary focus:ring-primary bg-slate-900" type="checkbox"/>
+</div>
+<h4 class="font-semibold text-sm">Head Reactivity</h4>
+<p class="text-xs opacity-50">Head tracking &amp; pet interaction</p>
+</div>
+<div class="p-4 rounded-xl border border-white/5 bg-slate-900/40 hover:bg-slate-900/60 transition-colors">
+<div class="flex justify-between items-start mb-2">
+<span class="material-symbols-outlined text-primary/70">front_hand</span>
+<input checked="" class="rounded border-slate-700 text-primary focus:ring-primary bg-slate-900" type="checkbox"/>
+</div>
+<h4 class="font-semibold text-sm">Hand Collision</h4>
+<p class="text-xs opacity-50">Self-collision and objects</p>
+</div>
+<div class="p-4 rounded-xl border border-white/5 bg-slate-900/40 hover:bg-slate-900/60 transition-colors">
+<div class="flex justify-between items-start mb-2">
+<span class="material-symbols-outlined text-primary/70">accessibility_new</span>
+<input class="rounded border-slate-700 text-primary focus:ring-primary bg-slate-900" type="checkbox"/>
+</div>
+<h4 class="font-semibold text-sm">Body Physics</h4>
+<p class="text-xs opacity-50">Clothing and hair dynamics</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="flex items-center justify-end gap-4 mt-4 pb-12">
+<button class="px-6 py-2.5 rounded-xl border border-slate-300 dark:border-slate-800 font-semibold text-sm hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors">Reset Defaults</button>
+<button class="px-6 py-2.5 rounded-xl bg-primary text-slate-900 font-bold text-sm shadow-lg shadow-primary/20 hover:brightness-110 transition-all">Apply Changes</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+</body></html>

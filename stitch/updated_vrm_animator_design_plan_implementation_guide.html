@@ -1,0 +1,59 @@
+# Updated VRM-Animator Design Plan & Implementation Guide
+
+This document provides the final design specifications and technical recommendations for transcribing the VRM-Animator UI into a React-based web application.
+
+## 1. Visual Identity & Theme
+The design follows a "Digital Companion" aesthetic: futuristic, high-contrast, and focused on the 3D avatar.
+
+*   **Color Palette:**
+    *   **Background (Deep Space):** `#081014` (Solid) or `rgba(8, 16, 20, 0.95)` for overlays.
+    *   **Primary Accent (Neon Cyan):** `#0db9f2` (Used for active states, primary buttons, and glow effects).
+    *   **Secondary Accent (Action Teal):** `#14b8a6` (Used for engine status and positive indicators).
+    *   **Warning/Critical:** `#ef4444` (Used for 'Record' and 'Stop' actions).
+    *   **Text (High Contrast):** `#f8fafc` (Primary), `#94a3b8` (Secondary/Muted).
+    *   **Border/Divider:** `rgba(255, 255, 255, 0.08)` or `#1e293b`.
+
+*   **Typography:**
+    *   **Primary Font:** `Inter` (Sans-serif).
+    *   **Scale:**
+        *   Headings: 18px - 24px (Semi-bold).
+        *   Body: 14px (Regular).
+        *   Labels/Mono: 11px (Medium, uppercase for metadata like FPS).
+
+*   **Styling Rules:**
+    *   **Roundness:** `8px` (Standard for containers and buttons).
+    *   **Glassmorphism:** Use `backdrop-filter: blur(12px)` on sidebar panels and overlays to maintain depth.
+    *   **Borders:** `1px` solid borders with subtle transparency to define sections without being heavy.
+
+## 2. Key Screen Layouts & Logic
+
+### A. Main Avatar Workspace (Interactive View)
+*   **Viewport:** Full-bleed 3D canvas (Three.js / React Three Fiber).
+*   **Left Sidebar (LLM Chat):**
+    *   Integrated message history with the avatar.
+    *   Transparent background with blurred overlay.
+*   **Right Sidebar (Testing Controls):**
+    *   **Interaction:** Entire panel slides to the right and hides off-screen.
+    *   **Toggle:** A persistent 'chevron' or 'arrow' button on the far right edge to trigger the `slide-to-right` animation.
+    *   **Content:** Collapsible accordion sections for 'Animations', 'Monitoring', and 'Parameters'.
+
+### B. Hologram Control Center (Calibration)
+*   **Feature:** Optimized for **PIXELXL Prism** (4-side mirrored projection).
+*   **Layout Presets:** Grid of cards representing projection modes (Looking Glass, Pepper's Ghost, Prism).
+*   **Calibration UI:** Horizontal sliders for 'View Offset', 'Light Intensity', and 'Contrast'.
+*   **Live Preview:** Small viewport showing the processed output before executing the full projection.
+
+## 3. Recommended Technical Stack
+To accurately transcribe these designs, use the following React ecosystem:
+
+*   **Framework:** `React` (Next.js recommended for performance).
+*   **3D Rendering:** `@react-three/fiber` + `@react-three/drei` (Standard for VRM loading and animation).
+*   **Styling:** `Tailwind CSS` (For rapid utility-based styling and theme management).
+*   **Animations:** `Framer Motion` (Essential for the slide-to-right sidebar and smooth accordion transitions).
+*   **Icons:** `Lucide React` or `Tabler Icons` (For clean, minimal line icons).
+*   **State Management:** `Zustand` (Lightweight and ideal for managing animation states and calibration parameters).
+
+## 4. Interaction Guidelines
+*   **Hover States:** Buttons should have a subtle glow (`box-shadow: 0 0 10px var(--accent)`) on hover.
+*   **Sidebar Transition:** `ease-in-out`, duration `300ms` for the sliding panel.
+*   **Loading:** Use skeletal screens or a branded "Initializing Neural Link..." spinner for avatar loading phases.

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#0db9f2",
+                        "background-light": "#f5f8f8",
+                        "background-dark": "#101e22",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<title>VRM-Animator Library</title>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen flex flex-col">
+<!-- Top Navigation Bar -->
+<header class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-6 py-3 bg-white/5 dark:bg-background-dark/50 backdrop-blur-md sticky top-0 z-50">
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-3 text-primary">
+<span class="material-symbols-outlined text-3xl">deployed_code</span>
+<h2 class="text-slate-900 dark:text-white text-lg font-bold tracking-tight">VRM-Animator</h2>
+</div>
+<nav class="hidden md:flex items-center gap-6">
+<a class="text-primary text-sm font-semibold border-b-2 border-primary pb-1" href="#">Library</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-primary dark:hover:text-primary text-sm font-medium transition-colors" href="#">Studio</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-primary dark:hover:text-primary text-sm font-medium transition-colors" href="#">Marketplace</a>
+<a class="text-slate-500 dark:text-slate-400 hover:text-primary dark:hover:text-primary text-sm font-medium transition-colors" href="#">Settings</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden sm:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl">search</span>
+<input class="bg-slate-100 dark:bg-slate-800/50 border-none rounded-lg pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-primary w-64 text-slate-900 dark:text-white" placeholder="Search assets..." type="text"/>
+</div>
+<button class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400 transition-colors">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- Sidebar -->
+<aside class="w-64 border-r border-slate-200 dark:border-slate-800 bg-white/20 dark:bg-background-dark/30 p-6 flex flex-col justify-between overflow-y-auto">
+<div class="space-y-8">
+<div>
+<h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Categories</h3>
+<div class="space-y-1">
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-primary/10 text-primary font-semibold" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="text-sm">Models (.vrm)</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#">
+<span class="material-symbols-outlined">motion_photos_on</span>
+<span class="text-sm">Animations</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" href="#">
+<span class="material-symbols-outlined">tune</span>
+<span class="text-sm">Presets</span>
+</a>
+</div>
+</div>
+<div>
+<h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Filters</h3>
+<div class="space-y-4">
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="rounded border-slate-300 dark:border-slate-700 text-primary focus:ring-primary bg-transparent" type="checkbox"/>
+<span class="text-sm text-slate-600 dark:text-slate-300 group-hover:text-primary">Humanoid Only</span>
+</label>
+<label class="flex items-center gap-2 cursor-pointer group">
+<input class="rounded border-slate-300 dark:border-slate-700 text-primary focus:ring-primary bg-transparent" type="checkbox"/>
+<span class="text-sm text-slate-600 dark:text-slate-300 group-hover:text-primary">With Physics</span>
+</label>
+</div>
+</div>
+</div>
+<button class="mt-8 flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl hover:border-primary hover:bg-primary/5 transition-all group">
+<span class="material-symbols-outlined text-3xl text-slate-400 group-hover:text-primary">cloud_upload</span>
+<span class="text-sm font-bold text-slate-500 dark:text-slate-400 group-hover:text-primary">Upload New Asset</span>
+</button>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 flex overflow-hidden">
+<!-- Asset Grid -->
+<section class="flex-1 overflow-y-auto p-6 scroll-smooth">
+<div class="flex items-center justify-between mb-8">
+<h1 class="text-2xl font-bold dark:text-white">Models Library</h1>
+<div class="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+<button class="p-1.5 rounded bg-white dark:bg-slate-700 shadow-sm text-primary">
+<span class="material-symbols-outlined text-xl">grid_view</span>
+</button>
+<button class="p-1.5 rounded text-slate-500">
+<span class="material-symbols-outlined text-xl">view_list</span>
+</button>
+</div>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+<!-- Asset Card 1 -->
+<div class="group cursor-pointer bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden hover:border-primary/50 transition-all hover:shadow-lg hover:shadow-primary/5">
+<div class="aspect-square bg-slate-100 dark:bg-slate-900 overflow-hidden relative">
+<div class="w-full h-full bg-cover bg-center group-hover:scale-110 transition-transform duration-500" data-alt="Anime style 3D character model named Aiko" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuB-Bs0rLvWiA7ggcUcXQ2hLxEkJtVfpDhx8-EAUrFeQRD6rtpkmYuR6K7K9lRFTpi7vc3F0p4rt3GA2t1XNLGvbhn0fWMcTi9uRFuBD1557lpaklxXPfwTzVqArUMXOKBFY678OZR5yHB_ledWTfy4xKatx1eMEzAvjx7B-qrY8HTBH7zgLjYwv7vFuwQzivwNANZLRwwOB-8YCfC-9wchtLEFdzQ9qwB7DHd6dWRV7asSFpFSLL9yY3sRAMFBVawvjpF-6S5Y5TbY')"></div>
+<div class="absolute top-2 right-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-sm text-[10px] font-bold text-white uppercase tracking-wider">VRM 1.0</div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-bold dark:text-white text-base">Aiko VRM</h4>
+<p class="text-xs text-slate-500">Updated 2 days ago</p>
+</div>
+<span class="text-xs font-semibold text-slate-400">12.4 MB</span>
+</div>
+</div>
+</div>
+<!-- Asset Card 2 -->
+<div class="group cursor-pointer bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden hover:border-primary/50 transition-all hover:shadow-lg hover:shadow-primary/5 border-primary ring-1 ring-primary/30">
+<div class="aspect-square bg-slate-100 dark:bg-slate-900 overflow-hidden relative">
+<div class="w-full h-full bg-cover bg-center group-hover:scale-110 transition-transform duration-500" data-alt="Futuristic cyber knight 3D model with glowing armor" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBE95zfTnFAy-bz9RCUVz-lapOSmh6BnTL0L3XLUYN2ceobpfeGNiHIzab1j-5XylDiagJkmsaG926kH9TgH8-_5gpd82Y509hUh8H6hVSPIzw-CLmFam_207s2a6K97pNxmmlSpowCDeZtWXCawox879D4toWEO8si3f01O71V8cuRSVr4AeO_RFbsK1UzYc6SY2PF6wFjjd9vUMfAdOxEHIn7MWQVTKQeZONB3PB5H4Njq83MDFHSzMTSASp6LkPki4U3JDRu5Og')"></div>
+<div class="absolute top-2 right-2 px-2 py-1 rounded-md bg-primary/80 backdrop-blur-sm text-[10px] font-bold text-white uppercase tracking-wider">SELECTED</div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-bold text-primary text-base">Cyber Knight</h4>
+<p class="text-xs text-slate-500">Updated 5 days ago</p>
+</div>
+<span class="text-xs font-semibold text-slate-400">45.2 MB</span>
+</div>
+</div>
+</div>
+<!-- Asset Card 3 -->
+<div class="group cursor-pointer bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden hover:border-primary/50 transition-all hover:shadow-lg hover:shadow-primary/5">
+<div class="aspect-square bg-slate-100 dark:bg-slate-900 overflow-hidden relative">
+<div class="w-full h-full bg-cover bg-center group-hover:scale-110 transition-transform duration-500" data-alt="Neon punk stylized character with purple highlights" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDkQ-KilWmjhDCB1kYwaVDEsxkVBXHOI5WFARFLt1qDyIkAQKp4lsqDLJTlb-xBp9UMjIV0kQKdmJzQrnDX-Fj_WLwmf-0hW9OtyhTUnGEkyivJd1A78gwlNyuwfU2zwREY7pKqW5Fl6ix-0V_jGJ-vYbyuI5kNS-e_AO3AnJc2vPKFhPQU7MAVo34pEXd6YC6fEQU3jnhIOJruH_DmK9cuezjG9oqUdVQpuVZMVIQdwD_ikZkujyAQBvvsihxsKufa0uolwvFxxTI')"></div>
+<div class="absolute top-2 right-2 px-2 py-1 rounded-md bg-black/60 backdrop-blur-sm text-[10px] font-bold text-white uppercase tracking-wider">VRM 1.0</div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-bold dark:text-white text-base">Neon Punk</h4>
+<p class="text-xs text-slate-500">Updated 1 week ago</p>
+</div>
+<span class="text-xs font-semibold text-slate-400">28.9 MB</span>
+</div>
+</div>
+</div>
+<!-- Asset Card 4 -->
+<div class="group cursor-pointer bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden hover:border-primary/50 transition-all hover:shadow-lg hover:shadow-primary/5">
+<div class="aspect-square bg-slate-100 dark:bg-slate-900 overflow-hidden relative">
+<div class="w-full h-full bg-cover bg-center group-hover:scale-110 transition-transform duration-500" data-alt="Shiba Inu warrior character in 3D" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCn-5GtsAMy6kvYfazzxdwYKiWmrQXO55Lh5-4jaTzm7F72QPpaRjlecSWL7ZacHlzd1kp3MYCw089w3QuLOJg7h017q3PykdRg5LkHNta5BTu5FZHCjI6IforsoFQryKybLKOr0pnVUVQicNEgTAzU6swVvFhNC1T7qTk57U8EmYq-AUTkehhmi9zFSjU8yMzwlIRnHsunph55wwcb9ZI9tUJSfymJaVGCaHgxziv5fGK7WSWsd4PHy5fd58EIsSr9AWDnqM_I9vc')"></div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-bold dark:text-white text-base">Shiba Warrior</h4>
+<p class="text-xs text-slate-500">Updated 3 weeks ago</p>
+</div>
+<span class="text-xs font-semibold text-slate-400">15.0 MB</span>
+</div>
+</div>
+</div>
+<!-- Asset Card 5 -->
+<div class="group cursor-pointer bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden hover:border-primary/50 transition-all hover:shadow-lg hover:shadow-primary/5">
+<div class="aspect-square bg-slate-100 dark:bg-slate-900 overflow-hidden relative">
+<div class="w-full h-full bg-cover bg-center group-hover:scale-110 transition-transform duration-500" data-alt="Large mecha unit robot model" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCWInhgdeRN7n9oinUFJVc_aSvhX7EGSF8DYrVz8Dky4rXrna3ZvaNvGLwLeH61o_JfjM9lTOMt6bJNj_G4q2Kts-RGfkg1PyRvrLAtSedJgc17-M3Onv6zFUi6WCUSMUH07Sp8dV5pJQuFw7R20zGXOIQ7YcPeBXlWzAi1OYLI174nY89AcguuivFgPxPS29YizNPyNxEHeCsdlvthXejkoaQQTos7xXU78BMJMuHCMYprA95Lyqk_Bd9esonIqEhtiOeZJgmZ1Ls')"></div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-bold dark:text-white text-base">Mecha Unit 01</h4>
+<p class="text-xs text-slate-500">Updated 1 month ago</p>
+</div>
+<span class="text-xs font-semibold text-slate-400">88.1 MB</span>
+</div>
+</div>
+</div>
+<!-- Asset Card 6 -->
+<div class="group cursor-pointer bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden hover:border-primary/50 transition-all hover:shadow-lg hover:shadow-primary/5">
+<div class="aspect-square bg-slate-100 dark:bg-slate-900 overflow-hidden relative">
+<div class="w-full h-full bg-cover bg-center group-hover:scale-110 transition-transform duration-500" data-alt="Simple 3D base model for VTubing" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuATBZuitIH-vBb4QWsN2xgLyLTki8LjXunX6RHVELZiP1_J-Mn0yiEGHsmm6fUAkQcWS5QQt28uXq9W7DQJunO20BsWGpevKyEg-I7DtH2gg1frFDpSuOmUvEcr7nWxkssxwqKpXJJJcsb4xdbq2Ji3Pd_aouTTCFJJn1MNkZw_ylKB_S709IwSv3eRf-Mxt9UX5kNxZYSHJDmv6IBTpcIBcIAoviPdVG-OZ2MtdOb_nY1K80ZcIf93XG46Qg5WajkOGUi-rCelqMg')"></div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-bold dark:text-white text-base">V-Tuber Base</h4>
+<p class="text-xs text-slate-500">Updated 2 months ago</p>
+</div>
+<span class="text-xs font-semibold text-slate-400">10.2 MB</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Preview Panel -->
+<aside class="w-96 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-background-dark/80 backdrop-blur-xl p-6 overflow-y-auto">
+<div class="sticky top-0 space-y-6">
+<div class="relative group">
+<div class="w-full aspect-video rounded-xl bg-slate-900 overflow-hidden border border-slate-800 relative">
+<div class="w-full h-full bg-cover bg-center opacity-80" data-alt="3D viewport preview of selected model" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBzceFpoFjaUM7H7cb7AuvI89D7__mg2HopUPDO7yTNAryCDrj_SjeHo0QLxXhQa5YddPU7IQtz8RhXeceT9ivbNU9fLbv4326pjAVkmC8RiFjX-LnJPwnS1TMRrhSRAA0lSnnJYQmR43PrfnIXuhPTwvxytI82mMOH4wGPqWnSp61Q7Unblc-aK7TAMjg4aaM135fx7aAA7xflWC8oBPPgC6JYuksUxRQPum5BDwC87zCnWdrYcXQcEniCuEIswsRMhAkCD-wDacg')"></div>
+<div class="absolute inset-0 flex items-center justify-center">
+<button class="size-16 rounded-full bg-primary/20 hover:bg-primary/30 text-primary border border-primary/50 flex items-center justify-center backdrop-blur-md transition-all">
+<span class="material-symbols-outlined text-4xl leading-none">play_arrow</span>
+</button>
+</div>
+<!-- Gizmos / Overlay -->
+<div class="absolute bottom-3 right-3 flex gap-2">
+<button class="p-1.5 rounded bg-black/40 text-white hover:bg-black/60"><span class="material-symbols-outlined text-sm">view_in_ar</span></button>
+<button class="p-1.5 rounded bg-black/40 text-white hover:bg-black/60"><span class="material-symbols-outlined text-sm">fullscreen</span></button>
+</div>
+</div>
+</div>
+<div>
+<div class="flex items-center justify-between mb-2">
+<h2 class="text-xl font-bold dark:text-white">Cyber Knight</h2>
+<span class="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">NEW</span>
+</div>
+<p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-6">
+                            High-fidelity humanoid model optimized for real-time animation. Features custom shaders, dynamic bones, and 52 standard blendshapes.
+                        </p>
+<div class="grid grid-cols-2 gap-4 mb-8">
+<div class="bg-slate-100 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700/50">
+<p class="text-[10px] uppercase font-bold text-slate-500 mb-1">Polygons</p>
+<p class="text-sm font-bold dark:text-white">42,500</p>
+</div>
+<div class="bg-slate-100 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700/50">
+<p class="text-[10px] uppercase font-bold text-slate-500 mb-1">Materials</p>
+<p class="text-sm font-bold dark:text-white">4 Slots</p>
+</div>
+<div class="bg-slate-100 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700/50">
+<p class="text-[10px] uppercase font-bold text-slate-500 mb-1">Bones</p>
+<p class="text-sm font-bold dark:text-white">128</p>
+</div>
+<div class="bg-slate-100 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700/50">
+<p class="text-[10px] uppercase font-bold text-slate-500 mb-1">License</p>
+<p class="text-sm font-bold dark:text-white">CC-BY</p>
+</div>
+</div>
+<div class="flex flex-col gap-3">
+<button class="w-full py-3 bg-primary hover:bg-primary/90 text-background-dark font-bold rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined">input</span>
+                                Load into Studio
+                            </button>
+<button class="w-full py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">settings_suggest</span>
+                                Configure Rig
+                            </button>
+</div>
+<div class="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800">
+<h3 class="text-sm font-bold mb-4 uppercase text-slate-500 tracking-wider">Applied Animations</h3>
+<div class="flex flex-wrap gap-2">
+<span class="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">Idle_01.vrma</span>
+<span class="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">Walk_Cycle.fbx</span>
+</div>
+</div>
+</div>
+</div>
+</aside>
+</main>
+</div>
+</body></html>

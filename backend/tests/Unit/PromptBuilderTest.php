@@ -70,7 +70,7 @@ class PromptBuilderTest extends TestCase
         $this->assertStringContainsString('{anim:name}', $messages[0]['content']);
         $this->assertSame('assistant', $messages[1]['role']);
         $this->assertStringContainsString('Previous visible reply', $messages[1]['content']);
-        $this->assertStringContainsString('[emotion=calm]', $messages[1]['content']);
+        $this->assertStringContainsString('[emotion:calm]', $messages[1]['content']);
         $this->assertStringNotContainsString('Raw provider blob', $messages[1]['content']);
         $this->assertSame('user', $messages[2]['role']);
         $this->assertSame('Current user question', $messages[2]['content']);
@@ -112,7 +112,7 @@ class PromptBuilderTest extends TestCase
         $this->assertStringNotContainsString('important facts about the user', $messages[0]['content']);
         $this->assertStringNotContainsString('recurring topics', $messages[0]['content']);
         $this->assertStringContainsString('…', $messages[0]['content']);
-        $this->assertStringContainsString('[emotion=calm,happy | animation=Greeting]', $messages[1]['content']);
+        $this->assertStringContainsString('[emotion:calm,happy | anim:Greeting]', $messages[1]['content']);
         $this->assertStringContainsString('…', $messages[1]['content']);
     }
 

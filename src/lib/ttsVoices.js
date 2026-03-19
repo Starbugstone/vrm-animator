@@ -6,8 +6,33 @@ function normalizeComparableText(value) {
     .trim()
 }
 
+function normalizeDisplayText(value) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 function uniqueStrings(values) {
   return [...new Set(values.filter(Boolean))]
+}
+
+function sortDisplayValues(values) {
+  return [...values].sort((left, right) => (
+    normalizeComparableText(left).localeCompare(normalizeComparableText(right)) || String(left).localeCompare(String(right))
+  ))
+}
+
+const LANGUAGE_NAME_TO_CODE = {
+  english: 'en',
+  anglais: 'en',
+  french: 'fr',
+  francais: 'fr',
+  frenchfrance: 'fr',
+  spanish: 'es',
+  espanol: 'es',
+  castilian: 'es',
+  german: 'de',
+  allemand: 'de',
+  italian: 'it',
+  italien: 'it',
 }
 
 function normalizeLocaleTag(value) {
@@ -29,6 +54,11 @@ function normalizeLocaleTag(value) {
 }
 
 function normalizeLanguageCode(value) {
+  const normalizedName = normalizeComparableText(value).replace(/[^a-z]/g, '')
+  if (normalizedName && LANGUAGE_NAME_TO_CODE[normalizedName]) {
+    return LANGUAGE_NAME_TO_CODE[normalizedName]
+  }
+
   const normalized = normalizeLocaleTag(value)
   if (!normalized || normalized === 'auto') {
     return ''
@@ -103,16 +133,75 @@ export function getVoicePrimaryLocale(voice) {
 }
 
 export function getVoiceTagSummary(voice) {
-  const labels = voice?.labels && typeof voice.labels === 'object' ? voice.labels : {}
   const values = uniqueStrings([
     getVoicePrimaryLocale(voice),
-    typeof labels.accent === 'string' ? labels.accent.trim() : '',
-    typeof labels.age === 'string' ? labels.age.trim() : '',
-    typeof labels.use_case === 'string' ? labels.use_case.trim() : '',
-    typeof voice?.category === 'string' ? voice.category.trim() : '',
+    ...getVoiceFacetValues(voice, 'accent'),
+    ...getVoiceFacetValues(voice, 'age'),
+    ...getVoiceFacetValues(voice, 'useCase'),
+    ...getVoiceFacetValues(voice, 'category'),
   ])
 
   return values
+}
+
+export function getVoiceFacetValues(voice, facet) {
+  const labels = voice?.labels && typeof voice.labels === 'object' ? voice.labels : {}
+
+  if (facet === 'category') {
+    return uniqueStrings([
+      normalizeDisplayText(voice?.category),
+    ])
+  }
+
+  if (facet === 'useCase') {
+    return uniqueStrings([
+      normalizeDisplayText(labels.use_case),
+    ])
+  }
+
+  if (facet === 'accent') {
+    return uniqueStrings([
+      normalizeDisplayText(labels.accent),
+      ...getVoiceVerifiedLanguages(voice).map((entry) => normalizeDisplayText(entry?.accent)),
+    ])
+  }
+
+  if (facet === 'age') {
+    return uniqueStrings([
+      normalizeDisplayText(labels.age),
+    ])
+  }
+
+  return []
+}
+
+export function buildVoiceFacetOptions(voices) {
+  const items = Array.isArray(voices) ? voices : []
+
+  return {
+    categories: sortDisplayValues(uniqueStrings(items.flatMap((voice) => getVoiceFacetValues(voice, 'category')))),
+    useCases: sortDisplayValues(uniqueStrings(items.flatMap((voice) => getVoiceFacetValues(voice, 'useCase')))),
+    accents: sortDisplayValues(uniqueStrings(items.flatMap((voice) => getVoiceFacetValues(voice, 'accent')))),
+    ages: sortDisplayValues(uniqueStrings(items.flatMap((voice) => getVoiceFacetValues(voice, 'age')))),
+  }
+}
+
+export function voiceMatchesFacetFilters(voice, filters = {}) {
+  const entries = [
+    ['category', filters.category],
+    ['useCase', filters.useCase],
+    ['accent', filters.accent],
+    ['age', filters.age],
+  ]
+
+  return entries.every(([facet, value]) => {
+    const expected = normalizeComparableText(value)
+    if (!expected) {
+      return true
+    }
+
+    return getVoiceFacetValues(voice, facet).some((candidate) => normalizeComparableText(candidate) === expected)
+  })
 }
 
 export function filterVoicesForAvatar(voices, avatar, options = {}) {
@@ -130,6 +219,8 @@ export function filterVoicesForAvatar(voices, avatar, options = {}) {
 
     if (preferred.length > 0) {
       visible = [...preferred, ...unknown]
+    } else if (visible.some((voice) => normalizeGenderTag(voice?.gender))) {
+      visible = unknown
     }
   }
 
@@ -143,7 +234,11 @@ export function filterVoicesForAvatar(voices, avatar, options = {}) {
     ? visible.filter((voice) => !voiceHasLanguageMetadata(voice))
     : []
 
-  return matchingLanguage.length > 0 ? [...matchingLanguage, ...unknownLanguage] : visible
+  if (matchingLanguage.length > 0) {
+    return [...matchingLanguage, ...unknownLanguage]
+  }
+
+  return visible.some((voice) => voiceHasLanguageMetadata(voice)) ? unknownLanguage : visible
 }
 
 export function matchesVoiceSearch(voice, query) {

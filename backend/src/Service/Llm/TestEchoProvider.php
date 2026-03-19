@@ -67,8 +67,16 @@ final class TestEchoProvider implements LlmProviderInterface
           $memoryTag = ' {memory:'.$matches[1].'}';
         }
 
+        $normalizedUserMessage = strtolower($lastUserMessage);
+        $replyPrefix = str_contains($normalizedUserMessage, 'giggle cue')
+            ? '*giggles uncontrollably, her tiny wings fluttering so fast they are just a blur* '
+            : (str_contains($normalizedUserMessage, 'laugh cue')
+                ? '[laughing] '
+                : '');
+
         $text = sprintf(
-            'Echo: %s {emotion:happy} {anim:greeting}%s',
+            '%sEcho: %s {emotion:happy} {anim:greeting}%s',
+            $replyPrefix,
             $lastUserMessage !== '' ? $lastUserMessage : 'Hello',
             $memoryTag,
         );

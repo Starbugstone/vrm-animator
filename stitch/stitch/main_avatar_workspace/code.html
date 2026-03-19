@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>VRM-Animator Workspace</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#0db9f2",
+                        "background-light": "#f5f8f8",
+                        "background-dark": "#101e22",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.5rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(16, 30, 34, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(13, 185, 242, 0.2);
+        }
+        .viewport-bg {
+            background: radial-gradient(circle at center, #1a2c32 0%, #0a1113 100%);
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(13, 185, 242, 0.05);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(13, 185, 242, 0.2);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(13, 185, 242, 0.4);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 overflow-hidden h-screen flex flex-col">
+<!-- Top Navigation Bar -->
+<header class="flex items-center justify-between px-6 py-3 border-b border-primary/20 bg-background-dark/80 backdrop-blur-md z-50">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-background-dark">
+<span class="material-symbols-outlined font-bold">view_in_ar</span>
+</div>
+<h1 class="text-xl font-bold tracking-tight text-slate-100 uppercase">VRM<span class="text-primary font-light">Animator</span></h1>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden md:flex items-center bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+<span class="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
+<span class="text-xs font-medium text-primary uppercase tracking-wider">Engine: Active</span>
+</div>
+<button class="p-2 hover:bg-primary/10 rounded-lg transition-colors">
+<span class="material-symbols-outlined text-slate-400">notifications</span>
+</button>
+<div class="w-10 h-10 rounded-full border-2 border-primary overflow-hidden">
+<img alt="User Profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB4L42tzYsnRH4XCtjyIYYqiWxvT00n6-V0gIbRDxm8T2m9Xy_aF5Dz-XBXfuUgeC0T4MXgtXfWjAfGoIJssInB2rSxTZGvkMfhLLZW_bD5e1XHL4GaIGsb4NNKy-saIiUq5y-09SuArP4AsovGX49QiS-T5PXFBs0zzl9O4u732ije54cx2FUUJKS3tXerdUT1SEf4IcQbbwFDPK_knCLY9MPy7-iypVve7jzRyRwZdcyp2OEwfKJ4iB3u7Lb476_bOgBXAZ0RzsI"/>
+</div>
+</div>
+</header>
+<!-- Main Workspace -->
+<main class="relative flex-1 flex overflow-hidden viewport-bg">
+<!-- Left Sidebar: Conversation / Chat (Inspired by IMAGE_3) -->
+<aside class="z-20 w-80 flex flex-col p-4 gap-4 border-r border-primary/10 bg-background-dark/40 backdrop-blur-sm">
+<div class="flex flex-col gap-1">
+<h2 class="text-[10px] font-bold uppercase tracking-widest text-primary/60">Conversation</h2>
+<div class="flex justify-between items-center">
+<span class="text-lg font-semibold text-slate-100">Avatar Chat</span>
+<span class="text-xs text-slate-500">1 thread</span>
+</div>
+</div>
+<!-- Chat History Area -->
+<div class="flex-1 overflow-y-auto space-y-4 pr-2">
+<div class="glass-panel p-3 rounded-lg border-l-2 border-l-primary/50">
+<p class="text-xs font-bold text-primary mb-1">ASSISTANT</p>
+<p class="text-sm text-slate-200">Hello! I'm ready to animate. What would you like me to do next?</p>
+</div>
+<div class="flex flex-col gap-1 items-end">
+<div class="bg-primary/20 p-3 rounded-lg rounded-tr-none max-w-[90%]">
+<p class="text-sm text-slate-100">Can you perform a greeting dance?</p>
+</div>
+</div>
+<div class="glass-panel p-3 rounded-lg">
+<p class="text-xs font-bold text-primary mb-1">ASSISTANT</p>
+<p class="text-sm text-slate-200 italic mb-2">emotion: happy · movement: Greeting-Dance-01</p>
+<p class="text-sm text-slate-200">Sure thing! Starting the dance routine now.</p>
+</div>
+</div>
+<!-- Chat Input -->
+<div class="flex flex-col gap-2">
+<div class="glass-panel p-1 rounded-lg">
+<textarea class="w-full bg-transparent border-none text-sm focus:ring-0 text-slate-100 placeholder:text-slate-600 resize-none h-20 p-2" placeholder="Type a message to the avatar..."></textarea>
+</div>
+<button class="w-full py-2 bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30 rounded-lg font-bold text-sm transition-all">
+                    Send Message
+                </button>
+</div>
+<!-- Identity Status (Inspired by IMAGE_3) -->
+<div class="mt-4 pt-4 border-t border-primary/10">
+<p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Active Persona</p>
+<div class="flex items-center gap-3 glass-panel p-2 rounded-lg">
+<div class="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-sm">face</span>
+</div>
+<div>
+<p class="text-xs font-bold text-slate-200">Karina</p>
+<p class="text-[10px] text-slate-500">AI: OpenRouter-Claude</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- 3D Viewport (Centerpiece) -->
+<div class="flex-1 relative flex items-center justify-center">
+<!-- Simulated 3D Avatar Image - Full Body focus -->
+<img alt="VRM Avatar" class="h-[90%] object-contain drop-shadow-[0_0_30px_rgba(13,185,242,0.15)]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuChuNYZBQWHBGqCnYDbKBrfNHuu1Rsss0Qjzgn-EFTjKxqtMxXwD-1kiIHhJZY74aV1XFmGXonV4w728-xHvYJ1OeSLBtPw9bM_IUDE9jm2-JAKX1l-3NCe29LaxBiRJVhGBbL3Bajs48AcZ05PDOiFNmt8gDr0P-BcM-cV_jElEZhAPc6ZNr8sNcJK56E8i7U0EpJ1WjBqkOWSYoyM4DlriUHSOZHrxFGqd_QqyPTVY9f9ECif0NBpjAx44mxns_a9Rea4OwfcfR0"/>
+<!-- Viewport Overlays: Grid & Axis -->
+<div class="absolute inset-0 pointer-events-none opacity-10" style="background-image: radial-gradient(circle, #0db9f2 1px, transparent 1px); background-size: 40px 40px;"></div>
+<!-- Floating Viewport Tools -->
+<div class="absolute left-4 bottom-24 flex flex-col gap-2">
+<div class="glass-panel p-2 rounded-lg flex flex-col gap-2">
+<button class="p-2 hover:text-primary transition-colors flex items-center justify-center"><span class="material-symbols-outlined text-sm">add</span></button>
+<div class="w-full h-px bg-primary/10"></div>
+<button class="p-2 hover:text-primary transition-colors flex items-center justify-center"><span class="material-symbols-outlined text-sm">remove</span></button>
+<div class="w-full h-px bg-primary/10"></div>
+<button class="p-2 hover:text-primary transition-colors flex items-center justify-center"><span class="material-symbols-outlined text-sm">navigation</span></button>
+</div>
+</div>
+<!-- Floating Coordinates Display -->
+<div class="absolute bottom-4 left-4 text-[10px] font-mono text-primary/40 uppercase tracking-widest flex flex-col">
+<span>X: 0.000</span>
+<span>Y: 0.850</span>
+<span>Z: 1.200</span>
+</div>
+</div>
+<!-- Right Sidebar: Animation & Controls -->
+<aside class="z-20 w-80 flex flex-col p-4 gap-4 border-l border-primary/10 bg-background-dark/40 backdrop-blur-sm overflow-y-auto">
+<!-- Animation Controls (Inspired by IMAGE_3) -->
+<div class="glass-panel p-4 rounded-xl">
+<div class="flex items-center justify-between mb-4 border-b border-primary/10 pb-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-sm">settings_accessibility</span>
+<h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Animations</h3>
+</div>
+<span class="material-symbols-outlined text-slate-500 text-sm cursor-pointer">close</span>
+</div>
+<div class="space-y-4">
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-slate-500 uppercase">Idle Pose</label>
+<select class="bg-background-dark border border-primary/20 text-xs rounded-lg p-2 text-slate-200 focus:ring-primary focus:border-primary">
+<option>Breathing Idle</option>
+<option>Look Around</option>
+</select>
+<button class="w-full py-1.5 mt-1 bg-primary/10 hover:bg-primary/20 text-xs text-primary rounded border border-primary/20">Set Idle</button>
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-slate-500 uppercase">Action</label>
+<select class="bg-background-dark border border-primary/20 text-xs rounded-lg p-2 text-slate-200 focus:ring-primary focus:border-primary">
+<option>Wave Greeting</option>
+<option>Blow Kiss</option>
+<option>Dance Routine 01</option>
+</select>
+<button class="w-full py-1.5 mt-1 bg-primary/10 hover:bg-primary/20 text-xs text-primary rounded border border-primary/20">Play Action</button>
+</div>
+<div class="flex flex-col gap-1">
+<label class="text-[10px] font-bold text-slate-500 uppercase">Expression</label>
+<select class="bg-background-dark border border-primary/20 text-xs rounded-lg p-2 text-slate-200 focus:ring-primary focus:border-primary">
+<option>Neutral</option>
+<option>Happy Talk</option>
+<option>Thinking</option>
+</select>
+<button class="w-full py-1.5 mt-1 bg-primary/10 hover:bg-primary/20 text-xs text-primary rounded border border-primary/20">Play Expression</button>
+</div>
+</div>
+</div>
+<!-- System Status -->
+<div class="glass-panel p-4 rounded-xl">
+<div class="flex items-center gap-2 mb-4 border-b border-primary/10 pb-2">
+<span class="material-symbols-outlined text-primary text-sm">analytics</span>
+<h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Monitoring</h3>
+</div>
+<div class="space-y-4">
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px]">
+<span class="text-slate-400">Facial Tracking</span>
+<span class="text-primary font-bold">Active</span>
+</div>
+<div class="h-1 bg-primary/10 rounded-full overflow-hidden">
+<div class="h-full bg-primary w-2/3"></div>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex justify-between text-[10px]">
+<span class="text-slate-400">Eye Blinking</span>
+<span class="text-primary font-bold">Auto</span>
+</div>
+<div class="h-1 bg-primary/10 rounded-full overflow-hidden">
+<div class="h-full bg-primary w-1/3"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Parameter Search -->
+<div class="glass-panel p-1 rounded-lg">
+<div class="flex items-center px-3 bg-background-dark/50 rounded-md">
+<span class="material-symbols-outlined text-slate-500 text-sm">search</span>
+<input class="bg-transparent border-none text-xs focus:ring-0 text-slate-100 placeholder:text-slate-600 w-full py-2" placeholder="Search parameters..." type="text"/>
+</div>
+</div>
+</aside>
+<!-- Bottom Floating Toolbar -->
+<div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-6 px-8 py-3 glass-panel rounded-full shadow-2xl z-30">
+<div class="flex items-center gap-4 border-r border-primary/20 pr-6">
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors text-xl">library_books</span>
+<span class="text-[10px] uppercase font-bold text-slate-500 group-hover:text-primary">Library</span>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors text-xl">settings</span>
+<span class="text-[10px] uppercase font-bold text-slate-500 group-hover:text-primary">Settings</span>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors text-xl">opacity</span>
+<span class="text-[10px] uppercase font-bold text-slate-500 group-hover:text-primary">Effects</span>
+</button>
+</div>
+<button class="bg-primary hover:bg-primary/80 text-background-dark px-6 py-2 rounded-full flex items-center gap-2 font-bold transition-all shadow-lg shadow-primary/20 active:scale-95">
+<span class="material-symbols-outlined">visibility</span>
+<span class="whitespace-nowrap uppercase tracking-wider text-sm">Hologram Mode</span>
+</button>
+<div class="flex items-center gap-4 border-l border-primary/20 pl-6">
+<button class="w-10 h-10 flex items-center justify-center rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all">
+<span class="material-symbols-outlined">fiber_manual_record</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center rounded-lg bg-primary/10 text-primary hover:bg-primary hover:text-background-dark transition-all">
+<span class="material-symbols-outlined">share</span>
+</button>
+</div>
+</div>
+<!-- Frame Rate Display -->
+<div class="absolute bottom-4 right-4 text-[10px] font-mono text-primary/40 uppercase tracking-widest z-30">
+            FPS: 60.00 | CPU: 12% | MEM: 1.2GB
+        </div>
+</main>
+<!-- UI Interaction Overlay (Subtle Gradient edges) -->
+<div class="fixed inset-0 pointer-events-none shadow-[inset_0_0_150px_rgba(0,0,0,0.5)]"></div>
+</body></html>

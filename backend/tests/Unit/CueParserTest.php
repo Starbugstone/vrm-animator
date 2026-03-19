@@ -172,6 +172,52 @@ class CueParserTest extends TestCase
         $this->assertSame(2500, $animationEvents[0]['delayMs'] ?? null);
     }
 
+    public function testItParsesLegacyEqualsStyleBracketBundles(): void
+    {
+        $animation = new CueAsset(
+            'action:user:1',
+            'Dance Twirl',
+            'Dance Twirl',
+            'action',
+            'Playful twirl',
+            ['dance', 'twirl'],
+            ['playful'],
+            'user',
+            ['dance', 'twirl', 'playful'],
+        );
+        $expression = new CueAsset(
+            'expression:shared:1',
+            'Playful Talk',
+            'Playful Talk',
+            'expression',
+            'Playful speaking overlay',
+            ['speech'],
+            ['playful'],
+            'shared',
+            ['speech', 'playful'],
+            ['mouth', 'eyes', 'face'],
+            3,
+        );
+
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parse(
+            'Closing beat [emotion=playful | anim=Dance Twirl | delay=1.2s]',
+            [$animation, $expression],
+        );
+
+        $this->assertSame('Closing beat', $parsed['text']);
+        $this->assertSame(['playful'], $parsed['emotionTags']);
+        $this->assertSame(['Dance Twirl'], $parsed['animationTags']);
+
+        $animationEvents = array_values(array_filter(
+            $parsed['timeline'],
+            static fn (array $entry): bool => ($entry['type'] ?? '') === 'animation',
+        ));
+
+        $this->assertCount(1, $animationEvents);
+        $this->assertSame(1200, $animationEvents[0]['delayMs'] ?? null);
+    }
+
     public function testItParsesScopedMemoryEntries(): void
     {
         $parser = new CueParser(new EmotionVocabulary());
@@ -184,5 +230,127 @@ class CueParserTest extends TestCase
             'scope' => 'long-term',
             'value' => 'The user is planning a move next month',
         ]], $parsed['memoryEntries']);
+    }
+
+    public function testItStripsStageDirectionsAndTurnsMatchingOnesIntoCues(): void
+    {
+        $animation = new CueAsset(
+            'action:user:1',
+            'Greeting',
+            'Greeting',
+            'action',
+            'Greeting animation',
+            ['greeting', 'wave'],
+            ['happy'],
+            'user',
+            ['greeting', 'wave', 'happy'],
+        );
+
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parse(
+            '**waves warmly** Hello there.',
+            [$animation],
+        );
+
+        $this->assertSame('Hello there.', $parsed['text']);
+        $this->assertSame('Hello there.', $parsed['speechText']);
+        $this->assertSame(['Greeting'], $parsed['animationTags']);
+        $this->assertSame([], $parsed['emotionTags']);
+    }
+
+    public function testItPreservesBracketSpeechActionsForSpeechTextOnly(): void
+    {
+        $animation = new CueAsset(
+            'action:user:1',
+            'Laugh',
+            'Laugh',
+            'action',
+            'Laugh animation',
+            ['laugh', 'laughing'],
+            ['happy'],
+            'user',
+            ['laugh', 'laughing', 'happy'],
+        );
+
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parse(
+            '[laughing] That really got me.',
+            [$animation],
+        );
+
+        $this->assertSame('That really got me.', $parsed['text']);
+        $this->assertSame('[laughing] That really got me.', $parsed['speechText']);
+        $this->assertSame(['Laugh'], $parsed['animationTags']);
+        $this->assertSame(['happy'], $parsed['emotionTags']);
+    }
+
+    public function testItCollapsesLongAsteriskStageDirectionsIntoCompactSpeechActions(): void
+    {
+        $animation = new CueAsset(
+            'action:user:1',
+            'Laugh',
+            'Laugh',
+            'action',
+            'Laugh animation',
+            ['laugh', 'laughing', 'giggle', 'giggles'],
+            ['happy'],
+            'user',
+            ['laugh', 'laughing', 'giggle', 'giggles', 'happy'],
+        );
+
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parse(
+            '*giggles uncontrollably, her tiny wings fluttering so fast they are just a blur* Hello there.',
+            [$animation],
+        );
+
+        $this->assertSame('Hello there.', $parsed['text']);
+        $this->assertSame('[giggles] Hello there.', $parsed['speechText']);
+        $this->assertSame(['Laugh'], $parsed['animationTags']);
+        $this->assertSame(['happy'], $parsed['emotionTags']);
+    }
+
+    public function testItKeepsAsteriskEmphasisInVisibleText(): void
+    {
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parse(
+            'Did you *say* that?',
+            [],
+        );
+
+        $this->assertSame('Did you *say* that?', $parsed['text']);
+        $this->assertSame('Did you *say* that?', $parsed['speechText']);
+        $this->assertSame([], $parsed['animationTags']);
+        $this->assertSame([], $parsed['emotionTags']);
+    }
+
+    public function testStreamingParserDoesNotLeakStageDirectionsIntoVisibleText(): void
+    {
+        $animation = new CueAsset(
+            'action:user:1',
+            'Laugh',
+            'Laugh',
+            'action',
+            'Laugh animation',
+            ['laugh', 'laughing'],
+            ['happy'],
+            'user',
+            ['laugh', 'laughing', 'happy'],
+        );
+
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parseStreamDelta(
+            '[laughing] Hello there.',
+            [$animation],
+            0,
+        );
+
+        $this->assertSame(strlen('[laughing] Hello there.'), $parsed['cursor']);
+        $this->assertSame('emotion', $parsed['timeline'][0]['type']);
+        $this->assertSame('happy', $parsed['timeline'][0]['value']);
+        $this->assertSame('animation', $parsed['timeline'][1]['type']);
+        $this->assertSame('Laugh', $parsed['timeline'][1]['value']);
+        $this->assertSame('text', $parsed['timeline'][2]['type']);
+        $this->assertSame(' Hello there.', $parsed['timeline'][2]['value']);
     }
 }

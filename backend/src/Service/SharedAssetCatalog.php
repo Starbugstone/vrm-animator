@@ -127,6 +127,7 @@ class SharedAssetCatalog
                 'sourceLabel' => $entry['sourceLabel'],
                 'groupLabel' => $groupPath,
                 'relativePath' => str_replace(DIRECTORY_SEPARATOR, '/', $relativePath),
+                'assetVersion' => sprintf('%d-%d', $fileInfo->getMTime(), $fileInfo->getSize()),
                 'downloadUrl' => sprintf(
                     '/api/library/shared-file?catalog=%s&path=%s',
                     rawurlencode($catalog),

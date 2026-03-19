@@ -146,6 +146,43 @@ class TtsCredentialTest extends WebTestCase
                 ];
             }
 
+            public function listSharedVoices(string $secret, array $filters = []): array
+            {
+                return [
+                    'voices' => [
+                        [
+                            'id' => 'shared_voice_1',
+                            'voiceId' => 'shared_voice_1',
+                            'publicOwnerId' => 'owner_1',
+                            'name' => 'Brittney',
+                            'gender' => 'female',
+                            'labels' => [
+                                'gender' => 'female',
+                                'accent' => 'american',
+                                'language' => 'en',
+                                'age' => 'young',
+                                'use_case' => 'conversational',
+                            ],
+                            'category' => 'conversational',
+                            'description' => 'Bright and social',
+                            'previewUrl' => 'https://example.com/brittney.mp3',
+                            'language' => 'en',
+                            'locale' => 'en-US',
+                            'verifiedLanguages' => [],
+                        ],
+                    ],
+                    'nextPage' => 1,
+                ];
+            }
+
+            public function addSharedVoice(string $secret, string $publicUserId, string $voiceId, string $name): array
+            {
+                return [
+                    'voiceId' => 'saved_'.$voiceId,
+                    'name' => $name,
+                ];
+            }
+
             public function streamSpeech(string $secret, string $voiceId, string $text, ?string $modelId, callable $onChunk): void
             {
                 $onChunk('FAKE-MP3-A');

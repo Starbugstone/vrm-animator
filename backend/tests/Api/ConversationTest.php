@@ -99,6 +99,11 @@ class ConversationTest extends WebTestCase
         $this->assertSame(['happy'], $chatData['assistantMessage']['emotionTags']);
         $this->assertSame(['Greeting'], $chatData['assistantMessage']['animationTags']);
         $this->assertStringContainsString('{emotion:happy}', $chatData['assistantMessage']['rawProviderContent']);
+        $this->assertSame('openrouter', $chatData['llmDebug']['provider']);
+        $this->assertSame('openai/gpt-4.1-mini', $chatData['llmDebug']['model']);
+        $this->assertIsArray($chatData['llmDebug']['requestMessages']);
+        $this->assertStringContainsString('Authoritative memory markdown', $chatData['llmDebug']['requestMessages'][0]['content']);
+        $this->assertStringContainsString('Echo: Say hello to me', $chatData['llmDebug']['rawCompletion']);
 
         $conversationId = $chatData['conversation']['id'];
 
@@ -197,6 +202,53 @@ class ConversationTest extends WebTestCase
         $this->assertResponseStatusCodeSame(200);
         $memory = json_decode($client->getResponse()->getContent(), true);
         $this->assertStringContainsString('jasmine tea is my favorite drink', $memory['markdownContent']);
+    }
+
+    public function testChatExposesDedicatedSpeechTextWithoutLeakingSpeechActionsIntoVisibleContent(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'conversation-speech@example.com');
+
+        $client->request('POST', '/api/avatars', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'Speech Avatar',
+            'filename' => 'speech-avatar.vrm',
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $avatarData = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('POST', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'OpenAI Main',
+            'provider' => 'openai',
+            'secret' => 'openai-secret-token',
+            'defaultModel' => 'gpt-5-mini',
+            'isActive' => true,
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+
+        $client->request('POST', '/api/avatars/'.$avatarData['id'].'/chat', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'message' => 'Give me a giggle cue',
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+        $chatData = json_decode($client->getResponse()->getContent(), true);
+
+        $this->assertSame('Echo: Give me a giggle cue', $chatData['assistantMessage']['content']);
+        $this->assertSame('[giggles] Echo: Give me a giggle cue', $chatData['assistantSpeechText']);
+        $this->assertSame(['happy'], $chatData['assistantMessage']['emotionTags']);
     }
 
     public function testConversationEndpointsArePrivateToOwner(): void

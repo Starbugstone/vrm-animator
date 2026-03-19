@@ -1,6 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --app-bg: #061016;
+  --panel-bg: rgba(11, 21, 28, 0.78);
+  --panel-muted: rgba(11, 21, 28, 0.58);
+  --panel-line: rgba(13, 185, 242, 0.14);
+  --panel-glow: 0 28px 90px rgba(0, 0, 0, 0.3);
+  --panel-radius: 1.75rem;
+}
 
 html,
 body,
@@ -10,13 +21,20 @@ body,
 
 body {
   margin: 0;
-  font-family: "Segoe UI", system-ui, sans-serif;
-  background: #030712;
+  font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(23, 54, 84, 0.96) 0%, rgba(9, 18, 27, 0.98) 34%, #04080d 100%);
+  color: #f4fbff;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -29,4 +47,45 @@ select {
 .camera-popover-header {
   user-select: none;
   touch-action: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(13, 185, 242, 0.06);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(13, 185, 242, 0.22);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(13, 185, 242, 0.35);
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(13, 185, 242, 0.12);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 999px;
+  background: #0db9f2;
+  box-shadow: 0 0 12px rgba(13, 185, 242, 0.45);
 }
