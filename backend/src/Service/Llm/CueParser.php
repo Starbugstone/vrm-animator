@@ -429,7 +429,7 @@ class CueParser
                 continue;
             }
 
-            if (preg_match('/^(emotion|anim|memory|delay)\s*:\s*(.+)$/i', $segment, $matches) !== 1) {
+            if (preg_match('/^(emotion|anim|animation|memory|delay)\s*[:=]\s*(.+)$/i', $segment, $matches) !== 1) {
                 if ($isBracketToken) {
                     return null;
                 }
@@ -440,6 +440,9 @@ class CueParser
             $matchedCue = true;
             $type = strtolower((string) ($matches[1] ?? ''));
             $value = trim((string) ($matches[2] ?? ''));
+            if ($type === 'animation') {
+                $type = 'anim';
+            }
 
             $rawSegments[] = [
                 'type' => $type,
@@ -540,7 +543,9 @@ class CueParser
             return null;
         }
 
-        if (!$this->looksLikeStageDirection($inner)) {
+        $speechActionLabel = $this->resolveSpeechActionLabel($inner);
+
+        if (!$this->looksLikeStageDirection($inner, $isBracketToken, $speechActionLabel)) {
             return null;
         }
 
@@ -562,33 +567,69 @@ class CueParser
 
         return [
             'timeline' => $timeline,
-            'speechText' => $isBracketToken ? '['.$this->normalizeSpeechActionLabel($inner).']' : null,
+            'speechText' => $speechActionLabel !== null ? '['.$speechActionLabel.']' : ($isBracketToken ? '['.$this->normalizeSpeechActionLabel($inner).']' : null),
         ];
     }
 
-    private function looksLikeStageDirection(string $value): bool
+    private function looksLikeStageDirection(string $value, bool $isBracketToken, ?string $speechActionLabel = null): bool
     {
         $normalized = $this->normalizeStageDirectionText($value);
         if ($normalized === '') {
             return false;
         }
 
-        if (preg_match('/[.!?]{2,}|\n/u', $value) === 1) {
+        if (preg_match('/\n/u', $value) === 1) {
             return false;
         }
 
         $wordCount = preg_match_all('/[a-z0-9]+/i', $normalized);
-        if (!is_int($wordCount) || $wordCount < 1 || $wordCount > 6) {
+        if (!is_int($wordCount) || $wordCount < 1) {
             return false;
         }
 
-        if ($this->resolveStageDirectionEmotion($value) !== null) {
+        $resolvedEmotion = $this->resolveStageDirectionEmotion($value);
+        $hasStageKeyword = $this->hasStageDirectionKeyword($normalized);
+        $hasDescriptiveStageContext = preg_match(
+            '/\b(he|she|they|his|her|their|wings?|hands?|arms?|eyes?|voice|body|head|tail|hair|smile|grin)\b/i',
+            $normalized,
+        ) === 1;
+
+        if ($isBracketToken) {
+            if ($wordCount > 6) {
+                return false;
+            }
+
+            return $speechActionLabel !== null || $resolvedEmotion !== null || $hasStageKeyword;
+        }
+
+        if ($speechActionLabel !== null) {
             return true;
         }
 
+        if ($wordCount === 1 && !$hasStageKeyword && $resolvedEmotion === null) {
+            return false;
+        }
+
+        if ($wordCount <= 2 && !$hasStageKeyword && !$hasDescriptiveStageContext) {
+            return false;
+        }
+
+        if ($wordCount > 24) {
+            return false;
+        }
+
+        if ($resolvedEmotion !== null && ($wordCount > 1 || $hasDescriptiveStageContext)) {
+            return true;
+        }
+
+        return $hasStageKeyword;
+    }
+
+    private function hasStageDirectionKeyword(string $value): bool
+    {
         return preg_match(
-            '/\b(smile|grin|laugh|giggl|chuckl|snicker|wink|nod|wave|shrug|sigh|gasp|whisper|shout|yell|pause|blush|cry|sob|groan|yawn|ponder|think|stare|glance|look|bow|clap|point|smirk)\w*\b/i',
-            $normalized,
+            '/\b(smile|grin|laugh|giggl|chuckl|snicker|wink|nod|wave|shrug|sigh|gasp|whisper|shout|yell|pause|blush|cry|sob|groan|yawn|ponder|think|stare|glance|look|bow|clap|point|smirk|flutter)\w*\b/i',
+            $value,
         ) === 1;
     }
 
@@ -738,6 +779,34 @@ class CueParser
     private function normalizeSpeechActionLabel(string $value): string
     {
         return preg_replace('/\s+/', ' ', trim($value)) ?? trim($value);
+    }
+
+    private function resolveSpeechActionLabel(string $value): ?string
+    {
+        $normalized = $this->normalizeStageDirectionText($value);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $map = [
+            '/\bgiggl\w*\b/i' => 'giggles',
+            '/\b(laugh|chuckl|snicker)\w*\b/i' => 'laughing',
+            '/\bsigh\w*\b/i' => 'sighs',
+            '/\bgasp\w*\b/i' => 'gasps',
+            '/\byawn\w*\b/i' => 'yawns',
+            '/\b(cry|sob)\w*\b/i' => 'sobs',
+            '/\bgroan\w*\b/i' => 'groans',
+            '/\b(whisper|murmur)\w*\b/i' => 'whispers',
+            '/\b(shout|yell)\w*\b/i' => 'shouts',
+        ];
+
+        foreach ($map as $pattern => $label) {
+            if (preg_match($pattern, $normalized) === 1) {
+                return $label;
+            }
+        }
+
+        return null;
     }
 
     /**

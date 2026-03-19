@@ -314,14 +314,21 @@ export default function AvatarIdentityPanel({
     const visible = voiceSearch
       ? tagMatches.filter((voice) => matchesVoiceSearch(voice, voiceSearch))
       : tagMatches
-    const selectedVoice = availableVoices.find((voice) => voice.id === draft.ttsVoiceId)
-
-    if (!voiceSearch && !hasActiveVoiceFilters && selectedVoice && !visible.some((voice) => voice.id === selectedVoice.id)) {
-      return [selectedVoice, ...visible]
-    }
 
     return visible
-  }, [availableVoices, draft.ttsVoiceId, hasActiveVoiceFilters, scopedVoices, voiceFilters, voiceSearch])
+  }, [hasActiveVoiceFilters, scopedVoices, voiceFilters, voiceSearch])
+  const selectedVoice = useMemo(
+    () => availableVoices.find((voice) => voice.id === draft.ttsVoiceId) || null,
+    [availableVoices, draft.ttsVoiceId],
+  )
+  const selectedVoiceHiddenByAvatarFilters = Boolean(
+    draft.ttsVoiceId &&
+    selectedVoice &&
+    !draft.showAllVoices &&
+    !voiceSearch &&
+    !hasActiveVoiceFilters &&
+    !filteredVoices.some((voice) => voice.id === selectedVoice.id),
+  )
 
   useEffect(() => {
     setVoiceLibraryPage(0)
@@ -789,6 +796,11 @@ export default function AvatarIdentityPanel({
                 {previewError ? (
                   <div className="mb-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
                     {previewError}
+                  </div>
+                ) : null}
+                {selectedVoiceHiddenByAvatarFilters ? (
+                  <div className="mb-3 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+                    The currently selected voice, {selectedVoice?.name || 'this voice'}, does not match the avatar language or sex filters right now, so it is hidden from Available voices until you use Show all voices or pick a matching replacement.
                   </div>
                 ) : null}
                 {voiceLibraryNotice ? (

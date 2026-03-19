@@ -43,7 +43,7 @@ describe('streamAvatarChatMessage', () => {
       'lo"}\n\nevent: cue\ndata: {"cueType":"emotion","value":"happy"}\n\n',
       'event: cue\ndata: {"cueType":"animation","value":"Swing Arms","delayMs":2500}\n\n',
       'event: memory\ndata: {"entry":"likes jasmine tea","scope":"relationship"}\n\n',
-      'event: message.complete\ndata: {"conversation":{"id":1,"provider":"minimax","model":"MiniMax-M2.5"},"assistantMessage":{"content":"Hello"}}\n\n',
+      'event: message.complete\ndata: {"conversation":{"id":1,"provider":"minimax","model":"MiniMax-M2.5"},"assistantMessage":{"content":"Hello"},"llmDebug":{"provider":"minimax","model":"MiniMax-M2.5","requestMessages":[{"role":"system","content":"System prompt"}],"rawCompletion":"Hello"}}\n\n',
     ]))
 
     const onStatus = vi.fn()
@@ -67,6 +67,7 @@ describe('streamAvatarChatMessage', () => {
     expect(onMemory).toHaveBeenCalledWith({ entry: 'likes jasmine tea', scope: 'relationship' })
     expect(onComplete).toHaveBeenCalledTimes(1)
     expect(completion.conversation.model).toBe('MiniMax-M2.5')
+    expect(completion.llmDebug.rawCompletion).toBe('Hello')
   })
 
   it('throws a readable error when the stream sends an error event', async () => {

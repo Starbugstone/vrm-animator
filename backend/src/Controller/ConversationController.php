@@ -143,6 +143,7 @@ class ConversationController extends AbstractController
             'userMessage' => $this->serializeMessage($result->userMessage),
             'assistantMessage' => $this->serializeMessage($result->assistantMessage),
             'assistantSpeechText' => $result->assistantSpeechText,
+            'llmDebug' => $this->serializeLlmDebug($result),
             'assistantTimeline' => $result->assistantTimeline,
             'assistantMemoryEntries' => $result->assistantMemoryEntries,
         ], Response::HTTP_OK);
@@ -302,6 +303,7 @@ class ConversationController extends AbstractController
                             'userMessage' => $this->serializeMessage($result->userMessage),
                             'assistantMessage' => $this->serializeMessage($result->assistantMessage),
                             'assistantSpeechText' => $result->assistantSpeechText,
+                            'llmDebug' => $this->serializeLlmDebug($result),
                             'assistantTimeline' => $result->assistantTimeline,
                             'assistantMemoryEntries' => $result->assistantMemoryEntries,
                             'timing' => [
@@ -336,6 +338,7 @@ class ConversationController extends AbstractController
                 'userMessage' => $this->serializeMessage($result->userMessage),
                 'assistantMessage' => $this->serializeMessage($result->assistantMessage),
                 'assistantSpeechText' => $result->assistantSpeechText,
+                'llmDebug' => $this->serializeLlmDebug($result),
                 'assistantTimeline' => $result->assistantTimeline,
                 'assistantMemoryEntries' => $result->assistantMemoryEntries,
                 'timing' => [
@@ -490,6 +493,24 @@ class ConversationController extends AbstractController
             'emotionTags' => $message->getParsedEmotionTags(),
             'animationTags' => $message->getParsedAnimationTags(),
             'createdAt' => $message->getCreatedAt()?->format(DATE_ATOM) ?? '',
+        ];
+    }
+
+    /**
+     * @return array{
+     *   provider:string,
+     *   model:?string,
+     *   requestMessages:list<array{role:string,content:string}>,
+     *   rawCompletion:string
+     * }
+     */
+    private function serializeLlmDebug(ChatTurnResult $result): array
+    {
+        return [
+            'provider' => $result->conversation->getProvider(),
+            'model' => $result->conversation->getModel(),
+            'requestMessages' => $result->llmRequestMessages,
+            'rawCompletion' => $result->assistantRawCompletion,
         ];
     }
 

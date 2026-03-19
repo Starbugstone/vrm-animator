@@ -172,6 +172,52 @@ class CueParserTest extends TestCase
         $this->assertSame(2500, $animationEvents[0]['delayMs'] ?? null);
     }
 
+    public function testItParsesLegacyEqualsStyleBracketBundles(): void
+    {
+        $animation = new CueAsset(
+            'action:user:1',
+            'Dance Twirl',
+            'Dance Twirl',
+            'action',
+            'Playful twirl',
+            ['dance', 'twirl'],
+            ['playful'],
+            'user',
+            ['dance', 'twirl', 'playful'],
+        );
+        $expression = new CueAsset(
+            'expression:shared:1',
+            'Playful Talk',
+            'Playful Talk',
+            'expression',
+            'Playful speaking overlay',
+            ['speech'],
+            ['playful'],
+            'shared',
+            ['speech', 'playful'],
+            ['mouth', 'eyes', 'face'],
+            3,
+        );
+
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parse(
+            'Closing beat [emotion=playful | anim=Dance Twirl | delay=1.2s]',
+            [$animation, $expression],
+        );
+
+        $this->assertSame('Closing beat', $parsed['text']);
+        $this->assertSame(['playful'], $parsed['emotionTags']);
+        $this->assertSame(['Dance Twirl'], $parsed['animationTags']);
+
+        $animationEvents = array_values(array_filter(
+            $parsed['timeline'],
+            static fn (array $entry): bool => ($entry['type'] ?? '') === 'animation',
+        ));
+
+        $this->assertCount(1, $animationEvents);
+        $this->assertSame(1200, $animationEvents[0]['delayMs'] ?? null);
+    }
+
     public function testItParsesScopedMemoryEntries(): void
     {
         $parser = new CueParser(new EmotionVocabulary());
@@ -236,6 +282,46 @@ class CueParserTest extends TestCase
         $this->assertSame('[laughing] That really got me.', $parsed['speechText']);
         $this->assertSame(['Laugh'], $parsed['animationTags']);
         $this->assertSame(['happy'], $parsed['emotionTags']);
+    }
+
+    public function testItCollapsesLongAsteriskStageDirectionsIntoCompactSpeechActions(): void
+    {
+        $animation = new CueAsset(
+            'action:user:1',
+            'Laugh',
+            'Laugh',
+            'action',
+            'Laugh animation',
+            ['laugh', 'laughing', 'giggle', 'giggles'],
+            ['happy'],
+            'user',
+            ['laugh', 'laughing', 'giggle', 'giggles', 'happy'],
+        );
+
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parse(
+            '*giggles uncontrollably, her tiny wings fluttering so fast they are just a blur* Hello there.',
+            [$animation],
+        );
+
+        $this->assertSame('Hello there.', $parsed['text']);
+        $this->assertSame('[giggles] Hello there.', $parsed['speechText']);
+        $this->assertSame(['Laugh'], $parsed['animationTags']);
+        $this->assertSame(['happy'], $parsed['emotionTags']);
+    }
+
+    public function testItKeepsAsteriskEmphasisInVisibleText(): void
+    {
+        $parser = new CueParser(new EmotionVocabulary());
+        $parsed = $parser->parse(
+            'Did you *say* that?',
+            [],
+        );
+
+        $this->assertSame('Did you *say* that?', $parsed['text']);
+        $this->assertSame('Did you *say* that?', $parsed['speechText']);
+        $this->assertSame([], $parsed['animationTags']);
+        $this->assertSame([], $parsed['emotionTags']);
     }
 
     public function testStreamingParserDoesNotLeakStageDirectionsIntoVisibleText(): void

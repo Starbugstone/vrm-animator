@@ -20,6 +20,21 @@ function sortDisplayValues(values) {
   ))
 }
 
+const LANGUAGE_NAME_TO_CODE = {
+  english: 'en',
+  anglais: 'en',
+  french: 'fr',
+  francais: 'fr',
+  frenchfrance: 'fr',
+  spanish: 'es',
+  espanol: 'es',
+  castilian: 'es',
+  german: 'de',
+  allemand: 'de',
+  italian: 'it',
+  italien: 'it',
+}
+
 function normalizeLocaleTag(value) {
   const normalized = String(value || '').trim()
   if (!normalized) {
@@ -39,6 +54,11 @@ function normalizeLocaleTag(value) {
 }
 
 function normalizeLanguageCode(value) {
+  const normalizedName = normalizeComparableText(value).replace(/[^a-z]/g, '')
+  if (normalizedName && LANGUAGE_NAME_TO_CODE[normalizedName]) {
+    return LANGUAGE_NAME_TO_CODE[normalizedName]
+  }
+
   const normalized = normalizeLocaleTag(value)
   if (!normalized || normalized === 'auto') {
     return ''

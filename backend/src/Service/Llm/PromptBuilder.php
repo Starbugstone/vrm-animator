@@ -149,10 +149,10 @@ class PromptBuilder
 
         $tags = [];
         if ($message->getParsedEmotionTags() !== []) {
-            $tags[] = 'emotion='.implode(',', array_slice($message->getParsedEmotionTags(), 0, 3));
+            $tags[] = 'emotion:'.implode(',', array_slice($message->getParsedEmotionTags(), 0, 3));
         }
         if ($message->getParsedAnimationTags() !== []) {
-            $tags[] = 'animation='.implode(',', array_slice($message->getParsedAnimationTags(), 0, 2));
+            $tags[] = 'anim:'.implode(',', array_slice($message->getParsedAnimationTags(), 0, 2));
         }
 
         if ($tags === []) {

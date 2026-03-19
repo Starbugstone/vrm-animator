@@ -197,6 +197,8 @@ class AvatarChatService
             $parsedAssistant['timeline'],
             $parsedAssistant['memoryEntries'],
             $assistantSpeechText,
+            $preparedTurn->providerMessages,
+            $completion->content,
         );
     }
 

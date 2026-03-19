@@ -297,6 +297,26 @@ function ViewerMetric({ label, value, detail, tone = 'default' }) {
   )
 }
 
+function formatLlmDebugPrompt(messages = []) {
+  const items = Array.isArray(messages) ? messages : []
+
+  return items.map((message) => {
+    const role = String(message?.role || 'unknown').toUpperCase()
+    const content = String(message?.content || '')
+
+    return `[${role}]\n${content}`
+  }).join('\n\n')
+}
+
+function summarizeDebugEntry(entry) {
+  const source = String(entry?.userMessage || entry?.rawCompletion || '').trim()
+  if (!source) {
+    return 'Untitled turn'
+  }
+
+  return source.length > 42 ? `${source.slice(0, 41)}...` : source
+}
+
 export default function ViewerPage({ workspace, onNavigate }) {
   const {
     avatars,
@@ -347,6 +367,8 @@ export default function ViewerPage({ workspace, onNavigate }) {
   const [isContextLoading, setIsContextLoading] = useState(false)
   const [loadedAvatarName, setLoadedAvatarName] = useState('No avatar loaded')
   const [pendingMessages, setPendingMessages] = useState([])
+  const [llmDebugLog, setLlmDebugLog] = useState([])
+  const [selectedDebugEntryId, setSelectedDebugEntryId] = useState('')
   const lastSyncedAvatarIdRef = useRef(selectedAvatarId)
   const activeEmotionRef = useRef('neutral')
   const speechSynthesisRef = useRef(typeof window !== 'undefined' ? window.speechSynthesis || null : null)
@@ -423,6 +445,14 @@ export default function ViewerPage({ workspace, onNavigate }) {
       : null,
     [avatars, selectedAvatarAsset],
   )
+  const selectedLlmDebugEntry = useMemo(
+    () => llmDebugLog.find((entry) => entry.id === selectedDebugEntryId) || llmDebugLog[0] || null,
+    [llmDebugLog, selectedDebugEntryId],
+  )
+  const selectedLlmDebugPrompt = useMemo(
+    () => formatLlmDebugPrompt(selectedLlmDebugEntry?.requestMessages || []),
+    [selectedLlmDebugEntry],
+  )
   const personas = selectedAvatar ? personasByAvatar[selectedAvatar.id] || [] : []
   const effectivePersona = useMemo(
     () => personas.find((entry) => entry.isPrimary) || personas[0] || null,
@@ -487,6 +517,11 @@ export default function ViewerPage({ workspace, onNavigate }) {
   const hasRemoteTts = hasRemoteTtsConfiguration(selectedAvatar)
   const hasStartedChat = liveMessages.length > 0 || conversations.length > 0
   const chatPhase = getChatPhaseForPresenceMode(avatarPresence.mode)
+
+  useEffect(() => {
+    setLlmDebugLog([])
+    setSelectedDebugEntryId('')
+  }, [selectedAvatar?.id])
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1705,6 +1740,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
       )
       const completedText = response.assistantMessage?.content || ''
       const completedSpeechText = response.assistantSpeechText || completedText
+      const llmDebug = response.llmDebug || null
       if (completedText.trim() !== '') {
         hasVisibleAssistantTextRef.current = true
       }
@@ -1717,6 +1753,22 @@ export default function ViewerPage({ workspace, onNavigate }) {
         fallbackText: completedText,
         fallbackEmotion: finalEmotion,
       })
+      if (llmDebug) {
+        const debugEntry = {
+          id: `${response.conversation?.id || 'conversation'}:${requestId}:${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          conversationId: response.conversation?.id || null,
+          provider: llmDebug.provider || response.conversation?.provider || '',
+          model: llmDebug.model || response.conversation?.model || '',
+          requestMessages: Array.isArray(llmDebug.requestMessages) ? llmDebug.requestMessages : [],
+          rawCompletion: String(llmDebug.rawCompletion || ''),
+          userMessage: outgoingMessage,
+          assistantText: completedText,
+        }
+
+        setLlmDebugLog((current) => [debugEntry, ...current].slice(0, 8))
+        setSelectedDebugEntryId(debugEntry.id)
+      }
       if (hasRemoteTts) {
         void playRemoteTts(completedSpeechText, finalEmotion, [outgoingMessage]).catch((nextError) => {
           setNotice(`${nextError.message || 'ElevenLabs playback failed.'} Falling back to browser speech.`)
@@ -1786,7 +1838,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
   return (
     <div className="min-h-screen bg-transparent text-white">
       <div className="grid min-h-screen w-full grid-cols-1 gap-6 px-4 pb-10 pt-6 2xl:grid-cols-[340px_minmax(0,1fr)_auto] lg:px-6">
-        <aside className="space-y-5 rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.8)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)] backdrop-blur">
+        <aside className="space-y-5 rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.8)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)] backdrop-blur lg:self-start lg:sticky lg:top-6 lg:max-h-[calc(100vh-48px)] lg:overflow-y-auto">
           <section>
             <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Workspace</div>
             <div className="mt-2 text-3xl font-semibold tracking-tight text-white">Avatar runtime</div>
@@ -1937,7 +1989,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
           </section>
         </aside>
 
-        <main className="relative min-h-[62vh]">
+        <main className="relative min-h-[62vh] lg:self-start lg:sticky lg:top-6">
           <div className="relative h-[72vh] min-h-[560px] overflow-hidden rounded-[36px] border border-cyan-300/15 bg-black/25 shadow-[0_30px_90px_rgba(3,7,18,0.42)] 2xl:h-[calc(100vh-72px)]">
             <canvas ref={canvasRef} className="viewer-canvas" />
 
@@ -2001,7 +2053,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
           </div>
         </main>
 
-        <div className={`relative hidden overflow-visible 2xl:block transition-[width] duration-300 ease-out ${isRightPanelCollapsed ? 'w-0' : 'w-[320px]'}`}>
+        <div className={`relative hidden overflow-visible 2xl:block 2xl:self-start 2xl:sticky 2xl:top-6 h-[calc(100vh-48px)] transition-[width] duration-300 ease-out ${isRightPanelCollapsed ? 'w-0' : 'w-[320px]'}`}>
           <button
             type="button"
             onClick={() => setIsRightPanelCollapsed((current) => !current)}
@@ -2011,7 +2063,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
             {isRightPanelCollapsed ? '<' : '>'}
           </button>
 
-          <aside className={`absolute inset-y-0 right-0 w-[320px] space-y-5 rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.8)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)] backdrop-blur transition-all duration-300 ease-out ${isRightPanelCollapsed ? 'pointer-events-none translate-x-full opacity-0' : 'pointer-events-auto translate-x-0 opacity-100'}`}>
+          <aside className={`absolute inset-y-0 right-0 w-[320px] space-y-5 overflow-y-auto rounded-[32px] border border-white/10 bg-[rgba(8,15,22,0.8)] p-5 shadow-[0_28px_90px_rgba(0,0,0,0.28)] backdrop-blur transition-all duration-300 ease-out ${isRightPanelCollapsed ? 'pointer-events-none translate-x-full opacity-0' : 'pointer-events-auto translate-x-0 opacity-100'}`}>
             <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.82)] p-4">
               <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
                 <div>
@@ -2178,6 +2230,89 @@ export default function ViewerPage({ workspace, onNavigate }) {
               <ViewerMetric label="Eye blinking" value={viewerOptions.autoBlink ? 'Auto' : 'Off'} detail="Toggle available from the camera popover." />
               <ViewerMetric label="Camera follow" value={viewerOptions.lookAtCamera ? 'Enabled' : 'Disabled'} detail="The viewer can keep eyes pointed toward the camera." />
             </div>
+            </section>
+
+            <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.82)] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">LLM debug</div>
+                  <div className="mt-1 text-sm text-white/60">Inspect the exact prompt payload, including injected memory, and the raw completion text from recent turns.</div>
+                </div>
+                {llmDebugLog.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLlmDebugLog([])
+                      setSelectedDebugEntryId('')
+                    }}
+                    className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-white/60 transition hover:border-cyan-300/20 hover:text-cyan-100"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+
+              {llmDebugLog.length === 0 ? (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm leading-6 text-white/55">
+                  Send a message to capture the exact provider prompt and raw reply for debugging memory and cue behavior.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {llmDebugLog.map((entry) => {
+                      const isSelected = entry.id === (selectedLlmDebugEntry?.id || '')
+
+                      return (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => setSelectedDebugEntryId(entry.id)}
+                          title={summarizeDebugEntry(entry)}
+                          className={`max-w-full rounded-full border px-3 py-1.5 text-left text-[11px] uppercase tracking-[0.16em] transition ${
+                            isSelected
+                              ? 'border-cyan-300/30 bg-cyan-300/15 text-cyan-100'
+                              : 'border-white/10 bg-black/20 text-white/55 hover:border-cyan-300/20 hover:text-white'
+                          }`}
+                        >
+                          {summarizeDebugEntry(entry)}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {selectedLlmDebugEntry ? (
+                    <>
+                      <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs leading-5 text-white/60">
+                        <div className="font-medium text-cyan-100">
+                          {selectedLlmDebugEntry.provider || 'provider'}
+                          {selectedLlmDebugEntry.model ? ` / ${selectedLlmDebugEntry.model}` : ''}
+                        </div>
+                        <div className="mt-1">{selectedLlmDebugEntry.requestMessages.length} prompt messages in this turn.</div>
+                      </div>
+
+                      <label className="block space-y-2">
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/80">Prompt sent</div>
+                        <textarea
+                          readOnly
+                          value={selectedLlmDebugPrompt}
+                          rows={14}
+                          className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-3 font-mono text-xs leading-5 text-white/78 outline-none"
+                        />
+                      </label>
+
+                      <label className="block space-y-2">
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-cyan-100/80">Raw reply</div>
+                        <textarea
+                          readOnly
+                          value={selectedLlmDebugEntry.rawCompletion}
+                          rows={8}
+                          className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-3 font-mono text-xs leading-5 text-white/78 outline-none"
+                        />
+                      </label>
+                    </>
+                  ) : null}
+                </div>
+              )}
             </section>
 
             <section className="rounded-[28px] border border-white/10 bg-[rgba(10,16,30,0.82)] p-4">

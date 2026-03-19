@@ -83,6 +83,18 @@ describe('ttsVoices', () => {
     expect(getVoiceLanguages(voice)).toEqual(['fr'])
   })
 
+  it('matches plain-language labels like French and English from ElevenLabs metadata', () => {
+    const voices = [
+      { id: '1', name: 'Claire', language: 'French' },
+      { id: '2', name: 'Adam', language: 'English' },
+      { id: '3', name: 'Mystery' },
+    ]
+
+    expect(filterVoicesForAvatar(voices, {
+      speechLanguage: 'fr-FR',
+    }).map((voice) => voice.id)).toEqual(['1', '3'])
+  })
+
   it('searches across voice names and tags', () => {
     const voice = {
       id: '1',
