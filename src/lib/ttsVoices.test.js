@@ -4,9 +4,11 @@ import {
   filterVoicesForAvatar,
   getEffectiveSpeechLanguage,
   getEffectiveVoiceGender,
+  getSpeechPlaybackMode,
   getVoiceFacetValues,
   getVoiceLanguages,
   hasRemoteTtsConfiguration,
+  isSpeechPlaybackDisabled,
   matchesVoiceSearch,
   normalizeGenderTag,
   voiceMatchesFacetFilters,
@@ -31,6 +33,12 @@ describe('ttsVoices', () => {
   it('normalizes the avatar speech language when it is explicitly set', () => {
     expect(getEffectiveSpeechLanguage({ speechLanguage: 'fr-fr' })).toBe('fr-FR')
     expect(getEffectiveSpeechLanguage({ speechLanguage: 'auto' })).toBe('')
+  })
+
+  it('defaults speech playback to automatic unless none is explicitly set', () => {
+    expect(getSpeechPlaybackMode({})).toBe('auto')
+    expect(getSpeechPlaybackMode({ speechMode: 'none' })).toBe('none')
+    expect(isSpeechPlaybackDisabled({ speechMode: 'none' })).toBe(true)
   })
 
   it('filters voices by the effective avatar gender but keeps untagged voices available', () => {

@@ -80,6 +80,15 @@ export function getEffectiveVoiceGender(avatar) {
   return normalizeGenderTag(avatar?.speechVoiceGender) || normalizeGenderTag(avatar?.presentationGender) || ''
 }
 
+export function getSpeechPlaybackMode(avatar) {
+  const normalized = String(avatar?.speechMode || '').trim().toLowerCase()
+  return normalized === 'none' ? 'none' : 'auto'
+}
+
+export function isSpeechPlaybackDisabled(avatar) {
+  return getSpeechPlaybackMode(avatar) === 'none'
+}
+
 export function hasRemoteTtsConfiguration(avatar) {
   return Boolean(avatar?.ttsCredentialId && avatar?.ttsVoiceId)
 }

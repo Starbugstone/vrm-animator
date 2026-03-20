@@ -83,6 +83,7 @@ function buildSelectPayload(draft) {
     presentationGender: draft.presentationGender || null,
     speechVoiceGender: draft.speechVoiceGender || null,
     speechLanguage: draft.speechLanguage || 'auto',
+    speechMode: draft.speechMode || 'auto',
     ttsCredentialId: draft.ttsCredentialId ? Number(draft.ttsCredentialId) : null,
     ttsVoiceId: draft.ttsVoiceId || null,
   }
@@ -97,6 +98,7 @@ function buildDraftFromAvatar(avatar, credentialId) {
     presentationGender: avatar?.presentationGender || '',
     speechVoiceGender: avatar?.speechVoiceGender || '',
     speechLanguage: avatar?.speechLanguage || 'auto',
+    speechMode: avatar?.speechMode || 'auto',
     ttsCredentialId: avatar?.ttsCredentialId ? String(avatar.ttsCredentialId) : '',
     ttsVoiceId: avatar?.ttsVoiceId || '',
     showAllVoices: false,
@@ -153,6 +155,7 @@ export default function AvatarIdentityPanel({
     presentationGender: '',
     speechVoiceGender: '',
     speechLanguage: 'auto',
+    speechMode: 'auto',
     ttsCredentialId: '',
     ttsVoiceId: '',
     showAllVoices: false,
@@ -702,6 +705,18 @@ export default function AvatarIdentityPanel({
 
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             <label className="block space-y-2">
+              <div className="text-xs uppercase tracking-[0.24em] text-white/45">Speech output</div>
+              <select
+                value={draft.speechMode}
+                onChange={(event) => applySelectChange({ speechMode: event.target.value })}
+                className="w-full rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300/40"
+              >
+                <option value="auto">Automatic speech</option>
+                <option value="none">No voice, text only</option>
+              </select>
+            </label>
+
+            <label className="block space-y-2">
               <div className="text-xs uppercase tracking-[0.24em] text-white/45">Avatar sex</div>
               <select
                 value={draft.presentationGender}
@@ -767,7 +782,9 @@ export default function AvatarIdentityPanel({
               <div>
                 <div className="text-xs uppercase tracking-[0.24em] text-white/45">Voice selection</div>
                 <div className="mt-1 text-sm text-white/60">
-                  {voiceSearch || hasActiveVoiceFilters
+                  {draft.speechMode === 'none'
+                    ? 'Voice playback is disabled for this avatar. Saved endpoint and voice choices stay here so you can switch back later without reconfiguring them.'
+                    : voiceSearch || hasActiveVoiceFilters
                     ? 'Search and tag filters narrow the currently matched voice set without dropping the avatar language and sex defaults.'
                     : effectiveVoiceGender || effectiveSpeechLanguage
                       ? `Matching voices for ${[
@@ -778,13 +795,19 @@ export default function AvatarIdentityPanel({
                 </div>
               </div>
               <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/55">
-                {draft.ttsVoiceId ? 'Remote voice selected' : 'Browser fallback'}
+                {draft.speechMode === 'none'
+                  ? 'No voice'
+                  : draft.ttsVoiceId
+                    ? 'Remote voice selected'
+                    : 'Browser fallback'}
               </div>
             </div>
 
             {!draft.ttsCredentialId ? (
               <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-white/55">
-                Pick a saved voice endpoint first. Until then, this avatar will keep using browser speech.
+                {draft.speechMode === 'none'
+                  ? 'Speech playback is off for this avatar. You can still save a voice endpoint here for later without enabling audio right now.'
+                  : 'Pick a saved voice endpoint first. Until then, this avatar will keep using browser speech.'}
               </div>
             ) : (
               <div className="mt-4">

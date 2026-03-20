@@ -96,6 +96,7 @@ class ConversationTest extends WebTestCase
         $this->assertSame('assistant', $chatData['assistantMessage']['role']);
         $this->assertStringContainsString('Echo:', $chatData['assistantMessage']['content']);
         $this->assertStringNotContainsString('{emotion:', $chatData['assistantMessage']['content']);
+        $this->assertSame($chatData['assistantMessage']['content'], $chatData['assistantMessage']['spokenContent']);
         $this->assertSame(['happy'], $chatData['assistantMessage']['emotionTags']);
         $this->assertSame(['Greeting'], $chatData['assistantMessage']['animationTags']);
         $this->assertStringContainsString('{emotion:happy}', $chatData['assistantMessage']['rawProviderContent']);
@@ -126,6 +127,7 @@ class ConversationTest extends WebTestCase
         $messageList = json_decode($client->getResponse()->getContent(), true);
         $this->assertCount(2, $messageList['messages']);
         $this->assertSame('Say hello to me', $messageList['messages'][0]['content']);
+        $this->assertSame('Say hello to me', $messageList['messages'][0]['spokenContent']);
         $this->assertSame(['Greeting'], $messageList['messages'][1]['animationTags']);
     }
 
@@ -247,6 +249,7 @@ class ConversationTest extends WebTestCase
         $chatData = json_decode($client->getResponse()->getContent(), true);
 
         $this->assertSame('Echo: Give me a giggle cue', $chatData['assistantMessage']['content']);
+        $this->assertSame('[giggles] Echo: Give me a giggle cue', $chatData['assistantMessage']['spokenContent']);
         $this->assertSame('[giggles] Echo: Give me a giggle cue', $chatData['assistantSpeechText']);
         $this->assertSame(['happy'], $chatData['assistantMessage']['emotionTags']);
     }
@@ -389,5 +392,75 @@ class ConversationTest extends WebTestCase
         $secondChat = json_decode($client->getResponse()->getContent(), true);
         $this->assertSame('minimax', $secondChat['conversation']['provider']);
         $this->assertSame('MiniMax-M2.5', $secondChat['conversation']['model']);
+    }
+
+    public function testUpdatedCredentialDefaultModelBeatsExistingConversationModel(): void
+    {
+        $client = static::createClient();
+        $token = $this->registerUser($client, 'conversation-model-refresh@example.com');
+
+        $client->request('POST', '/api/avatars', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'Model Refresh Avatar',
+            'filename' => 'model-refresh-avatar.vrm',
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $avatarData = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('POST', '/api/llm/credentials', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'name' => 'OpenRouter Main',
+            'provider' => 'openrouter',
+            'secret' => 'openrouter-secret-token',
+            'defaultModel' => 'openai/gpt-4.1-mini',
+            'isActive' => true,
+        ]));
+
+        $this->assertResponseStatusCodeSame(201);
+        $credential = json_decode($client->getResponse()->getContent(), true);
+
+        $client->request('POST', '/api/avatars/'.$avatarData['id'].'/chat', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'message' => 'First turn on the original model',
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+        $firstChat = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('openrouter', $firstChat['conversation']['provider']);
+        $this->assertSame('openai/gpt-4.1-mini', $firstChat['conversation']['model']);
+
+        $client->request('PATCH', '/api/llm/credentials/'.$credential['id'], [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'defaultModel' => 'anthropic/claude-3.7-sonnet',
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+
+        $client->request('POST', '/api/avatars/'.$avatarData['id'].'/chat', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'message' => 'Second turn after changing the credential model',
+            'conversationId' => $firstChat['conversation']['id'],
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+        $secondChat = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('openrouter', $secondChat['conversation']['provider']);
+        $this->assertSame('anthropic/claude-3.7-sonnet', $secondChat['conversation']['model']);
     }
 }

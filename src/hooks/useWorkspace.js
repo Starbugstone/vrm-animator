@@ -58,6 +58,20 @@ import {
 
 const WORKSPACE_SELECTED_AVATAR_KEY = 'workspace.selectedAvatarId'
 
+function buildSelectedAvatarStorageKey(user) {
+  const userId = Number(user?.id)
+  if (Number.isInteger(userId) && userId > 0) {
+    return `${WORKSPACE_SELECTED_AVATAR_KEY}:${userId}`
+  }
+
+  const email = String(user?.email || '').trim().toLowerCase()
+  if (email) {
+    return `${WORKSPACE_SELECTED_AVATAR_KEY}:${email}`
+  }
+
+  return WORKSPACE_SELECTED_AVATAR_KEY
+}
+
 function upsertById(items, nextItem) {
   const index = items.findIndex((entry) => entry.id === nextItem.id)
   if (index === -1) {
@@ -89,13 +103,19 @@ function buildPersonaPayloadFromAvatar(avatar, llmCredentialId = null) {
   }
 }
 
-function readStoredSelectedAvatarId() {
+function readStoredSelectedAvatarId(user) {
   if (typeof window === 'undefined') return ''
 
-  return window.localStorage.getItem(WORKSPACE_SELECTED_AVATAR_KEY) || ''
+  const scopedKey = buildSelectedAvatarStorageKey(user)
+
+  return (
+    window.localStorage.getItem(scopedKey)
+    || window.localStorage.getItem(WORKSPACE_SELECTED_AVATAR_KEY)
+    || ''
+  )
 }
 
-export default function useWorkspace(token) {
+export default function useWorkspace(token, user = null) {
   const [avatars, setAvatars] = useState([])
   const [animations, setAnimations] = useState([])
   const [sharedAvatars, setSharedAvatars] = useState([])
@@ -111,10 +131,11 @@ export default function useWorkspace(token) {
   const [memoryRevisionsByAvatar, setMemoryRevisionsByAvatar] = useState({})
   const [conversationsByAvatar, setConversationsByAvatar] = useState({})
   const [messagesByConversation, setMessagesByConversation] = useState({})
-  const [isBootstrapping, setIsBootstrapping] = useState(false)
+  const [isBootstrapping, setIsBootstrapping] = useState(Boolean(token))
   const [isModelsLoading, setIsModelsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [selectedAvatarId, setSelectedAvatarIdState] = useState(readStoredSelectedAvatarId)
+  const [selectedAvatarId, setSelectedAvatarIdState] = useState(() => readStoredSelectedAvatarId(user))
+  const selectedAvatarStorageKey = buildSelectedAvatarStorageKey(user)
 
   const setSelectedAvatarId = useCallback((avatarId) => {
     const nextValue = avatarId ? String(avatarId) : ''
@@ -122,12 +143,22 @@ export default function useWorkspace(token) {
 
     if (typeof window !== 'undefined') {
       if (nextValue) {
-        window.localStorage.setItem(WORKSPACE_SELECTED_AVATAR_KEY, nextValue)
+        window.localStorage.setItem(selectedAvatarStorageKey, nextValue)
+        if (selectedAvatarStorageKey !== WORKSPACE_SELECTED_AVATAR_KEY) {
+          window.localStorage.removeItem(WORKSPACE_SELECTED_AVATAR_KEY)
+        }
       } else {
-        window.localStorage.removeItem(WORKSPACE_SELECTED_AVATAR_KEY)
+        window.localStorage.removeItem(selectedAvatarStorageKey)
+        if (selectedAvatarStorageKey === WORKSPACE_SELECTED_AVATAR_KEY) {
+          window.localStorage.removeItem(WORKSPACE_SELECTED_AVATAR_KEY)
+        }
       }
     }
-  }, [])
+  }, [selectedAvatarStorageKey])
+
+  useEffect(() => {
+    setSelectedAvatarIdState(readStoredSelectedAvatarId(user))
+  }, [user, selectedAvatarStorageKey])
 
   const resetWorkspace = useCallback(() => {
     setAvatars([])
@@ -148,8 +179,8 @@ export default function useWorkspace(token) {
     setError('')
     setIsBootstrapping(false)
     setIsModelsLoading(false)
-    setSelectedAvatarId('')
-  }, [setSelectedAvatarId])
+    setSelectedAvatarIdState('')
+  }, [])
 
   const refreshWorkspace = useCallback(async () => {
     if (!token) {
@@ -220,6 +251,10 @@ export default function useWorkspace(token) {
   }, [refreshWorkspace])
 
   useEffect(() => {
+    if (isBootstrapping) {
+      return
+    }
+
     if (avatars.length === 0) {
       if (selectedAvatarId) {
         setSelectedAvatarId('')
@@ -231,7 +266,7 @@ export default function useWorkspace(token) {
     if (!hasSelectedAvatar) {
       setSelectedAvatarId(String(avatars[0].id))
     }
-  }, [avatars, selectedAvatarId, setSelectedAvatarId])
+  }, [avatars, isBootstrapping, selectedAvatarId, setSelectedAvatarId])
 
   const ensurePersonas = useCallback(async (avatarId, options = {}) => {
     if (!token || !avatarId) return []
@@ -312,6 +347,7 @@ export default function useWorkspace(token) {
       presentationGender,
       speechVoiceGender,
       speechLanguage,
+      speechMode,
       ttsCredentialId,
       ttsVoiceId,
       ...avatarPayload
@@ -320,6 +356,7 @@ export default function useWorkspace(token) {
     void presentationGender
     void speechVoiceGender
     void speechLanguage
+    void speechMode
     void ttsCredentialId
     void ttsVoiceId
     const avatar = await updateAvatar(token, avatarId, avatarPayload)

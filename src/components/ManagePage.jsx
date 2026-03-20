@@ -804,6 +804,7 @@ export default function ManagePage({ user, workspace }) {
         presentationGender: payload.presentationGender,
         speechVoiceGender: payload.speechVoiceGender,
         speechLanguage: payload.speechLanguage,
+        speechMode: payload.speechMode,
         ttsCredentialId: payload.ttsCredentialId,
         ttsVoiceId: payload.ttsVoiceId,
       })
@@ -882,7 +883,11 @@ export default function ManagePage({ user, workspace }) {
                 {effectivePersona?.llmProvider ? `AI: ${effectivePersona.llmProvider}` : 'AI not attached yet'}
               </div>
               <div className="mt-1 text-sm text-white/55">
-                {selectedAvatar?.ttsVoiceName ? `Voice: ${selectedAvatar.ttsVoiceName}` : 'Voice: browser fallback'}
+                {selectedAvatar?.speechMode === 'none'
+                  ? 'Voice: no voice, text only'
+                  : selectedAvatar?.ttsVoiceName
+                    ? `Voice: ${selectedAvatar.ttsVoiceName}`
+                    : 'Voice: browser fallback'}
               </div>
               <div className="mt-4 grid gap-3">
                 <StatTile
@@ -924,7 +929,11 @@ export default function ManagePage({ user, workspace }) {
                   label="Chat route"
                   value={hasActiveCredential ? (effectivePersona?.llmProvider || 'Ready') : 'Not connected'}
                   tone={hasActiveCredential ? 'success' : 'warning'}
-                  detail={selectedAvatar?.ttsVoiceName ? `Voice ${selectedAvatar.ttsVoiceName}` : 'Browser speech fallback'}
+                  detail={selectedAvatar?.speechMode === 'none'
+                    ? 'Text-only chat with cue annotations'
+                    : selectedAvatar?.ttsVoiceName
+                      ? `Voice ${selectedAvatar.ttsVoiceName}`
+                      : 'Browser speech fallback'}
                 />
               </div>
             </div>
@@ -1324,7 +1333,7 @@ export default function ManagePage({ user, workspace }) {
               <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
                 <StatTile label="Voice providers" value={ttsProviders.length} detail="ElevenLabs is the current supported backend TTS provider." />
                 <StatTile label="Saved endpoints" value={ttsCredentials.length} tone={ttsCredentials.length > 0 ? 'success' : 'warning'} detail="Attach endpoints first, then pick voices per avatar." />
-                <StatTile label="Selected avatar voice" value={selectedAvatar?.ttsVoiceName || 'Browser fallback'} tone={selectedAvatar?.ttsVoiceName ? 'success' : 'planned'} detail={selectedAvatar?.speechLanguage ? `Language ${selectedAvatar.speechLanguage}` : 'Language auto detect.'} />
+                <StatTile label="Selected avatar voice" value={selectedAvatar?.speechMode === 'none' ? 'No voice' : (selectedAvatar?.ttsVoiceName || 'Browser fallback')} tone={selectedAvatar?.speechMode === 'none' ? 'planned' : (selectedAvatar?.ttsVoiceName ? 'success' : 'planned')} detail={selectedAvatar?.speechMode === 'none' ? 'Text-only chat with cue annotations stays active.' : (selectedAvatar?.speechLanguage ? `Language ${selectedAvatar.speechLanguage}` : 'Language auto detect.')} />
                 <StatTile label="Voice catalog cache" value={Object.keys(ttsVoicesByCredential).length} tone="planned" detail="Loaded voice lists stay scoped by credential." />
               </div>
 

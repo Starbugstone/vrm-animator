@@ -162,6 +162,7 @@ class AvatarChatService
             ->setConversation($conversation)
             ->setRole('user')
             ->setContent($preparedTurn->message)
+            ->setSpokenContent($preparedTurn->message)
             ->setParsedText($preparedTurn->message)
             ->setParsedEmotionTags([])
             ->setParsedAnimationTags([]);
@@ -176,6 +177,7 @@ class AvatarChatService
             ->setConversation($conversation)
             ->setRole('assistant')
             ->setContent($assistantText)
+            ->setSpokenContent($assistantSpeechText)
             ->setRawProviderContent($completion->rawResponse)
             ->setParsedText($parsedAssistant['text'])
             ->setParsedEmotionTags($parsedAssistant['emotionTags'])
@@ -351,6 +353,11 @@ class AvatarChatService
             return $normalizedRequestedModel;
         }
 
+        $credentialModel = $this->normalizeNullableString($credential->getDefaultModel());
+        if ($credentialModel !== null) {
+            return $credentialModel;
+        }
+
         $conversationModel = $this->normalizeNullableString(
             $conversation !== null && $conversation->getProvider() === $provider
                 ? $conversation->getModel()
@@ -358,11 +365,6 @@ class AvatarChatService
         );
         if ($conversationModel !== null) {
             return $conversationModel;
-        }
-
-        $credentialModel = $this->normalizeNullableString($credential->getDefaultModel());
-        if ($credentialModel !== null) {
-            return $credentialModel;
         }
 
         $providers = $this->providerCatalog->listProviders();

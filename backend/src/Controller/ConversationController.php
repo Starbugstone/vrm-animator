@@ -235,6 +235,7 @@ class ConversationController extends AbstractController
                     'content' => $preparedTurn->message,
                     'rawProviderContent' => null,
                     'parsedText' => $preparedTurn->message,
+                    'spokenContent' => $preparedTurn->message,
                     'emotionTags' => [],
                     'animationTags' => [],
                     'createdAt' => '',
@@ -477,6 +478,7 @@ class ConversationController extends AbstractController
      *   content:string,
      *   rawProviderContent:?string,
      *   parsedText:?string,
+     *   spokenContent:?string,
      *   emotionTags:list<string>,
      *   animationTags:list<string>,
      *   createdAt:string
@@ -490,6 +492,7 @@ class ConversationController extends AbstractController
             'content' => $message->getContent(),
             'rawProviderContent' => $message->getRawProviderContent(),
             'parsedText' => $message->getParsedText(),
+            'spokenContent' => $message->getSpokenContent(),
             'emotionTags' => $message->getParsedEmotionTags(),
             'animationTags' => $message->getParsedAnimationTags(),
             'createdAt' => $message->getCreatedAt()?->format(DATE_ATOM) ?? '',

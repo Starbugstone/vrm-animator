@@ -253,6 +253,7 @@ class TtsCredentialTest extends WebTestCase
             'presentationGender' => 'female',
             'speechVoiceGender' => 'male',
             'speechLanguage' => 'fr-FR',
+            'speechMode' => 'auto',
             'ttsCredentialId' => $credential['id'],
             'ttsVoiceId' => 'voice_m_1',
         ]));
@@ -262,11 +263,25 @@ class TtsCredentialTest extends WebTestCase
         $this->assertSame('female', $updated['presentationGender']);
         $this->assertSame('male', $updated['speechVoiceGender']);
         $this->assertSame('fr-FR', $updated['speechLanguage']);
+        $this->assertSame('auto', $updated['speechMode']);
         $this->assertSame($credential['id'], $updated['ttsCredentialId']);
         $this->assertSame('voice_m_1', $updated['ttsVoiceId']);
         $this->assertSame('Adam', $updated['ttsVoiceName']);
         $this->assertSame('male', $updated['ttsVoiceGenderTag']);
         $this->assertFalse($updated['usesBrowserFallback']);
+
+        $client->request('PATCH', '/api/avatars/'.$avatar['id'].'/tts', [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+        ], json_encode([
+            'speechMode' => 'none',
+        ]));
+
+        $this->assertResponseStatusCodeSame(200);
+        $muted = json_decode($client->getResponse()->getContent(), true);
+        $this->assertSame('none', $muted['speechMode']);
+        $this->assertFalse($muted['usesBrowserFallback']);
 
         $client->request('POST', '/api/avatars/'.$avatar['id'].'/tts/stream', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer '.$token,

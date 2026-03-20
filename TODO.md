@@ -1,6 +1,6 @@
 ## TODO
 
-Updated: 2026-03-18
+Updated: 2026-03-19
 
 This file is intentionally short. `devlog.md` holds the product narrative and end goal; this file is the working task list for the next implementation window.
 
@@ -47,6 +47,7 @@ This baseline has been verified against the current repository. The next phase s
 - continue hardening the new provider-native upstream streaming path and fallback behavior with real-provider testing
 - keep validating provider-specific stream quirks like MiniMax cumulative deltas and reasoning fields against real accounts
 - harden the streamed event contract for text, cue, memory, and completion events
+- keep validating live chat routing after credential edits so changing a saved credential model or provider immediately affects subsequent turns instead of reusing stale conversation metadata
 - continue tightening cue validation against allowed avatar animation metadata
 - keep refining the new stage-direction normalization so raw provider habits like `*smiles*`, long descriptive action lines, legacy equals-style cue bundles, and `[laughing]` stay hidden from visible chat while still mapping cleanly into allowed avatar cues and compact ElevenLabs speech actions such as `[giggles]`, without stripping real spoken emphasis like `*say*`
 - harden retries, timeouts, and provider failure handling
@@ -84,6 +85,7 @@ This baseline has been verified against the current repository. The next phase s
 ### 5. Voice and hologram path
 
 - keep the current browser-speech fallback usable through avatar-level speech language and voice preferences
+- validate the new avatar-level no-voice text-only mode against longer replies so cue annotations, delayed gestures, and transcript rendering stay coherent without any audio playback
 - harden the new ElevenLabs BYOK streaming TTS path now that avatar-level voice routing exists
 - keep the browser-speech fallback reliable whenever an avatar has no ElevenLabs voice selected or remote playback fails
 - route future browser boundary timing and ElevenLabs timestamp/alignment data through the new centralized speech clock before adding more reply-sync logic
@@ -123,6 +125,8 @@ Before closing a feature set, the minimum checks should be:
   - the Viewer right rail now includes an LLM debug log for recent turns, showing the exact upstream prompt message payload and raw completion text so memory and prompt behavior can be inspected without opening backend logs
   - the Viewer left rail, stage, and right rail now keep independent desktop scrolling so long side panels do not push the avatar out of view
   - Manage now includes a dedicated `Voice & speech` section with backend-backed ElevenLabs BYOK credentials, per-avatar speech routing, avatar sex tags, voice overrides, and clear browser-speech fallback behavior
+  - avatars now also support an explicit `speechMode`, so a user can disable all voice playback for plain text chat while still seeing cue annotations such as `[giggles]` in assistant replies
+  - the workspace now keeps the last selected avatar as the per-user default on return instead of clearing that preference during initial bootstrap
   - avatars now persist `presentationGender` plus optional ElevenLabs voice attachment so shared starter avatars can default to a sensible voice filter without forcing a hard lock
   - avatars now also persist a `defaultFacingYaw`, and the Manage profile preview can save the current rotated T-pose view as the avatar's default starting direction for both Manage and Viewer loads
   - the viewer now prefers streamed ElevenLabs audio playback when an avatar has a saved remote voice, while falling back to browser speech if no remote voice is configured or playback fails

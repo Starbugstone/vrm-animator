@@ -89,6 +89,10 @@ class Avatar
     #[Groups(['avatar:read', 'avatar:write'])]
     private string $speechLanguage = 'auto';
 
+    #[ORM\Column(length: 16)]
+    #[Groups(['avatar:read', 'avatar:write'])]
+    private string $speechMode = 'auto';
+
     #[ORM\ManyToOne(targetEntity: TtsCredential::class)]
     #[ORM\JoinColumn(nullable: true, onDelete: 'SET NULL')]
     private ?TtsCredential $ttsCredential = null;
@@ -242,6 +246,18 @@ class Avatar
     public function setSpeechLanguage(string $speechLanguage): static
     {
         $this->speechLanguage = $speechLanguage;
+
+        return $this;
+    }
+
+    public function getSpeechMode(): string
+    {
+        return $this->speechMode;
+    }
+
+    public function setSpeechMode(string $speechMode): static
+    {
+        $this->speechMode = $speechMode;
 
         return $this;
     }

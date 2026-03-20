@@ -34,7 +34,7 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [authError, setAuthError] = useState('')
   const [activePage, setActivePage] = useState(readInitialPage)
-  const workspace = useWorkspace(auth.token)
+  const workspace = useWorkspace(auth.token, auth.user)
 
   useEffect(() => {
     window.localStorage.setItem('workspace.activePage', activePage)

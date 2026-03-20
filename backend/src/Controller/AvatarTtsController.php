@@ -72,6 +72,14 @@ class AvatarTtsController extends AbstractController
             }
         }
 
+        if (array_key_exists('speechMode', $payload)) {
+            try {
+                $avatar->setSpeechMode($this->normalizeSpeechMode($payload['speechMode']));
+            } catch (\InvalidArgumentException $exception) {
+                return $this->json(['message' => $exception->getMessage()], Response::HTTP_BAD_REQUEST);
+            }
+        }
+
         if (array_key_exists('ttsCredentialId', $payload) || array_key_exists('ttsVoiceId', $payload)) {
             try {
                 $credential = $this->resolveOwnedCredential($this->credentialRepository, $payload['ttsCredentialId'] ?? $avatar->getTtsCredentialId());
@@ -264,6 +272,20 @@ class AvatarTtsController extends AbstractController
         return $normalized;
     }
 
+    private function normalizeSpeechMode(mixed $value): string
+    {
+        if (!is_string($value)) {
+            throw new \InvalidArgumentException('speechMode must be a string.');
+        }
+
+        $normalized = strtolower(trim($value));
+        if (!in_array($normalized, ['auto', 'none'], true)) {
+            throw new \InvalidArgumentException('speechMode must be auto or none.');
+        }
+
+        return $normalized;
+    }
+
     private function normalizeLanguage(mixed $value): string
     {
         if (!is_string($value)) {
@@ -288,12 +310,14 @@ class AvatarTtsController extends AbstractController
             'presentationGender' => $avatar->getPresentationGender(),
             'speechVoiceGender' => $avatar->getSpeechVoiceGender(),
             'speechLanguage' => $avatar->getSpeechLanguage(),
+            'speechMode' => $avatar->getSpeechMode(),
             'ttsProvider' => $avatar->getTtsProvider(),
             'ttsCredentialId' => $avatar->getTtsCredentialId(),
             'ttsVoiceId' => $avatar->getTtsVoiceId(),
             'ttsVoiceName' => $avatar->getTtsVoiceName(),
             'ttsVoiceGenderTag' => $avatar->getTtsVoiceGenderTag(),
-            'usesBrowserFallback' => $avatar->getTtsCredentialId() === null || $avatar->getTtsVoiceId() === null,
+            'usesBrowserFallback' => $avatar->getSpeechMode() !== 'none'
+                && ($avatar->getTtsCredentialId() === null || $avatar->getTtsVoiceId() === null),
         ];
     }
 

@@ -28,7 +28,11 @@ import {
 } from '../lib/viewerSpeechClock.js'
 import { createAvatarPresenceState, reduceAvatarPresence } from '../lib/avatarPresenceMachine.js'
 import { playStreamedAudioResponse } from '../lib/streamingAudio.js'
-import { getEffectiveVoiceGender, hasRemoteTtsConfiguration } from '../lib/ttsVoices.js'
+import {
+  getEffectiveVoiceGender,
+  hasRemoteTtsConfiguration,
+  isSpeechPlaybackDisabled,
+} from '../lib/ttsVoices.js'
 import { streamAvatarTts } from '../api/tts.js'
 
 const VIEWER_OPTION_LABELS = {
@@ -514,9 +518,18 @@ export default function ViewerPage({ workspace, onNavigate }) {
   )
   const hasConnectedAvatar = Boolean(selectedAvatar)
   const hasConnectedLlm = Boolean(effectivePersona?.llmCredentialId)
-  const hasRemoteTts = hasRemoteTtsConfiguration(selectedAvatar)
+  const speechPlaybackDisabled = isSpeechPlaybackDisabled(selectedAvatar)
+  const hasRemoteTts = !speechPlaybackDisabled && hasRemoteTtsConfiguration(selectedAvatar)
   const hasStartedChat = liveMessages.length > 0 || conversations.length > 0
   const chatPhase = getChatPhaseForPresenceMode(avatarPresence.mode)
+  const speechPathLabel = speechPlaybackDisabled
+    ? 'No voice'
+    : hasRemoteTts
+      ? 'Remote TTS'
+      : 'Browser speech'
+  const speechPathDetail = speechPlaybackDisabled
+    ? 'Text-only chat keeps cue annotations and body language.'
+    : selectedAvatar?.ttsVoiceName || 'No remote voice attached'
 
   useEffect(() => {
     setLlmDebugLog([])
@@ -1504,6 +1517,64 @@ export default function ViewerPage({ workspace, onNavigate }) {
     return true
   }, [dispatchAvatarPresence, playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopSpeechPresenceSession])
 
+  const playTextOnlyPerformance = useCallback((text, emotion) => {
+    const cleanedText = String(text || '').trim()
+    if (!cleanedText || typeof window === 'undefined') {
+      return false
+    }
+
+    if (!speechSessionIdRef.current) {
+      speechSessionIdRef.current = 1
+    }
+
+    const sessionId = speechSessionIdRef.current
+    const speechClock = createSpeechClock({
+      sessionId,
+      source: 'text-only',
+      timingKind: 'estimated',
+      text: cleanedText,
+      totalDurationMs: estimateSpeechDurationMs(cleanedText),
+    })
+
+    if (speechStopTimeoutRef.current) {
+      window.clearTimeout(speechStopTimeoutRef.current)
+      speechStopTimeoutRef.current = null
+    }
+    if (speechMonitorIntervalRef.current) {
+      window.clearInterval(speechMonitorIntervalRef.current)
+      speechMonitorIntervalRef.current = null
+    }
+
+    dispatchAvatarPresence({
+      type: 'speech_started',
+      requestId: avatarPresenceRequestIdRef.current,
+    })
+    startSpeechPresenceSession(
+      sessionId,
+      speechClock,
+      emotion || activeEmotionRef.current || 'neutral',
+    )
+    playEmotionCue(emotion || activeEmotionRef.current || 'neutral', { preferSpeech: true, loop: true })
+
+    speechStopTimeoutRef.current = window.setTimeout(() => {
+      if (sessionId !== speechSessionIdRef.current) {
+        return
+      }
+
+      dispatchAvatarPresence({
+        type: 'speech_stopped',
+        requestId: avatarPresenceRequestIdRef.current,
+      })
+      stopSpeechPresenceSession()
+      stopOverlayAnimation({ immediate: false })
+    }, Math.max(
+      SPEECH_OVERLAY_RELEASE_MS,
+      getSpeechClockRemainingMs(speechClock) + SPEECH_OVERLAY_RELEASE_MS,
+    ))
+
+    return true
+  }, [dispatchAvatarPresence, playEmotionCue, startSpeechPresenceSession, stopOverlayAnimation, stopSpeechPresenceSession])
+
   const flushStreamingSpeechBuffer = useCallback((options = {}) => {
     const final = Boolean(options.final)
     const emotion = options.emotion || activeEmotionRef.current || 'neutral'
@@ -1649,7 +1720,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
               dispatchAvatarPresence({ type: 'assistant_text_visible', requestId })
             }
             streamingSpeechBufferRef.current = `${streamingSpeechBufferRef.current}${delta}`
-            if (hasVisibleAssistantTextRef.current && !hasRemoteTts) {
+            if (hasVisibleAssistantTextRef.current && !hasRemoteTts && !speechPlaybackDisabled) {
               flushStreamingSpeechBuffer({
                 final: false,
                 emotion: activeEmotionRef.current || 'neutral',
@@ -1769,7 +1840,9 @@ export default function ViewerPage({ workspace, onNavigate }) {
         setLlmDebugLog((current) => [debugEntry, ...current].slice(0, 8))
         setSelectedDebugEntryId(debugEntry.id)
       }
-      if (hasRemoteTts) {
+      if (speechPlaybackDisabled) {
+        playTextOnlyPerformance(completedSpeechText, finalEmotion)
+      } else if (hasRemoteTts) {
         void playRemoteTts(completedSpeechText, finalEmotion, [outgoingMessage]).catch((nextError) => {
           setNotice(`${nextError.message || 'ElevenLabs playback failed.'} Falling back to browser speech.`)
           flushStreamingSpeechBuffer({
@@ -1809,7 +1882,9 @@ export default function ViewerPage({ workspace, onNavigate }) {
     playEmotionCueByAssetId,
     playMovementCueByAssetId,
     flushStreamingSpeechBuffer,
+    speechPlaybackDisabled,
     hasRemoteTts,
+    playTextOnlyPerformance,
     playRemoteTts,
     rememberSpeechMovement,
     resetSpeechRuntime,
@@ -1905,7 +1980,11 @@ export default function ViewerPage({ workspace, onNavigate }) {
                   }`}
                 >
                   <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">{message.role}</div>
-                  <div className="mt-2 whitespace-pre-wrap leading-6">{message.content}</div>
+                  <div className="mt-2 whitespace-pre-wrap leading-6">
+                    {message.role === 'assistant' && speechPlaybackDisabled
+                      ? (message.spokenContent || message.content)
+                      : message.content}
+                  </div>
                   {message.emotionTags?.length > 0 || message.animationTags?.length > 0 ? (
                     <div className="mt-2 text-[11px] text-white/45">
                       {[message.emotionTags?.length ? `emotion: ${message.emotionTags.join(', ')}` : null, message.animationTags?.length ? `movement: ${message.animationTags.join(', ')}` : null]
@@ -1956,9 +2035,9 @@ export default function ViewerPage({ workspace, onNavigate }) {
               />
               <ViewerMetric
                 label="Voice path"
-                value={hasRemoteTts ? 'Remote TTS' : 'Browser speech'}
-                detail={selectedAvatar?.ttsVoiceName || 'No remote voice attached'}
-                tone={hasRemoteTts ? 'success' : 'warning'}
+                value={speechPathLabel}
+                detail={speechPathDetail}
+                tone={speechPlaybackDisabled ? 'warning' : (hasRemoteTts ? 'success' : 'warning')}
               />
             </div>
           </section>
@@ -2014,7 +2093,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
             </div>
 
             <div className="pointer-events-none absolute bottom-4 right-4 rounded-full border border-white/10 bg-black/30 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-white/60 backdrop-blur">
-              {hasRemoteTts ? 'Remote voice ready' : 'Browser speech fallback'}
+              {speechPlaybackDisabled ? 'Text-only cues active' : (hasRemoteTts ? 'Remote voice ready' : 'Browser speech fallback')}
             </div>
 
             <div className="absolute bottom-6 left-1/2 z-20 hidden -translate-x-1/2 items-center gap-3 rounded-full border border-white/10 bg-[rgba(8,15,22,0.82)] px-4 py-3 shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur xl:flex">
@@ -2226,7 +2305,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
               <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">Monitoring</div>
               <div className="mt-4 grid gap-3">
               <ViewerMetric label="Chat phase" value={chatPhase} detail={isChatBusy ? 'Reply in progress.' : 'Idle until the next user turn.'} tone={chatPhase === 'idle' ? 'success' : 'warning'} />
-              <ViewerMetric label="Speech path" value={hasRemoteTts ? 'ElevenLabs' : 'Browser'} detail={selectedAvatar?.ttsVoiceName || 'Fallback voice'} tone={hasRemoteTts ? 'success' : 'warning'} />
+              <ViewerMetric label="Speech path" value={speechPlaybackDisabled ? 'No voice' : (hasRemoteTts ? 'ElevenLabs' : 'Browser')} detail={speechPathDetail} tone={speechPlaybackDisabled ? 'warning' : (hasRemoteTts ? 'success' : 'warning')} />
               <ViewerMetric label="Eye blinking" value={viewerOptions.autoBlink ? 'Auto' : 'Off'} detail="Toggle available from the camera popover." />
               <ViewerMetric label="Camera follow" value={viewerOptions.lookAtCamera ? 'Enabled' : 'Disabled'} detail="The viewer can keep eyes pointed toward the camera." />
             </div>

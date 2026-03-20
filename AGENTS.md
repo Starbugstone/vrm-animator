@@ -181,6 +181,7 @@ API docs: `http://localhost:8080/api/docs` when backend is running.
 - **Text-to-speech (TTS)**
   - Backend or a dedicated service converts LLM reply to speech; frontend plays it while avatar is “speaking.”
   - The first supported provider is **ElevenLabs** on a per-user BYOK basis, attached per avatar from Manage.
+  - Each avatar must also support an explicit **no voice / text-only** mode that skips both ElevenLabs and browser speech while keeping text chat, cue parsing, stage-direction annotations, and movement playback intact.
   - If no ElevenLabs voice is attached, the product must continue to fall back cleanly to the existing browser speech path instead of blocking spoken playback entirely.
   - Voice selection should respect avatar sex tags by default while still allowing an explicit override, and the available voice list should expose that tagging clearly in the UI.
 

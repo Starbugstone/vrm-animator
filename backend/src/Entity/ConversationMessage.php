@@ -31,6 +31,9 @@ class ConversationMessage
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $parsedText = null;
 
+    #[ORM\Column(type: Types::TEXT, nullable: true)]
+    private ?string $spokenContent = null;
+
     /** @var list<string> */
     #[ORM\Column(type: Types::JSON)]
     private array $parsedEmotionTags = [];
@@ -108,6 +111,18 @@ class ConversationMessage
     public function setParsedText(?string $parsedText): static
     {
         $this->parsedText = $parsedText;
+
+        return $this;
+    }
+
+    public function getSpokenContent(): ?string
+    {
+        return $this->spokenContent;
+    }
+
+    public function setSpokenContent(?string $spokenContent): static
+    {
+        $this->spokenContent = $spokenContent;
 
         return $this;
     }

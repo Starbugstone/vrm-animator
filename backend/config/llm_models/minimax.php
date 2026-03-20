@@ -2,13 +2,31 @@
 
 return [
     [
+        'id' => 'MiniMax-M2.7',
+        'name' => 'MiniMax-M2.7',
+        'description' => 'Latest top-tier MiniMax text model focused on real-world engineering, office work, and richer character interaction.',
+        'group' => 'flagship',
+        'releasedAt' => '2026-03-18',
+        'contextLength' => 204800,
+        'isRecommended' => true,
+    ],
+    [
+        'id' => 'MiniMax-M2.7-highspeed',
+        'name' => 'MiniMax-M2.7 Highspeed',
+        'description' => 'Faster M2.7 variant for lower-latency interactions with the same core capabilities.',
+        'group' => 'fast',
+        'releasedAt' => '2026-03-18',
+        'contextLength' => 204800,
+        'isRecommended' => true,
+    ],
+    [
         'id' => 'MiniMax-M2.5',
         'name' => 'MiniMax-M2.5',
-        'description' => 'Latest top-tier MiniMax text model for coding, tools, and complex tasks.',
+        'description' => 'Previous flagship MiniMax text model for coding, tools, and complex tasks.',
         'group' => 'flagship',
         'releasedAt' => '2026-02-01',
         'contextLength' => 204800,
-        'isRecommended' => true,
+        'isRecommended' => false,
     ],
     [
         'id' => 'MiniMax-M2.5-highspeed',
@@ -17,7 +35,7 @@ return [
         'group' => 'fast',
         'releasedAt' => '2026-02-01',
         'contextLength' => 204800,
-        'isRecommended' => true,
+        'isRecommended' => false,
     ],
     [
         'id' => 'MiniMax-M2.1',
