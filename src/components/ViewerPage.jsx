@@ -34,6 +34,12 @@ import {
   isSpeechPlaybackDisabled,
 } from '../lib/ttsVoices.js'
 import { streamAvatarTts } from '../api/tts.js'
+import {
+  buildHologramProjectionUrl,
+  buildHologramWindowFeatures,
+  createHologramChannel,
+  PIXELXL_PRISM_WINDOW_PRESET,
+} from '../lib/hologramProjection.js'
 
 const VIEWER_OPTION_LABELS = {
   autoBlink: 'Auto blink',
@@ -118,6 +124,10 @@ function createEmptySpeechPresenceState() {
 
 function nowMs() {
   return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
+
+function createProjectionMessageId(prefix = 'projection') {
+  return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
 }
 
 function getChatPhaseForPresenceMode(mode) {
@@ -396,6 +406,12 @@ export default function ViewerPage({ workspace, onNavigate }) {
   const thinkingRuntimeRef = useRef(false)
   const thinkingCycleTimeoutRef = useRef(null)
   const lastThinkingAssetIdRef = useRef('')
+  const projectionChannelRef = useRef(null)
+  const projectionAssetCacheRef = useRef(new Map())
+  const projectionSettingsRef = useRef({
+    viewerOptions,
+    framingState,
+  })
 
   const personalAvatarItems = useMemo(
     () => avatars.map((entry) => ({ ...createPersistedAvatarAsset(entry, workspace.token), scope: 'personal' })),
@@ -532,9 +548,144 @@ export default function ViewerPage({ workspace, onNavigate }) {
     : selectedAvatar?.ttsVoiceName || 'No remote voice attached'
 
   useEffect(() => {
+    projectionSettingsRef.current = {
+      viewerOptions,
+      framingState,
+    }
+  }, [framingState, viewerOptions])
+
+  const resolveProjectionAssetPayload = useCallback(async (asset, options = {}) => {
+    if (!asset) {
+      return null
+    }
+
+    const assetKey = String(options.assetKey || asset.id || asset.label || '')
+    const cachedEntry = projectionAssetCacheRef.current.get(assetKey)
+    if (cachedEntry?.file) {
+      return {
+        ...cachedEntry,
+        label: options.label || cachedEntry.label,
+        cacheKey: options.cacheKey || cachedEntry.cacheKey,
+        defaultFacingYaw: options.defaultFacingYaw ?? cachedEntry.defaultFacingYaw ?? 0,
+      }
+    }
+
+    const file = await assetToFile(asset)
+    if (!file) {
+      return null
+    }
+
+    const payload = {
+      assetId: asset.id,
+      file,
+      label: options.label || asset.label || asset.name || file.name,
+      cacheKey: options.cacheKey || '',
+      defaultFacingYaw: options.defaultFacingYaw ?? asset.defaultFacingYaw ?? 0,
+    }
+
+    projectionAssetCacheRef.current.set(assetKey, payload)
+    return payload
+  }, [])
+
+  const postProjectionMessage = useCallback((message) => {
+    projectionChannelRef.current?.postMessage?.(message)
+  }, [])
+
+  const broadcastProjectionEvent = useCallback((event) => {
+    if (!event) {
+      return
+    }
+
+    postProjectionMessage({
+      type: 'projection:event',
+      event: {
+        id: event.id || createProjectionMessageId('projection-event'),
+        ...event,
+      },
+    })
+  }, [postProjectionMessage])
+
+  const broadcastProjectionSettings = useCallback(() => {
+    postProjectionMessage({
+      type: 'projection:settings',
+      viewerOptions,
+      framingState,
+    })
+  }, [framingState, postProjectionMessage, viewerOptions])
+
+  const broadcastProjectionFullState = useCallback(async () => {
+    const currentSettings = projectionSettingsRef.current
+    const [avatar, idle, thinking] = await Promise.all([
+      resolveProjectionAssetPayload(selectedAvatarAsset, {
+        assetKey: selectedAvatarAsset?.id,
+        label: selectedAvatarAsset?.label,
+        defaultFacingYaw: selectedAvatarAsset?.defaultFacingYaw || 0,
+      }),
+      resolveProjectionAssetPayload(selectedIdle, {
+        assetKey: selectedIdle?.id,
+        label: selectedIdle?.label,
+        cacheKey: buildAssetCacheKey(selectedIdle),
+      }),
+      resolveProjectionAssetPayload(selectedThinking, {
+        assetKey: selectedThinking?.id,
+        label: selectedThinking?.label,
+        cacheKey: buildAssetCacheKey(selectedThinking, 'thinking-preview'),
+      }),
+    ])
+
+    postProjectionMessage({
+      type: 'projection:full-state',
+      avatar,
+      idle,
+      thinking,
+      viewerOptions: currentSettings.viewerOptions,
+      framingState: currentSettings.framingState,
+    })
+  }, [
+    postProjectionMessage,
+    resolveProjectionAssetPayload,
+    selectedAvatarAsset,
+    selectedIdle,
+    selectedThinking,
+  ])
+
+  useEffect(() => {
     setLlmDebugLog([])
     setSelectedDebugEntryId('')
   }, [selectedAvatar?.id])
+
+  useEffect(() => {
+    const channel = createHologramChannel()
+    if (!channel) {
+      projectionChannelRef.current = null
+      return undefined
+    }
+
+    projectionChannelRef.current = channel
+
+    const handleProjectionMessage = (event) => {
+      const message = event?.data || {}
+      if (message.type === 'projection:request-state') {
+        void broadcastProjectionFullState()
+      }
+    }
+
+    channel.addEventListener('message', handleProjectionMessage)
+
+    return () => {
+      channel.removeEventListener('message', handleProjectionMessage)
+      channel.close()
+      projectionChannelRef.current = null
+    }
+  }, [broadcastProjectionFullState])
+
+  useEffect(() => {
+    void broadcastProjectionFullState()
+  }, [broadcastProjectionFullState])
+
+  useEffect(() => {
+    broadcastProjectionSettings()
+  }, [broadcastProjectionSettings])
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -807,7 +958,12 @@ export default function ViewerPage({ workspace, onNavigate }) {
   const playConversationalMovementAsset = useCallback(async (asset, reason = 'cue') => {
     if (!asset) return null
 
-    const file = await assetToFile(asset)
+    const assetPayload = await resolveProjectionAssetPayload(asset, {
+      assetKey: asset.id,
+      label: asset.label,
+      cacheKey: buildAssetCacheKey(asset, reason),
+    })
+    const file = assetPayload?.file
     if (!file) return null
 
     playAnimationFile(file, asset.label, {
@@ -819,8 +975,18 @@ export default function ViewerPage({ workspace, onNavigate }) {
       priority: reason === 'speech' ? 'speech-injection' : 'speech-explicit',
     })
 
+    broadcastProjectionEvent({
+      kind: 'play-motion',
+      asset: assetPayload,
+      motionKind: 'action',
+      loop: false,
+      returnToDefault: true,
+      stripExpressionTracks: true,
+      priority: reason === 'speech' ? 'speech-injection' : 'speech-explicit',
+    })
+
     return asset
-  }, [playAnimationFile])
+  }, [broadcastProjectionEvent, playAnimationFile, resolveProjectionAssetPayload])
 
   const resolveReplyMovementAsset = useCallback((assetId, fallbackTag = '', options = {}) => {
     const emotion = options.emotion || activeEmotionRef.current || 'neutral'
@@ -870,18 +1036,34 @@ export default function ViewerPage({ workspace, onNavigate }) {
     speechSynthesisRef.current?.cancel?.()
     stopRemoteTtsPlayback()
     stopOverlayAnimation({ immediate: true })
-  }, [stopOverlayAnimation, stopRemoteTtsPlayback, stopSpeechPresenceSession])
+    broadcastProjectionEvent({
+      kind: 'stop-overlay',
+      immediate: true,
+    })
+    broadcastProjectionEvent({
+      kind: 'resume-idle',
+    })
+  }, [broadcastProjectionEvent, stopOverlayAnimation, stopRemoteTtsPlayback, stopSpeechPresenceSession])
 
   const playEmotionCue = useCallback(async (emotion, options = {}) => {
     const asset = pickExpressionAsset(expressionItems, emotion, options)
     if (!asset) {
       if (options.stopOnMiss) {
         stopOverlayAnimation()
+        broadcastProjectionEvent({
+          kind: 'stop-overlay',
+          immediate: false,
+        })
       }
       return
     }
 
-    const file = await assetToFile(asset)
+    const assetPayload = await resolveProjectionAssetPayload(asset, {
+      assetKey: asset.id,
+      label: asset.label,
+      cacheKey: buildAssetCacheKey(asset, options.preferSpeech ? 'speech' : 'cue'),
+    })
+    const file = assetPayload?.file
     if (!file) return
 
     playOverlayAnimationFile(file, asset.label, {
@@ -889,7 +1071,13 @@ export default function ViewerPage({ workspace, onNavigate }) {
       expressionOnly: true,
       loop: Boolean(options.loop),
     })
-  }, [expressionItems, playOverlayAnimationFile, stopOverlayAnimation])
+    broadcastProjectionEvent({
+      kind: 'play-overlay',
+      asset: assetPayload,
+      expressionOnly: true,
+      loop: Boolean(options.loop),
+    })
+  }, [broadcastProjectionEvent, expressionItems, playOverlayAnimationFile, resolveProjectionAssetPayload, stopOverlayAnimation])
 
   const playEmotionCueByAssetId = useCallback(async (assetId, fallbackEmotion = '', options = {}) => {
     const directAsset = findAssetById(expressionItems, assetId)
@@ -899,11 +1087,20 @@ export default function ViewerPage({ workspace, onNavigate }) {
     if (!asset) {
       if (options.stopOnMiss) {
         stopOverlayAnimation()
+        broadcastProjectionEvent({
+          kind: 'stop-overlay',
+          immediate: false,
+        })
       }
       return
     }
 
-    const file = await assetToFile(asset)
+    const assetPayload = await resolveProjectionAssetPayload(asset, {
+      assetKey: asset.id,
+      label: asset.label,
+      cacheKey: buildAssetCacheKey(asset, options.preferSpeech ? 'speech' : 'cue'),
+    })
+    const file = assetPayload?.file
     if (!file) return
 
     playOverlayAnimationFile(file, asset.label, {
@@ -911,7 +1108,13 @@ export default function ViewerPage({ workspace, onNavigate }) {
       expressionOnly: true,
       loop: Boolean(options.loop),
     })
-  }, [expressionItems, playOverlayAnimationFile, stopOverlayAnimation])
+    broadcastProjectionEvent({
+      kind: 'play-overlay',
+      asset: assetPayload,
+      expressionOnly: true,
+      loop: Boolean(options.loop),
+    })
+  }, [broadcastProjectionEvent, expressionItems, playOverlayAnimationFile, resolveProjectionAssetPayload, stopOverlayAnimation])
 
   const runSpeechBeat = useCallback(async (beat, sessionId) => {
     if (!beat) {
@@ -1180,7 +1383,12 @@ export default function ViewerPage({ workspace, onNavigate }) {
       return
     }
 
-    const file = await assetToFile(asset)
+    const assetPayload = await resolveProjectionAssetPayload(asset, {
+      assetKey: asset.id,
+      label: asset.label,
+      cacheKey: buildAssetCacheKey(asset, 'thinking'),
+    })
+    const file = assetPayload?.file
     if (!file || !thinkingRuntimeRef.current) {
       return
     }
@@ -1193,7 +1401,16 @@ export default function ViewerPage({ workspace, onNavigate }) {
       stripExpressionTracks: true,
       priority: 'user-message',
     })
-  }, [playAnimationFile])
+    broadcastProjectionEvent({
+      kind: 'play-motion',
+      asset: assetPayload,
+      motionKind: 'thinking',
+      loop: false,
+      returnToDefault: true,
+      stripExpressionTracks: true,
+      priority: 'user-message',
+    })
+  }, [broadcastProjectionEvent, playAnimationFile, resolveProjectionAssetPayload])
 
   const queueNextThinkingInjection = useCallback(() => {
     clearThinkingCycleTimer()
@@ -1234,10 +1451,21 @@ export default function ViewerPage({ workspace, onNavigate }) {
       excludedChannels: ['mouth'],
     })
     if (silentExpression) {
-      const file = await assetToFile(silentExpression)
+      const assetPayload = await resolveProjectionAssetPayload(silentExpression, {
+        assetKey: silentExpression.id,
+        label: silentExpression.label,
+        cacheKey: buildAssetCacheKey(silentExpression, 'thinking'),
+      })
+      const file = assetPayload?.file
       if (file && thinkingRuntimeRef.current) {
         playOverlayAnimationFile(file, silentExpression.label, {
           cacheKey: buildAssetCacheKey(silentExpression, 'thinking'),
+          expressionOnly: true,
+          loop: true,
+        })
+        broadcastProjectionEvent({
+          kind: 'play-overlay',
+          asset: assetPayload,
           expressionOnly: true,
           loop: true,
         })
@@ -1252,7 +1480,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     }
 
     queueNextThinkingInjection()
-  }, [clearThinkingCycleTimer, expressionItems, pickThinkingMovementAsset, playOverlayAnimationFile, playThinkingMovementAsset, queueNextThinkingInjection, resumeIdleMotion])
+  }, [broadcastProjectionEvent, clearThinkingCycleTimer, expressionItems, pickThinkingMovementAsset, playOverlayAnimationFile, playThinkingMovementAsset, queueNextThinkingInjection, resolveProjectionAssetPayload, resumeIdleMotion])
 
   const stopThinkingPresence = useCallback(() => {
     if (!thinkingRuntimeRef.current) {
@@ -1267,7 +1495,14 @@ export default function ViewerPage({ workspace, onNavigate }) {
     }
     stopOverlayAnimation({ immediate: false })
     resumeIdleMotion()
-  }, [clearThinkingCycleTimer, resumeIdleMotion, setThinkingIndicatorEnabled, stopOverlayAnimation])
+    broadcastProjectionEvent({
+      kind: 'stop-overlay',
+      immediate: false,
+    })
+    broadcastProjectionEvent({
+      kind: 'resume-idle',
+    })
+  }, [broadcastProjectionEvent, clearThinkingCycleTimer, resumeIdleMotion, setThinkingIndicatorEnabled, stopOverlayAnimation])
 
   useEffect(() => {
     if (avatarPresence.mode === 'thinking') {
@@ -1306,6 +1541,13 @@ export default function ViewerPage({ workspace, onNavigate }) {
       })
       stopSpeechPresenceSession()
       stopOverlayAnimation({ immediate: false })
+      broadcastProjectionEvent({
+        kind: 'stop-overlay',
+        immediate: false,
+      })
+      broadcastProjectionEvent({
+        kind: 'resume-idle',
+      })
     }
 
     const response = await streamAvatarTts(workspace.token, selectedAvatar.id, {
@@ -1349,7 +1591,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     }
 
     return true
-  }, [dispatchAvatarPresence, playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopRemoteTtsPlayback, stopSpeechPresenceSession, workspace.token])
+  }, [broadcastProjectionEvent, dispatchAvatarPresence, playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopRemoteTtsPlayback, stopSpeechPresenceSession, workspace.token])
 
   const queueSpeechUtterance = useCallback((text, emotion, languageSamples = []) => {
     const speechSynthesis = speechSynthesisRef.current
@@ -1402,6 +1644,13 @@ export default function ViewerPage({ workspace, onNavigate }) {
       })
       stopSpeechPresenceSession()
       stopOverlayAnimation({ immediate: false })
+      broadcastProjectionEvent({
+        kind: 'stop-overlay',
+        immediate: false,
+      })
+      broadcastProjectionEvent({
+        kind: 'resume-idle',
+      })
     }
 
     const scheduleSpeechOverlayStop = (delayMs = SPEECH_OVERLAY_RELEASE_MS) => {
@@ -1515,7 +1764,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
     }
     speechSynthesis.speak(utterance)
     return true
-  }, [dispatchAvatarPresence, playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopSpeechPresenceSession])
+  }, [broadcastProjectionEvent, dispatchAvatarPresence, playEmotionCue, selectedAvatar, startSpeechPresenceSession, stopOverlayAnimation, stopSpeechPresenceSession])
 
   const playTextOnlyPerformance = useCallback((text, emotion) => {
     const cleanedText = String(text || '').trim()
@@ -1567,13 +1816,20 @@ export default function ViewerPage({ workspace, onNavigate }) {
       })
       stopSpeechPresenceSession()
       stopOverlayAnimation({ immediate: false })
+      broadcastProjectionEvent({
+        kind: 'stop-overlay',
+        immediate: false,
+      })
+      broadcastProjectionEvent({
+        kind: 'resume-idle',
+      })
     }, Math.max(
       SPEECH_OVERLAY_RELEASE_MS,
       getSpeechClockRemainingMs(speechClock) + SPEECH_OVERLAY_RELEASE_MS,
     ))
 
     return true
-  }, [dispatchAvatarPresence, playEmotionCue, startSpeechPresenceSession, stopOverlayAnimation, stopSpeechPresenceSession])
+  }, [broadcastProjectionEvent, dispatchAvatarPresence, playEmotionCue, startSpeechPresenceSession, stopOverlayAnimation, stopSpeechPresenceSession])
 
   const flushStreamingSpeechBuffer = useCallback((options = {}) => {
     const final = Boolean(options.final)
@@ -1628,14 +1884,33 @@ export default function ViewerPage({ workspace, onNavigate }) {
 
   const handlePlayAction = useCallback(async () => {
     if (!selectedAction) return
-    const file = await assetToFile(selectedAction)
+    const assetPayload = await resolveProjectionAssetPayload(selectedAction, {
+      assetKey: selectedAction.id,
+      label: selectedAction.label,
+      cacheKey: buildAssetCacheKey(selectedAction),
+    })
+    const file = assetPayload?.file
     if (!file) return
     playAnimationFile(file, selectedAction.label, { cacheKey: buildAssetCacheKey(selectedAction) })
-  }, [playAnimationFile, selectedAction])
+    broadcastProjectionEvent({
+      kind: 'play-motion',
+      asset: assetPayload,
+      motionKind: 'action',
+      loop: false,
+      returnToDefault: true,
+      stripExpressionTracks: false,
+      priority: 'projection-manual',
+    })
+  }, [broadcastProjectionEvent, playAnimationFile, resolveProjectionAssetPayload, selectedAction])
 
   const handlePlayThinking = useCallback(async () => {
     if (!selectedThinking) return
-    const file = await assetToFile(selectedThinking)
+    const assetPayload = await resolveProjectionAssetPayload(selectedThinking, {
+      assetKey: selectedThinking.id,
+      label: selectedThinking.label,
+      cacheKey: buildAssetCacheKey(selectedThinking, 'thinking-preview'),
+    })
+    const file = assetPayload?.file
     if (!file) return
     playAnimationFile(file, selectedThinking.label, {
       cacheKey: buildAssetCacheKey(selectedThinking, 'thinking-preview'),
@@ -1644,14 +1919,34 @@ export default function ViewerPage({ workspace, onNavigate }) {
       returnToDefault: false,
       stripExpressionTracks: true,
     })
-  }, [playAnimationFile, selectedThinking])
+    broadcastProjectionEvent({
+      kind: 'play-motion',
+      asset: assetPayload,
+      motionKind: 'thinking',
+      loop: true,
+      returnToDefault: false,
+      stripExpressionTracks: true,
+      priority: 'projection-thinking',
+    })
+  }, [broadcastProjectionEvent, playAnimationFile, resolveProjectionAssetPayload, selectedThinking])
 
   const handlePlayExpression = useCallback(async () => {
     if (!selectedExpression) return
-    const file = await assetToFile(selectedExpression)
+    const assetPayload = await resolveProjectionAssetPayload(selectedExpression, {
+      assetKey: selectedExpression.id,
+      label: selectedExpression.label,
+      cacheKey: buildAssetCacheKey(selectedExpression, 'overlay'),
+    })
+    const file = assetPayload?.file
     if (!file) return
     playOverlayAnimationFile(file, selectedExpression.label, { cacheKey: buildAssetCacheKey(selectedExpression, 'overlay') })
-  }, [playOverlayAnimationFile, selectedExpression])
+    broadcastProjectionEvent({
+      kind: 'play-overlay',
+      asset: assetPayload,
+      expressionOnly: true,
+      loop: false,
+    })
+  }, [broadcastProjectionEvent, playOverlayAnimationFile, resolveProjectionAssetPayload, selectedExpression])
 
   const handleSendMessage = useCallback(async () => {
     if (!selectedAvatar || !draftMessage.trim()) return
@@ -1903,6 +2198,30 @@ export default function ViewerPage({ workspace, onNavigate }) {
     onNavigate?.('manage')
   }, [onNavigate])
 
+  const openHologramProjectionWindow = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const hologramUrl = buildHologramProjectionUrl(window.location)
+    const popup = window.open(
+      hologramUrl,
+      '_blank',
+      buildHologramWindowFeatures(PIXELXL_PRISM_WINDOW_PRESET),
+    )
+
+    if (!popup) {
+      setNotice('The hologram tab was blocked by the browser popup settings.')
+      return
+    }
+
+    popup.focus?.()
+    setNotice('Opened the PIXELXL prism projection tab in a new window.')
+    window.setTimeout(() => {
+      void broadcastProjectionFullState()
+    }, 250)
+  }, [broadcastProjectionFullState])
+
   function handleChatComposerKeyDown(event) {
     if (event.key !== 'Enter' || event.shiftKey) return
     event.preventDefault()
@@ -2113,10 +2432,10 @@ export default function ViewerPage({ workspace, onNavigate }) {
               ))}
               <button
                 type="button"
-                onClick={() => openManageSection('hologram')}
+                onClick={openHologramProjectionWindow}
                 className="rounded-full border border-cyan-300/30 bg-cyan-300/18 px-5 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/26"
               >
-                Hologram Mode
+                Live hologram tab
               </button>
             </div>
 
@@ -2409,8 +2728,15 @@ export default function ViewerPage({ workspace, onNavigate }) {
               </button>
               <button
                 type="button"
-                onClick={() => openManageSection('hologram')}
+                onClick={openHologramProjectionWindow}
                 className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-3 text-left text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/24"
+              >
+                Open live PIXELXL prism tab
+              </button>
+              <button
+                type="button"
+                onClick={() => openManageSection('hologram')}
+                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-left text-sm text-white/75 transition hover:border-cyan-300/20 hover:bg-white/10 hover:text-white"
               >
                 Open hologram control center
               </button>

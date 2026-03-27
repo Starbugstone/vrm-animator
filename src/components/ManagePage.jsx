@@ -8,6 +8,11 @@ import MemoryPanel from './MemoryPanel.jsx'
 import HelpPopover from './HelpPopover.jsx'
 import TtsSettingsPanel from './TtsSettingsPanel.jsx'
 import { createPersistedAvatarAsset } from '../lib/viewerAssets.js'
+import {
+  buildHologramProjectionUrl,
+  buildHologramWindowFeatures,
+  PIXELXL_PRISM_WINDOW_PRESET,
+} from '../lib/hologramProjection.js'
 
 const SECTIONS = [
   { id: 'avatar-edit', label: 'Studio Profile', status: 'Live' },
@@ -59,9 +64,10 @@ const SECTION_HELP = {
 - Track missing implementation work in TODO.md until the real hooks land`,
   hologram: `This is the planned control surface for dedicated projection output.
 
-- Layout presets, prism calibration, and display toggles are not wired yet
+- A live PIXELXL-style projection tab can now be opened from the app
+- Layout presets, prism calibration, and most display toggles are still not wired yet
 - The current software product remains usable without hologram hardware
-- The placeholder keeps the final workflow visible for future implementation`,
+- The control center still keeps the larger future workflow visible`,
 }
 
 const SECTION_COPY = {
@@ -111,7 +117,7 @@ const SECTION_COPY = {
     eyebrow: 'Hologram control',
     title: 'Projection presets and calibration',
     description:
-      'This placeholder surface maps the future hologram workflow and keeps the interface ready for PIXELXL-style projection tooling.',
+      'Launch the live PIXELXL prism tab here, then keep building toward fuller calibration and hardware controls.',
   },
 }
 
@@ -176,6 +182,21 @@ function buildSharedAvatarDraft(sharedAvatar) {
     backstory: sharedAvatar.backstory || sharedAvatar.description || '',
     personality: sharedAvatar.personality || '',
   }
+}
+
+function openHologramProjectionWindow() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  const popup = window.open(
+    buildHologramProjectionUrl(window.location),
+    '_blank',
+    buildHologramWindowFeatures(PIXELXL_PRISM_WINDOW_PRESET),
+  )
+
+  popup?.focus?.()
+  return Boolean(popup)
 }
 
 function AssetListCard({
@@ -847,7 +868,7 @@ export default function ManagePage({ user, workspace }) {
               <div className="text-xs uppercase tracking-[0.34em] text-cyan-200/70">Control Center</div>
               <div className="mt-3 text-3xl font-semibold tracking-tight text-white">System surfaces</div>
               <div className="mt-3 text-sm leading-6 text-white/62">
-                The redesigned layout now exposes the full avatar workflow, including planned procedural and hologram modules that will be wired later.
+                The redesigned layout now exposes the full avatar workflow. Procedural controls are still planned, while hologram output now has a first live projection tab with calibration work still pending.
               </div>
             </section>
 
@@ -1446,9 +1467,25 @@ export default function ManagePage({ user, workspace }) {
               <PlannedPanel
                 eyebrow="Projection presets"
                 title="Hologram layout and control center"
-                description="This placeholder screen maps the future dedicated projection workflow for PIXELXL-style prism output and related hologram hardware."
-                footer="No separate hologram window, prism renderer, or calibration transport is implemented yet. The layout remains visible here so the future workflow is explicit."
+                description="A dedicated PIXELXL-style projection tab is now available. The calibration and transport controls below are still partial placeholders for the next pass."
+                footer="Open the live projection tab from here or from Workspace. Advanced calibration transport and hardware-specific tuning are still pending."
               >
+                <div className="mb-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!openHologramProjectionWindow()) {
+                        window.alert('The hologram tab was blocked by the browser popup settings.')
+                      }
+                    }}
+                    className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/24"
+                  >
+                    Open live PIXELXL prism tab
+                  </button>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/60">
+                    Launch it from Workspace for live avatar and camera sync.
+                  </div>
+                </div>
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {['Looking Glass', "Pepper's Ghost", 'PIXELXL Prism', 'SBS Mode', 'Top-Bottom', 'Custom'].map((preset) => (
                     <div

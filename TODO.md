@@ -1,6 +1,6 @@
 ## TODO
 
-Updated: 2026-03-19
+Updated: 2026-03-25
 
 This file is intentionally short. `devlog.md` holds the product narrative and end goal; this file is the working task list for the next implementation window.
 
@@ -79,7 +79,7 @@ This baseline has been verified against the current repository. The next phase s
 - make the core software experience feel complete even without any hologram hardware
 - finish wiring the new Stitch-driven Control Center and Workspace redesign now that the shell and placeholder screens are live
 - replace the new placeholder procedural controls with real runtime-backed settings for blinking, breathing, lip sync input, and tactile interaction
-- replace the new placeholder hologram control center with a real projection window, calibration transport, and PIXELXL prism preset handling
+- keep iterating on the new live hologram projection tab: add calibration transport, stronger PIXELXL preset handling, and clearer fullscreen/second-screen guidance
 - decide whether the Viewer should keep its current select dropdown for avatar switching or move fully to the planned searchable visual card list with avatar snapshots
 
 ### 5. Voice and hologram path
@@ -93,7 +93,7 @@ This baseline has been verified against the current repository. The next phase s
 - keep broadening language matching in the ElevenLabs picker as more real-world metadata variants show up, especially labels that use full language names instead of locale codes
 - decide whether more ElevenLabs controls should live at the credential level, avatar level, or stay hidden for first-time users
 - add STT after TTS
-- only then move toward dedicated hologram hardware output
+- harden the new four-view hologram path around real hardware use: confirm the 10-inch prism orientation, add offset tuning, and keep main-viewer-to-projection sync reliable
 
 ## Spring-Cleaning Check
 

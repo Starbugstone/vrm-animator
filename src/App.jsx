@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import AuthScreen from './components/AuthScreen.jsx'
+import HologramProjectionPage from './components/HologramProjectionPage.jsx'
 import ManagePage from './components/ManagePage.jsx'
 import ViewerPage from './components/ViewerPage.jsx'
 import useAuth from './hooks/useAuth.js'
 import useWorkspace from './hooks/useWorkspace.js'
+import { isHologramProjectionView } from './lib/hologramProjection.js'
 
 const DEFAULT_PAGE = 'viewer'
 
@@ -34,6 +36,7 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [authError, setAuthError] = useState('')
   const [activePage, setActivePage] = useState(readInitialPage)
+  const isProjectionView = typeof window !== 'undefined' && isHologramProjectionView(window.location.search)
   const workspace = useWorkspace(auth.token, auth.user)
 
   useEffect(() => {
@@ -51,6 +54,10 @@ export default function App() {
     } finally {
       setBusy(false)
     }
+  }
+
+  if (isProjectionView) {
+    return <HologramProjectionPage />
   }
 
   if (auth.token && auth.isLoading && !auth.user) {
