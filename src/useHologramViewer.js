@@ -126,8 +126,9 @@ function disposeObject3D(root) {
   })
 }
 
-export default function useHologramViewer(canvasRef) {
+export default function useHologramViewer(canvasRef, options = {}) {
   const internalsRef = useRef(null)
+  const runtimeOptionsRef = useRef(options)
   const [status, setStatus] = useState('Idle')
   const [isLoaded, setIsLoaded] = useState(false)
   const [isAvatarLoading, setIsAvatarLoading] = useState(false)
@@ -136,6 +137,10 @@ export default function useHologramViewer(canvasRef) {
     autoBlink: true,
     lookAtCamera: false,
   })
+
+  useEffect(() => {
+    runtimeOptionsRef.current = options
+  }, [options])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -210,6 +215,7 @@ export default function useHologramViewer(canvasRef) {
     let autoBlinkEnabled = true
     let lookAtCameraEnabled = false
     let thinkingIndicatorEnabled = false
+    let lastRuntimeSnapshotSignature = ''
     const motionCache = new Map()
     const blinkState = {
       phase: 'waiting',
@@ -219,6 +225,70 @@ export default function useHologramViewer(canvasRef) {
 
     const setViewerStatus = (nextStatus) => {
       setStatus(nextStatus)
+    }
+
+    const serializeRuntimeMotion = (motion, layer = MOTION_LAYER_BASE) => {
+      if (!motion?.file) {
+        return null
+      }
+
+      return {
+        file: motion.file,
+        label: motion.label || motion.file.name || 'VRMA motion',
+        cacheKey: motion.cacheKey || buildMotionCacheKey(motion.file, motion.label),
+        kind: motion.kind || (layer === MOTION_LAYER_OVERLAY ? 'overlay' : 'action'),
+        loop: Boolean(motion.loop),
+        returnToDefault: Boolean(motion.returnToDefault),
+        stripExpressionTracks: Boolean(motion.stripExpressionTracks),
+        expressionOnly: Boolean(motion.expressionOnly),
+        priority: motion.priority || '',
+        layer,
+      }
+    }
+
+    const buildRuntimeSnapshot = () => ({
+      defaultIdleMotion: serializeRuntimeMotion(defaultIdleMotion, MOTION_LAYER_BASE),
+      activeBaseMotion: serializeRuntimeMotion(activeBaseMotion, MOTION_LAYER_BASE),
+      activeOverlayMotion: serializeRuntimeMotion(activeOverlayMotion, MOTION_LAYER_OVERLAY),
+      thinkingIndicatorEnabled: Boolean(thinkingIndicatorEnabled),
+      playbackMode,
+      isLoaded: Boolean(currentVrm),
+    })
+
+    const buildRuntimeSnapshotSignature = (snapshot) => {
+      const serializeSignatureMotion = (motion) => (
+        motion
+          ? [
+            motion.cacheKey,
+            motion.kind,
+            motion.loop ? '1' : '0',
+            motion.returnToDefault ? '1' : '0',
+            motion.stripExpressionTracks ? '1' : '0',
+            motion.expressionOnly ? '1' : '0',
+            motion.priority,
+          ].join('|')
+          : ''
+      )
+
+      return [
+        snapshot.playbackMode,
+        snapshot.isLoaded ? '1' : '0',
+        snapshot.thinkingIndicatorEnabled ? '1' : '0',
+        serializeSignatureMotion(snapshot.defaultIdleMotion),
+        serializeSignatureMotion(snapshot.activeBaseMotion),
+        serializeSignatureMotion(snapshot.activeOverlayMotion),
+      ].join('::')
+    }
+
+    const notifyRuntimeStateChange = () => {
+      const snapshot = buildRuntimeSnapshot()
+      const signature = buildRuntimeSnapshotSignature(snapshot)
+      if (signature === lastRuntimeSnapshotSignature) {
+        return
+      }
+
+      lastRuntimeSnapshotSignature = signature
+      runtimeOptionsRef.current?.onRuntimeStateChange?.(snapshot)
     }
 
     const setExpressionWeight = (expressionManager, name, weight) => {
@@ -394,6 +464,7 @@ export default function useHologramViewer(canvasRef) {
       if (!immediate && activeOverlayMotion.action) {
         const fadingMotion = activeOverlayMotion
         activeOverlayMotion = null
+        notifyRuntimeStateChange()
         fadingMotion.action.fadeOut(OVERLAY_FADE_SECONDS)
         window.setTimeout(() => {
           stopMotionAction(fadingMotion)
@@ -404,6 +475,7 @@ export default function useHologramViewer(canvasRef) {
 
       stopMotionAction(activeOverlayMotion)
       activeOverlayMotion = null
+      notifyRuntimeStateChange()
     }
 
     const handleMixerFinished = (event) => {
@@ -440,6 +512,8 @@ export default function useHologramViewer(canvasRef) {
       if (resetPose) {
         resetAvatarPose()
       }
+
+      notifyRuntimeStateChange()
     }
 
     const resolveBlendDuration = (fromMotion, toMotion) => {
@@ -619,6 +693,7 @@ export default function useHologramViewer(canvasRef) {
       }
 
       updateMotionStatus()
+      notifyRuntimeStateChange()
       return true
     }
 
@@ -697,6 +772,7 @@ export default function useHologramViewer(canvasRef) {
       }
 
       updateMotionStatus()
+      notifyRuntimeStateChange()
       return true
     }
 
@@ -966,6 +1042,7 @@ export default function useHologramViewer(canvasRef) {
 
     const removeCurrentAvatar = () => {
       if (!currentVrm) return
+      thinkingIndicatorEnabled = false
       thinkingBubbleService.setEnabled(false)
       applyBlinkWeight(0)
       stopCurrentAnimation({ resetPose: false })
@@ -980,6 +1057,7 @@ export default function useHologramViewer(canvasRef) {
       disposeObject3D(currentVrm.scene)
       currentVrm = null
       currentAvatarFacingYawRad = 0
+      notifyRuntimeStateChange()
     }
 
     const loadAvatarFromFile = (file, options = {}) => {
@@ -1040,6 +1118,7 @@ export default function useHologramViewer(canvasRef) {
           setIsLoaded(true)
           setIsAvatarLoading(false)
           setViewerStatus('Avatar loaded')
+          notifyRuntimeStateChange()
           if (defaultIdleMotion?.file) {
             requestMotion(defaultIdleMotion)
           }
@@ -1074,6 +1153,7 @@ export default function useHologramViewer(canvasRef) {
         defaultIdleMotion = nextIdleMotion
         lastIdleVariantCacheKey = null
         resetIdleVariantTimer()
+        notifyRuntimeStateChange()
       }
 
       if (!currentVrm || !currentMixer) {
@@ -1415,6 +1495,7 @@ export default function useHologramViewer(canvasRef) {
     animate()
 
     internalsRef.current = {
+      getRuntimeSnapshot: () => buildRuntimeSnapshot(),
       loadFile: loadAvatarFromFile,
       setIdleAnimation,
       resumeIdleMotion,
@@ -1425,6 +1506,7 @@ export default function useHologramViewer(canvasRef) {
       setThinkingIndicatorEnabled: (enabled) => {
         thinkingIndicatorEnabled = Boolean(enabled)
         thinkingBubbleService.setEnabled(thinkingIndicatorEnabled)
+        notifyRuntimeStateChange()
       },
       setCommand: (nextCommand) => {
         stopCurrentAnimation({ resetPose: true })
@@ -1529,6 +1611,10 @@ export default function useHologramViewer(canvasRef) {
     internalsRef.current?.setViewerOption(key, value)
   }, [])
 
+  const getRuntimeSnapshot = useCallback(() => {
+    return internalsRef.current?.getRuntimeSnapshot?.() || null
+  }, [])
+
   return {
     loadFile,
     setIdleAnimation,
@@ -1541,6 +1627,7 @@ export default function useHologramViewer(canvasRef) {
     setCommand,
     setFramingValue,
     setViewerOption,
+    getRuntimeSnapshot,
     viewerOptions,
     framingState,
     status,

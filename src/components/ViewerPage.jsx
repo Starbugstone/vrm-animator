@@ -35,6 +35,7 @@ import {
 } from '../lib/ttsVoices.js'
 import { streamAvatarTts } from '../api/tts.js'
 import {
+  buildHologramFullscreenWindowSize,
   buildHologramProjectionUrl,
   buildHologramWindowFeatures,
   createHologramChannel,
@@ -349,6 +350,29 @@ export default function ViewerPage({ workspace, onNavigate }) {
   } = workspace
 
   const canvasRef = useRef(null)
+  const projectionChannelRef = useRef(null)
+  const projectionAssetCacheRef = useRef(new Map())
+  const projectionRuntimeRef = useRef(null)
+  const projectionSettingsRef = useRef({
+    viewerOptions: {
+      autoBlink: true,
+      lookAtCamera: false,
+    },
+    framingState: {
+      yaw: 0,
+      tilt: 72,
+      zoom: 8,
+      height: 0,
+      shift: 0,
+    },
+  })
+  const handleProjectionRuntimeStateChange = useCallback((runtimeState) => {
+    projectionRuntimeRef.current = runtimeState || null
+    projectionChannelRef.current?.postMessage?.({
+      type: 'projection:runtime',
+      runtime: runtimeState || null,
+    })
+  }, [])
   const {
     loadFile,
     setIdleAnimation,
@@ -360,12 +384,15 @@ export default function ViewerPage({ workspace, onNavigate }) {
     setThinkingIndicatorEnabled,
     setFramingValue,
     setViewerOption,
+    getRuntimeSnapshot,
     viewerOptions,
     framingState,
     status,
     isLoaded,
     isAvatarLoading,
-  } = useHologramViewer(canvasRef)
+  } = useHologramViewer(canvasRef, {
+    onRuntimeStateChange: handleProjectionRuntimeStateChange,
+  })
 
   const [selectedViewerAvatarId, setSelectedViewerAvatarId] = useState('')
   const [selectedIdleId, setSelectedIdleId] = useState('')
@@ -406,12 +433,6 @@ export default function ViewerPage({ workspace, onNavigate }) {
   const thinkingRuntimeRef = useRef(false)
   const thinkingCycleTimeoutRef = useRef(null)
   const lastThinkingAssetIdRef = useRef('')
-  const projectionChannelRef = useRef(null)
-  const projectionAssetCacheRef = useRef(new Map())
-  const projectionSettingsRef = useRef({
-    viewerOptions,
-    framingState,
-  })
 
   const personalAvatarItems = useMemo(
     () => avatars.map((entry) => ({ ...createPersistedAvatarAsset(entry, workspace.token), scope: 'personal' })),
@@ -615,6 +636,7 @@ export default function ViewerPage({ workspace, onNavigate }) {
 
   const broadcastProjectionFullState = useCallback(async () => {
     const currentSettings = projectionSettingsRef.current
+    const runtimeState = projectionRuntimeRef.current || getRuntimeSnapshot()
     const [avatar, idle, thinking] = await Promise.all([
       resolveProjectionAssetPayload(selectedAvatarAsset, {
         assetKey: selectedAvatarAsset?.id,
@@ -640,8 +662,10 @@ export default function ViewerPage({ workspace, onNavigate }) {
       thinking,
       viewerOptions: currentSettings.viewerOptions,
       framingState: currentSettings.framingState,
+      runtime: runtimeState,
     })
   }, [
+    getRuntimeSnapshot,
     postProjectionMessage,
     resolveProjectionAssetPayload,
     selectedAvatarAsset,
@@ -2198,16 +2222,20 @@ export default function ViewerPage({ workspace, onNavigate }) {
     onNavigate?.('manage')
   }, [onNavigate])
 
-  const openHologramProjectionWindow = useCallback(() => {
+  const openHologramProjectionWindow = useCallback((options = {}) => {
     if (typeof window === 'undefined') {
       return
     }
 
+    const shouldRequestFullscreen = Boolean(options.fullscreen)
+    const windowSize = shouldRequestFullscreen
+      ? buildHologramFullscreenWindowSize(window.screen)
+      : PIXELXL_PRISM_WINDOW_PRESET
     const hologramUrl = buildHologramProjectionUrl(window.location)
     const popup = window.open(
       hologramUrl,
       '_blank',
-      buildHologramWindowFeatures(PIXELXL_PRISM_WINDOW_PRESET),
+      buildHologramWindowFeatures(windowSize),
     )
 
     if (!popup) {
@@ -2216,10 +2244,25 @@ export default function ViewerPage({ workspace, onNavigate }) {
     }
 
     popup.focus?.()
-    setNotice('Opened the PIXELXL prism projection tab in a new window.')
-    window.setTimeout(() => {
+    setNotice(
+      shouldRequestFullscreen
+        ? 'Opened the hologram tab and requested fullscreen mode.'
+        : 'Opened the PIXELXL prism projection tab in a new window.',
+    )
+
+    const syncProjectionWindow = () => {
       void broadcastProjectionFullState()
-    }, 250)
+      if (shouldRequestFullscreen) {
+        projectionChannelRef.current?.postMessage?.({
+          type: 'projection:enter-fullscreen',
+        })
+      }
+    }
+
+    window.setTimeout(syncProjectionWindow, 250)
+    if (shouldRequestFullscreen) {
+      window.setTimeout(syncProjectionWindow, 900)
+    }
   }, [broadcastProjectionFullState])
 
   function handleChatComposerKeyDown(event) {
@@ -2436,6 +2479,13 @@ export default function ViewerPage({ workspace, onNavigate }) {
                 className="rounded-full border border-cyan-300/30 bg-cyan-300/18 px-5 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/26"
               >
                 Live hologram tab
+              </button>
+              <button
+                type="button"
+                onClick={() => openHologramProjectionWindow({ fullscreen: true })}
+                className="rounded-full border border-white/15 bg-white/10 px-5 py-2 text-sm font-medium text-white/88 transition hover:border-cyan-300/25 hover:bg-white/16 hover:text-white"
+              >
+                Fullscreen hologram
               </button>
             </div>
 
@@ -2732,6 +2782,13 @@ export default function ViewerPage({ workspace, onNavigate }) {
                 className="rounded-2xl border border-cyan-300/30 bg-cyan-300/15 px-4 py-3 text-left text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/24"
               >
                 Open live PIXELXL prism tab
+              </button>
+              <button
+                type="button"
+                onClick={() => openHologramProjectionWindow({ fullscreen: true })}
+                className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-left text-sm font-medium text-white/85 transition hover:border-cyan-300/20 hover:bg-white/12 hover:text-white"
+              >
+                Open fullscreen hologram
               </button>
               <button
                 type="button"

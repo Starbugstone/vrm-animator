@@ -93,7 +93,7 @@ This baseline has been verified against the current repository. The next phase s
 - keep broadening language matching in the ElevenLabs picker as more real-world metadata variants show up, especially labels that use full language names instead of locale codes
 - decide whether more ElevenLabs controls should live at the credential level, avatar level, or stay hidden for first-time users
 - add STT after TTS
-- harden the new four-view hologram path around real hardware use: confirm the 10-inch prism orientation, add offset tuning, and keep main-viewer-to-projection sync reliable
+- harden the new four-view hologram path around real hardware use: confirm the 10-inch prism orientation, add offset tuning, and keep main-viewer-to-projection sync reliable now that the projection tab mirrors live base and overlay motion, vertically flips all four panels, centers the four-view cross on the prism dot instead of the screen grid, exposes a center alignment dot, and supports fullscreen launch plus an in-tab exit control
 
 ## Spring-Cleaning Check
 
@@ -190,4 +190,5 @@ Before closing a feature set, the minimum checks should be:
 ## Ideas - 3D hologram
 - this is the end goal, we will need a button to open a new window dedicated to the hologram projection.
 - for prototyping and cost, I'm using https://holusion.com/en/store/pixelxl so we have to work on the 4 camera projection to make this work
-- the rotation and position of the hologram images need to be controlled from the main view port so some sort of communication between windows, needs to be carefuly detailed in the readme on how to use hologram projection.
+- the rotation and position of the hologram images need to be controlled from the main view port so some sort of communication between windows, needs to be carefuly detailed in the readme on how to use hologram projection
+- the export tab now mirrors live viewer motion more closely, but it still needs per-device offset tuning and a documented calibration workflow for the PIXELXL prism
