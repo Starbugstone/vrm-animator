@@ -109,6 +109,7 @@ class LlmCredentialTest extends WebTestCase
         $glmModels = json_decode($client->getResponse()->getContent(), true);
         $this->assertNotEmpty($glmModels['models']);
         $glmIds = array_column($glmModels['models'], 'id');
+        $this->assertContains('glm-5.1', $glmIds);
         $this->assertContains('glm-5', $glmIds);
         $this->assertContains('glm-4.7', $glmIds);
         $this->assertContains('glm-4-flash-250414', $glmIds);

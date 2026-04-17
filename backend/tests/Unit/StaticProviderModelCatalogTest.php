@@ -27,6 +27,7 @@ class StaticProviderModelCatalogTest extends TestCase
         $this->assertNotEmpty($minimaxModels);
         $this->assertNotEmpty($openAiModels);
         $this->assertSame('deepseek-chat', $catalog->findModel('deepseek', 'deepseek-chat')['id'] ?? null);
+        $this->assertSame('glm-5.1', $catalog->findModel('glm', 'glm-5.1')['id'] ?? null);
         $this->assertSame('glm-5', $catalog->findModel('glm', 'glm-5')['id'] ?? null);
         $this->assertSame('gemini-2.5-pro', $catalog->findModel('gemini', 'gemini-2.5-pro')['id'] ?? null);
         $this->assertSame('MiniMax-M2.7', $catalog->findModel('minimax', 'MiniMax-M2.7')['id'] ?? null);

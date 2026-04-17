@@ -17,6 +17,7 @@ class LlmProviderCatalogTest extends TestCase
         $this->assertSame('MiniMax', $catalog->getLabel(' MINIMAX '));
         $this->assertSame('OpenAI', $catalog->getLabel('openai'));
         $this->assertSame('OpenRouter', $catalog->findProvider('openrouter')['label'] ?? null);
+        $this->assertSame('glm-5.1', $catalog->findProvider('glm')['recommendedModels'][0] ?? null);
         $this->assertTrue($catalog->isSupported('OpenRouter'));
         $this->assertTrue($catalog->isSupported('DeepSeek'));
         $this->assertFalse($catalog->isSupported('unknown-provider'));

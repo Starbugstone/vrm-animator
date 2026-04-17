@@ -2,6 +2,15 @@
 
 return [
     [
+        'id' => 'glm-5.1',
+        'name' => 'GLM-5.1',
+        'description' => 'Latest flagship GLM model with stronger coding and long-horizon agent work, available on both the standard API and the GLM Coding Plan endpoint.',
+        'group' => 'flagship',
+        'releasedAt' => '2026-04-07',
+        'contextLength' => 200000,
+        'isRecommended' => true,
+    ],
+    [
         'id' => 'glm-5',
         'name' => 'GLM-5',
         'description' => 'Latest flagship general-purpose GLM model for agent-style tasks.',

@@ -22,6 +22,7 @@ class LlmProviderCatalog
             'label' => 'GLM',
             'requiresApiKey' => true,
             'recommendedModels' => [
+                'glm-5.1',
                 'glm-5',
                 'glm-4.7',
                 'glm-4.5-air',
